@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import useEmblaCarousel from "embla-carousel-react";
-import GuideBox from "./GuideBox/GuidesBox";
+import GuideBox from "./GuideBox/GuideBox";
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import styles from "./GuidesSection.module.css";
 import Link from 'next/link';

@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
-import GuideBox from '@/components/GuidesSection/GuideBox/GuidesBox';
-import styles from '@/components/GuidesSection/AllGuides.module.css';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import GuideBox from '@/components/GuidesSection/GuideBox/GuideBox';
+import styles from './Guides.module.css';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
-
-interface Guide {
-  id: string;
-  name: string;
-  cover_image: string;
-  slug: string;
-}
+import { FiSearch, FiX } from 'react-icons/fi';
+import Footer from '@/components/Footer';
 
 const GuideBoxSkeleton = () => (
   <div className={`${styles.guidesBoxWrapper} ${styles.skeletonLoading}`}>
@@ -39,35 +34,30 @@ const AllGuidesSkeleton = () => (
   </div>
 );
 
-const AllGuides = () => {
-  const [guides, setGuides] = useState<Guide[]>([]);
+const GuidesPage = () => {
+  const [guides, setGuides] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [animationReady, setAnimationReady] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     const fetchGuides = async () => {
       try {
-        const guidesCollection = collection(db, "guides");
-        const guidesSnapshot = await getDocs(guidesCollection);
-        const guidesList: Guide[] = [];
-
-        guidesSnapshot.forEach((doc) => {
-          const guideData = doc.data();
-          guidesList.push({
-            id: doc.id,
-            name: guideData.name,
-            cover_image: guideData.cover_image,
-            slug: guideData.slug || doc.id
-          });
-        });
-
-        setGuides(guidesList);
-        setTimeout(() => setAnimationReady(true), 100);
+        const guidesCollectionRef = collection(db, "guides");
+        const q = query(guidesCollectionRef, orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(q);
+        
+        const guidesData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        setGuides(guidesData);
+        setAnimationReady(true);
       } catch (error) {
         console.error("Error fetching guides:", error);
+        setGuides([]);
       } finally {
         setLoading(false);
       }
@@ -76,13 +66,21 @@ const AllGuides = () => {
     fetchGuides();
   }, []);
 
-  const handleGuideClick = (guide: Guide) => {
+  const handleGuideClick = (guide) => {
     router.push(`/guides/${guide.slug}`);
   };
 
   const filteredGuides = guides.filter(guide =>
-    guide.name.toLowerCase().includes(searchTerm.toLowerCase())
+    guide.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+  };
 
   const structuredData = {
     "@context": "https://schema.org",
@@ -105,6 +103,7 @@ const AllGuides = () => {
           <title>All Guides - Zest</title>
         </Head>
         <AllGuidesSkeleton />
+        <Footer />
       </>
     );
   }
@@ -129,36 +128,33 @@ const AllGuides = () => {
           {JSON.stringify(structuredData)}
         </script>
       </Head>
-      <div className={styles.allGuidesPage}>
-        <div className={styles.allGuidesContainer}>
-          <div className={styles.allGuidesHeader}>
-            <h1 className={styles.allGuidesTitle}>All Guides</h1>
+      <div className={styles.guidesPage}>
+        <div className={styles.guidesContainer}>
+          <div className={styles.guidesHeader}>
+            <h1 className={styles.guidesTitle}>All Guides</h1>
             <div className={styles.guidesCount}>{filteredGuides.length} Activities</div>
           </div>
-          <div className={styles.allGuidesSearchContainer}>
+          <div className={styles.guidesSearchContainer}>
             <div className={styles.searchInputWrapper}>
-              <svg className={styles.searchIcon} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
+              <FiSearch className={styles.searchIcon} />
               <input
                 type="text"
                 placeholder="Search activities..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className={styles.allGuidesSearch}
+                value={searchQuery}
+                onChange={handleSearchChange}
+                className={styles.guidesSearch}
               />
-              {searchTerm && (
+              {searchQuery && (
                 <button 
                   className={styles.clearSearch}
-                  onClick={() => setSearchTerm('')}
+                  onClick={clearSearch}
                 >
-                  ×
+                  <FiX />
                 </button>
               )}
             </div>
           </div>
-          <div className={`${styles.allGuidesGrid} ${styles.guidesGrid} ${animationReady ? styles.animateIn : ''}`}>
+          <div className={`${styles.guidesGrid} ${animationReady ? styles.animateIn : ''}`}>
             {filteredGuides.length > 0 ? (
               filteredGuides.map((guide, index) => (
                 <div 
@@ -172,15 +168,16 @@ const AllGuides = () => {
               ))
             ) : (
               <div className={styles.noResults}>
-                <p>No activities found matching "{searchTerm}"</p>
-                <button className={styles.clearFiltersBtn} onClick={() => setSearchTerm('')}>Clear Search</button>
+                <p>No activities found matching "{searchQuery}"</p>
+                <button className={styles.clearFiltersBtn} onClick={clearSearch}>Clear Search</button>
               </div>
             )}
           </div>
         </div>
       </div>
+      <Footer />
     </>
   );
 };
 
-export default AllGuides; 
+export default GuidesPage; 

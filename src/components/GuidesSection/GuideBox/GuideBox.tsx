@@ -1,12 +1,12 @@
+'use client';
+
 import React from "react";
-import styles from "./GuidesBox.module.css";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import { getAuth } from 'firebase/auth';
 import { db } from "@/lib/firebase";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { FaTrash, FaEdit } from 'react-icons/fa';
-import { generateSlug } from "@/utils/generateSlug";
-import Image from 'next/image';
+import styles from './GuideBox.module.css';
 
 interface Guide {
   id: string;
@@ -16,12 +16,22 @@ interface Guide {
   createdBy?: string;
 }
 
-interface GuidesBoxProps {
+interface GuideBoxProps {
   guide: Guide;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
-function GuidesBox({ guide, onDelete }: GuidesBoxProps) {
+// Helper function to generate slug
+const generateSlug = (title: string): string => {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+};
+
+function GuideBox({ guide, onDelete }: GuideBoxProps) {
   const router = useRouter();
   const auth = getAuth();
   const currentUser = auth.currentUser;
@@ -30,6 +40,7 @@ function GuidesBox({ guide, onDelete }: GuidesBoxProps) {
   const handleClick = async () => {
     try {
       if (!guide.slug && guide.name) {
+        // If guide doesn't have a slug, generate and add one
         const newSlug = generateSlug(guide.name);
         const guideRef = doc(db, "guides", guide.id);
         await updateDoc(guideRef, {
@@ -43,6 +54,7 @@ function GuidesBox({ guide, onDelete }: GuidesBoxProps) {
       }
     } catch (error) {
       console.error("Error handling guide click:", error);
+      // Fallback to ID-based navigation if something goes wrong
       router.push(`/guidepage/${guide.id}`);
     }
   };
@@ -84,16 +96,11 @@ function GuidesBox({ guide, onDelete }: GuidesBoxProps) {
           </>
         )}
         {guide.cover_image ? (
-          <div className={styles['guides-box-image-container']}>
-            <Image 
-              src={guide.cover_image} 
-              alt={guide.name}
-              className={styles['guides-box-image']}
-              fill
-              style={{ objectFit: 'cover' }}
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            />
-          </div>
+          <img 
+            src={guide.cover_image} 
+            alt={guide.name}
+            className={styles['guides-box-image']}
+          />
         ) : (
           <div className={styles['guides-box-image-placeholder']}>
             No Image Available
@@ -108,4 +115,4 @@ function GuidesBox({ guide, onDelete }: GuidesBoxProps) {
   );
 }
 
-export default GuidesBox; 
+export default GuideBox; 
