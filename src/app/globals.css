@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--background-start-rgb)),
+    rgb(0, 0, 50),
+    rgb(var(--background-end-rgb))
+  );
+  min-height: 100vh;
+}
+
+/* Profile page specific styles */
+.pageContainer {
+  min-height: 100vh;
+  padding: 20px;
+  background: linear-gradient(
+    to bottom,
+    rgb(var(--background-start-rgb)),
+    rgb(0, 0, 50),
+    rgb(var(--background-end-rgb))
+  );
+}
+
+/* Toast styles */
+.Toastify__toast {
+  background: #1c1c1c !important;
+  color: white !important;
+}
+
+.Toastify__toast-body {
+  font-family: Arial, sans-serif;
+}
+
+.Toastify__progress-bar {
+  background: #333333 !important;
+}
+
+.Toastify__close-button {
+  color: white !important;
+} 
