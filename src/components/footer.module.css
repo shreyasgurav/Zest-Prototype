@@ -13,108 +13,140 @@
 
 /* Footer */
 .footer {
-    width: 100vw !important;
-    left: 0;
-    right: 0;
-    position: relative;
-    box-sizing: border-box;
+    flex-shrink: 0;
+    width: 100%;
     background: linear-gradient(
         to top,
         rgb(6, 9, 63) 0%,
         rgba(6, 9, 63, 0) 100%
     );
     font-family: 'Play', sans-serif;
-    padding: 20px 0 24px 0;
+    padding: 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: center;
     text-align: center;
-    z-index: 10;
+    position: relative;
 }
 
-/* Top line style */
 .footer::before {
     content: '';
     position: absolute;
     top: 0;
-    left: 5vw;
-    right: 5vw;
+    left: 300px;
+    right: 300px;
     height: 1px;
     background-color: rgba(255, 255, 255, 0.3);
 }
 
-.footer .row {
+.row {
     width: 100%;
-    max-width: 900px;
-    margin: 0 auto;
+    margin: 1% 0%;
+    padding: 0.6% 0%;
+    color: gray;
+    font-size: 0.8em;
     display: flex;
     justify-content: center;
     align-items: center;
     gap: 32px;
-    flex-wrap: wrap;
-    color: gray;
-    font-size: 0.8em;
-    text-align: center;
-    box-sizing: border-box;
 }
 
-.footer .row:first-child {
-    justify-content: center;
-    gap: 32px;
-    margin-bottom: 8px;
-}
-
-.footer .row ul {
+.iconWrapper {
     display: flex;
+    align-items: center;
     justify-content: center;
-    gap: 32px;
-    width: 100%;
-    padding: 0;
-    margin: 0;
+    height: 40px;
+    width: 40px;
 }
 
-.footer .row ul li {
-    display: inline-block;
-    margin: 0 10px;
-}
-
-/* Social Icons */
-.socialIcon {
+.icon {
     font-size: 2em;
-    margin: 0 8px;
     color: gray;
     transition: 0.5s;
+    display: block;
+    line-height: 1;
 }
 
-.footer .row a:hover .socialIcon {
-    color: white;
-    transform: translateY(-2px);
+.x-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    width: 40px;
 }
 
-/* X (Twitter) icon specific styles */
-.footer .row .x-icon {
+.x-icon {
     width: 1.6em;
     height: 1.6em;
     fill: gray;
     transition: 0.5s;
-    vertical-align: middle;
-    position: relative;
-    top: -4.5px;
-    margin: 0 8px;
+    display: block;
+    margin-top: 2px;
 }
 
-.footer .row .x-link {
-    display: inline-flex;
+.row a {
+    text-decoration: none;
+    color: gray;
+    transition: 0.5s;
+    display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 8px;
-    vertical-align: middle;
 }
 
-.footer .row .x-link:hover .x-icon {
+.row a:hover,
+.row a:focus {
+    color: #fff;
+}
+
+.row a:hover .icon,
+.row a:focus .icon {
+    color: #fff;
+}
+
+.x-link:hover .x-icon {
     fill: white;
-    transform: translateY(-2px);
+}
+
+.row ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+}
+
+.row ul li {
+    display: inline-block;
+    margin: 0px 30px;
+}
+
+@media (max-width: 764px) {
+    .footer {
+        padding: 5%;
+    }
+    .footer::before {
+        left: 20px;
+        right: 20px;
+    }
+    .row {
+        gap: 18px;
+    }
+    .iconWrapper, .x-link {
+        height: 32px;
+        width: 32px;
+    }
+    .icon {
+        font-size: 1.5em;
+    }
+    .x-icon {
+        width: 1.2em;
+        height: 1.2em;
+    }
+    .row ul li {
+        display: block;
+        margin: 10px;
+    }
 }
 
 /* Responsive Design */

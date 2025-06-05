@@ -1,17 +1,17 @@
 import React from "react";
 import Link from "next/link";
-import styles from "./footer.module.css";
 import { FaInstagram, FaLinkedin } from "react-icons/fa";
+import styles from "./footer.module.css";
 
 function Footer() {
     return (
         <footer className={styles.footer}>
             <div className={styles.row}>
                 <a href="https://www.instagram.com/tryzest/" target="_blank" rel="noopener noreferrer">
-                    <FaInstagram className={styles.socialIcon} />
+                    <span className={styles.iconWrapper}><FaInstagram className={styles.icon} /></span>
                 </a>
                 <a href="https://www.linkedin.com/company/zestlive/about/?viewAsMember=true" target="_blank" rel="noopener noreferrer">
-                    <FaLinkedin className={styles.socialIcon} />
+                    <span className={styles.iconWrapper}><FaLinkedin className={styles.icon} /></span>
                 </a>
                 <a href="https://x.com/zestlivein" className={styles["x-link"]} target="_blank" rel="noopener noreferrer">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={styles["x-icon"]}>
