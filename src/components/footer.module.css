@@ -121,6 +121,10 @@
     margin: 0px 30px;
 }
 
+.iconRow {
+    flex-direction: row !important;
+}
+
 @media (max-width: 764px) {
     .footer {
         padding: 5%;
@@ -180,5 +184,8 @@
     .footer::before {
         left: 0;
         right: 0;
+    }
+    .footer .iconRow {
+        flex-direction: row !important;
     }
 } 

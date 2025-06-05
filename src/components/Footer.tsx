@@ -6,7 +6,7 @@ import styles from "./footer.module.css";
 function Footer() {
     return (
         <footer className={styles.footer}>
-            <div className={styles.row}>
+            <div className={`${styles.row} ${styles.iconRow}`}>
                 <a href="https://www.instagram.com/tryzest/" target="_blank" rel="noopener noreferrer">
                     <span className={styles.iconWrapper}><FaInstagram className={styles.icon} /></span>
                 </a>

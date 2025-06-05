@@ -7,4 +7,4 @@ export default function Home() {
       <GuidesSection />
     </div>
   );
-}
+} 

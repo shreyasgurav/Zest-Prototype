@@ -372,11 +372,11 @@ nav .desktop-nav li a:hover {
         left: 0;
         width: 100%;
         height: 0vh;
-        background: #000;
+        background: rgba(0, 0, 0, 0.95);  /* Made background slightly transparent */
         justify-content: start;
         overflow: hidden;
         z-index: 1000;
-        transition: all 1000ms ease;
+        transition: all 400ms ease;  /* Reduced from 1000ms for snappier response */
     }
 
     .desktop-nav .link-add-event {
@@ -401,11 +401,11 @@ nav .desktop-nav li a:hover {
 
     .nav-container .desktop-nav li {
         width: 100%;
-        padding: 0 32px;
+        padding: 0 24px;
     }
 
     .nav-container .desktop-nav li:first-child {
-        margin-top: 120px;
+        margin-top: 100px;
     }
 
     .nav-container .desktop-nav .link-logo,
@@ -415,14 +415,14 @@ nav .desktop-nav li a:hover {
     }
 
     .nav-container .desktop-nav li a {
-        padding: 16px 0;
+        padding: 12px 0;
         display: inline-block;
-        border-bottom: 1px solid #616161;
+        border-bottom: 1px solid rgba(97, 97, 97, 0.3);
         width: 100%;
-        font-size: 17px;
+        font-size: 16px;
         transform: translateY(-80px);
         opacity: 0;
-        transition: all 700ms ease;
+        transition: all 400ms ease;  /* Reduced from 700ms for snappier response */
     }
 
     .nav-container.active .desktop-nav li a {
@@ -459,10 +459,10 @@ nav .desktop-nav li a:hover {
 
     nav .menu-icon {
         position: relative;
-        width: 20px;
-        padding: 10px;
-        margin: -10px;
-        height: 20px;
+        width: 16px;
+        padding: 8px;
+        margin: -8px;
+        height: 16px;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -471,7 +471,7 @@ nav .desktop-nav li a:hover {
     nav .menu-icon .line-1,
     nav .menu-icon .line-2 {
         position: absolute;
-        height: 1.5px;
+        height: 1px;
         width: 100%;
         background: #fff;
         transition-property: transform, top;
@@ -481,11 +481,11 @@ nav .desktop-nav li a:hover {
     }
 
     nav .menu-icon .line-1 {
-        top: 6px;
+        top: 4px;
     }
 
     nav .menu-icon .line-2 {
-        top: 14px;
+        top: 10px;
     }
 
     .nav-container.active nav .menu-icon-container .menu-icon .line-1,

@@ -1,3 +1,4 @@
+"use client";
 // UserProfile.jsx
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db, storage } from "@/lib/firebase";
