@@ -4,6 +4,8 @@
 .experiences-section {
     flex: 1;
     margin-top: 50px;
+    width: 100%;
+    overflow: hidden;
 }
 
 .upcoming-experiences-heading {
@@ -63,90 +65,68 @@
 /* Embla Carousel Styling */
 .embla {
     position: relative;
-    overflow: visible;
     width: 100%;
+    margin: auto;
+    overflow: hidden;
 }
 
 .embla__viewport {
     overflow: hidden;
     width: 100%;
-    padding: 0 20px;
 }
 
 .embla__container {
     display: flex;
-    align-items: center;
-    gap: 0;
-    margin-left: 0;
-    will-change: transform;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -khtml-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    margin-left: -10px;
 }
 
 .embla__slide {
-    flex: 0 0 auto;
-    min-width: 250px;
-    padding: 0;
-    display: flex;
-    justify-content: flex-start;
-    opacity: 0;
-    animation: fadeIn 0.3s ease-out forwards;
+    position: relative;
+    min-width: 0;
+    flex: 0 0 250px;
+    margin-left: 10px;
 }
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* Stagger the animation for each slide */
-.embla__slide:nth-child(1) { animation-delay: 0ms; }
-.embla__slide:nth-child(2) { animation-delay: 50ms; }
-.embla__slide:nth-child(3) { animation-delay: 100ms; }
-.embla__slide:nth-child(4) { animation-delay: 150ms; }
-.embla__slide:nth-child(5) { animation-delay: 200ms; }
-.embla__slide:nth-child(6) { animation-delay: 250ms; }
-.embla__slide:nth-child(7) { animation-delay: 300ms; }
-.embla__slide:nth-child(8) { animation-delay: 350ms; }
 
 .embla-container {
     position: relative;
-    display: flex;
-    align-items: center;
-    width: 100%;
-    padding: 0;
-    overflow: visible;
-    transition: opacity 0.3s ease;
+    padding: 0 40px;
+    max-width: 1400px;
+    margin: 0 auto;
 }
 
+/* Navigation Buttons */
 .embla-button {
     position: absolute;
-    z-index: 10;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(8px);
-    border: none;
+    z-index: 1;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
     width: 40px;
     height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
     justify-content: center;
+    align-items: center;
+    padding: 0;
+    display: flex;
     cursor: pointer;
+    background-color: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    border-radius: 50%;
     transition: all 0.3s ease;
+}
+
+.embla-button:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-50%) scale(1.1);
 }
 
 .embla-button svg {
     width: 24px;
     height: 24px;
     color: white;
-}
-
-.embla-button:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: scale(1.1);
 }
 
 .embla-button-prev {
@@ -163,25 +143,25 @@
 }
 
 .embla-button-disabled:hover {
-    background: rgba(255, 255, 255, 0.1);
-    transform: none;
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-50%);
 }
 
 .no-experiences-message {
     text-align: center;
+    color: rgba(255, 255, 255, 0.7);
     font-size: 18px;
-    color: #666;
-    margin-top: 17px;
-    font-family: 'Arial', sans-serif;
-    padding: 165px;
-    background: none;
+    padding: 40px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    margin: 20px;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .experiences-section-heading {
-        grid-template-columns: 80px 1fr 80px;
-        padding: 0 15px;
+        grid-template-columns: 60px 1fr 60px;
+        padding: 0 10px;
     }
 
     .upcoming-experiences-heading {
@@ -192,36 +172,29 @@
         font-size: 14px;
     }
 
-    .embla__container {
-        grid-column-gap: 20px;
-    }
-
     .embla__slide {
-        min-width: 180px;
+        flex: 0 0 200px;
     }
 
-    .embla__viewport {
-        mask-image: linear-gradient(
-            to right,
-            transparent,
-            black 10%,
-            black 90%,
-            transparent
-        );
-        -webkit-mask-image: linear-gradient(
-            to right,
-            transparent,
-            black 10%,
-            black 90%,
-            transparent
-        );
+    .embla-container {
+        padding: 0 30px;
+    }
+
+    .embla-button {
+        width: 32px;
+        height: 32px;
+    }
+
+    .embla-button svg {
+        width: 20px;
+        height: 20px;
     }
 }
 
 @media (max-width: 480px) {
     .experiences-section-heading {
-        grid-template-columns: 60px 1fr 60px;
-        padding: 0 10px;
+        grid-template-columns: 40px 1fr 40px;
+        padding: 0 5px;
     }
 
     .upcoming-experiences-heading {
@@ -233,52 +206,32 @@
     }
 
     .embla__slide {
-        min-width: 230px;
-        width: 230px;
-        padding: 0;
-        display: flex;
-        justify-content: flex-start;
+        flex: 0 0 180px;
     }
 
-    .guides-box-wrapper {
-        max-width: 230px;
-        padding: 0 5px;
-    }
-
-    .guides-box-card {
-        max-width: 230px;
-    }
-
-    .embla__container {
-        gap: 0;
-        margin-left: 0 !important;
-    }
-
-    .embla__viewport {
-        overflow-x: auto;
-        padding: 0;
-        margin: 0;
-        -webkit-overflow-scrolling: touch;
-        scroll-snap-type: x mandatory;
-    }
-
-    .embla__slide {
-        scroll-snap-align: start;
+    .embla-container {
+        padding: 0 25px;
     }
 
     .embla-button {
-        width: 32px;
-        height: 32px;
-        top: 50%;
+        width: 28px;
+        height: 28px;
+    }
+
+    .embla-button svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+/* Touch Device Optimizations */
+@media (hover: none) {
+    .embla-button {
+        opacity: 0.8;
+    }
+
+    .embla-button:hover {
         transform: translateY(-50%);
-    }
-
-    .embla-button-prev {
-        left: 2px;
-    }
-
-    .embla-button-next {
-        right: 2px;
     }
 }
 

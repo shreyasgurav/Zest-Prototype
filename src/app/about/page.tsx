@@ -1,14 +1,20 @@
-import React from 'react';
-import styles from './About.module.css';
+import { Metadata } from 'next'
+import About from './About'
+
+export const metadata: Metadata = {
+  title: 'About | Zest',
+  description: 'Learn more about Zest - Your ultimate guide to discovering the best experiences in Mumbai.',
+  openGraph: {
+    title: 'About | Zest',
+    description: 'Learn more about Zest - Your ultimate guide to discovering the best experiences in Mumbai.',
+    type: 'website',
+  },
+}
 
 export default function AboutPage() {
   return (
-    <div className={styles.aboutContainer}>
-      <h1 className={styles.title}>About Zest</h1>
-      <p className={styles.description}>
-        Zest is your ultimate guide to discovering the best experiences in Mumbai.
-        We curate and share the most exciting activities, events, and places to visit.
-      </p>
-    </div>
-  );
+    <main className="about-page">
+      <About />
+    </main>
+  )
 } 

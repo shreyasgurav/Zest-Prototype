@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { HelmetProvider } from 'react-helmet-async';
-import Header from '@/components/Header';
+import Header from '../components/Header/header';
 import Footer from '@/components/Footer';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';

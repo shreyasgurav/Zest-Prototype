@@ -349,27 +349,4 @@
   padding: 80px 20px 40px;
   /* background: linear-gradient(to bottom, #000000, #1a1a1a); */
   background: none !important;
-}
-
-.guideItem {
-  display: flex;
-  justify-content: center;
-  transition: transform 0.3s ease;
-  width: 100%;
-  position: relative;
-}
-
-.guideItem::before {
-  content: '';
-  position: absolute;
-  inset: -10px;
-  background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  border-radius: 16px;
-  pointer-events: none;
-}
-
-.guideItem:hover::before {
-  opacity: 1;
 } 
