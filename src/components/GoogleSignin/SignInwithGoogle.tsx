@@ -5,7 +5,7 @@ import { auth, db } from "@/lib/firebase";
 import { toast } from "react-toastify";
 import { setDoc, doc, getDoc } from "firebase/firestore";
 import GoogleSignInButton from "./GoogleButton";
-import { useRouter } from 'next/router';
+import { useRouter } from 'next/navigation';
 import styles from './SignInwithGoogle.module.css';
 
 
