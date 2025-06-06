@@ -7,7 +7,7 @@
 }
 
 .upcoming-experiences-heading {
-    grid-column: 2; /* Place in middle column */
+    grid-column: 2;
     text-align: center;
     font-size: 24px;
     color: white;
@@ -20,14 +20,14 @@
 
 .experiences-section-heading {
     display: grid;
-    grid-template-columns: 100px 1fr 100px; /* Fixed width for sides, flexible middle */
+    grid-template-columns: 100px 1fr 100px;
     align-items: center;
     padding: 0 20px;
     margin-bottom: 20px;
 }
 
 .see-all-link {
-    grid-column: 3; /* Place in last column */
+    grid-column: 3;
     justify-self: end;
     color: white;
     text-decoration: none;
@@ -60,84 +60,6 @@
     border: 1px solid rgba(255, 68, 68, 0.2);
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .experiences-section-heading {
-        grid-template-columns: 80px 1fr 80px; /* Slightly smaller side columns */
-        padding: 0 15px;
-    }
-
-    .upcoming-experiences-heading {
-        font-size: 20px;
-    }
-
-    .see-all-link {
-        font-size: 14px;
-    }
-
-    .embla__container {
-        gap: 15px;
-    }
-
-    .embla__slide {
-        min-width: 200px;
-    }
-
-    .embla-button {
-        width: 36px;
-        height: 36px;
-    }
-
-    .embla-button svg {
-        width: 20px;
-        height: 20px;
-    }
-}
-
-@media (max-width: 480px) {
-    .experiences-section-heading {
-        grid-template-columns: 60px 1fr 60px; /* Even smaller side columns */
-        padding: 0 10px;
-    }
-
-    .upcoming-experiences-heading {
-        font-size: 18px;
-    }
-
-    .see-all-link {
-        font-size: 12px;
-    }
-
-    .embla__container {
-        gap: 10px;
-    }
-
-    .embla__slide {
-        min-width: 180px;
-    }
-
-    .embla-button {
-        width: 32px;
-        height: 32px;
-    }
-
-    .embla-button svg {
-        width: 18px;
-        height: 18px;
-    }
-}
-
-.no-experiences-message {
-    text-align: center;
-    font-size: 18px;
-    color: #666;
-    margin-top: 17px;
-    font-family: 'Arial', sans-serif;
-    padding: 165px;
-    background: none;
-}
-
-
 /* Embla Carousel Styling */
 .embla {
     position: relative;
@@ -154,7 +76,7 @@
 .embla__container {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 0;
     margin-left: 0;
     will-change: transform;
 }
@@ -162,7 +84,6 @@
 .embla__slide {
     flex: 0 0 auto;
     min-width: 250px;
-    max-width: 300px;
     padding: 0;
     display: flex;
     justify-content: flex-start;
@@ -190,6 +111,176 @@
 .embla__slide:nth-child(6) { animation-delay: 250ms; }
 .embla__slide:nth-child(7) { animation-delay: 300ms; }
 .embla__slide:nth-child(8) { animation-delay: 350ms; }
+
+.embla-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0;
+    overflow: visible;
+    transition: opacity 0.3s ease;
+}
+
+.embla-button {
+    position: absolute;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    border: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.embla-button svg {
+    width: 24px;
+    height: 24px;
+    color: white;
+}
+
+.embla-button:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.1);
+}
+
+.embla-button-prev {
+    left: 0;
+}
+
+.embla-button-next {
+    right: 0;
+}
+
+.embla-button-disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.embla-button-disabled:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: none;
+}
+
+.no-experiences-message {
+    text-align: center;
+    font-size: 18px;
+    color: #666;
+    margin-top: 17px;
+    font-family: 'Arial', sans-serif;
+    padding: 165px;
+    background: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .experiences-section-heading {
+        grid-template-columns: 80px 1fr 80px;
+        padding: 0 15px;
+    }
+
+    .upcoming-experiences-heading {
+        font-size: 20px;
+    }
+
+    .see-all-link {
+        font-size: 14px;
+    }
+
+    .embla__container {
+        grid-column-gap: 20px;
+    }
+
+    .embla__slide {
+        min-width: 180px;
+    }
+
+    .embla__viewport {
+        mask-image: linear-gradient(
+            to right,
+            transparent,
+            black 10%,
+            black 90%,
+            transparent
+        );
+        -webkit-mask-image: linear-gradient(
+            to right,
+            transparent,
+            black 10%,
+            black 90%,
+            transparent
+        );
+    }
+}
+
+@media (max-width: 480px) {
+    .experiences-section-heading {
+        grid-template-columns: 60px 1fr 60px;
+        padding: 0 10px;
+    }
+
+    .upcoming-experiences-heading {
+        font-size: 18px;
+    }
+
+    .see-all-link {
+        font-size: 12px;
+    }
+
+    .embla__slide {
+        min-width: 230px;
+        width: 230px;
+        padding: 0;
+        display: flex;
+        justify-content: flex-start;
+    }
+
+    .guides-box-wrapper {
+        max-width: 230px;
+        padding: 0 5px;
+    }
+
+    .guides-box-card {
+        max-width: 230px;
+    }
+
+    .embla__container {
+        gap: 0;
+        margin-left: 0 !important;
+    }
+
+    .embla__viewport {
+        overflow-x: auto;
+        padding: 0;
+        margin: 0;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+    }
+
+    .embla__slide {
+        scroll-snap-align: start;
+    }
+
+    .embla-button {
+        width: 32px;
+        height: 32px;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .embla-button-prev {
+        left: 2px;
+    }
+
+    .embla-button-next {
+        right: 2px;
+    }
+}
 
 /* Removed Arrows and Dots */
 .embla__controls,
@@ -309,85 +400,6 @@
   }
 }
 
-.embla-container {
-    position: relative;
-    padding: 0 40px;
-}
-
-.embla-button {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    z-index: 1;
-}
-
-.embla-button:hover {
-    background: rgba(255, 255, 255, 0.2);
-}
-
-.embla-button svg {
-    width: 24px;
-    height: 24px;
-}
-
-.embla-button-prev {
-    left: 0;
-}
-
-.embla-button-next {
-    right: 0;
-}
-
-.embla-button-disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-.embla-button-disabled:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-/* Update the responsive styles */
-@media (max-width: 480px) {
-  .embla__slide {
-    min-width: 250px; /* Keep the same width as larger screens */
-    width: auto;
-    padding: 0;
-    display: flex;
-    justify-content: flex-start;
-  }
-
-  .guides-box-wrapper {
-    max-width: 230px; /* Match larger screens */
-    padding: 10px;
-  }
-
-  .guides-box-card {
-    max-width: 230px; /* Match larger screens */
-  }
-
-  /* Remove any styles that force single slide view */
-  .embla__container {
-    gap: 0;
-  }
-
-  .embla__viewport {
-    overflow-x: auto; /* Ensure horizontal scrolling works */
-    padding: 0 20px;
-  }
-}
-
 /* Update skeleton styles to match GuideBox exactly */
 .guides-box-card {
   position: relative;
@@ -399,19 +411,6 @@
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.guides-box-image-placeholder {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.03) 25%,
-    rgba(255, 255, 255, 0.08) 37%,
-    rgba(255, 255, 255, 0.03) 63%
-  );
-  background-size: 400% 100%;
-  animation: shimmer 2s infinite linear;
 }
 
 .skeleton-text {
