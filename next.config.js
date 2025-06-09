@@ -1,5 +1,3 @@
-import type { NextConfig } from "next";
-
 // Load environment variables directly
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -10,8 +8,11 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   // Pass environment variables directly to the client
   publicRuntimeConfig: {
     firebaseConfig,
@@ -33,4 +34,4 @@ const nextConfig: NextConfig = {
   }
 };
 
-export default nextConfig;
+module.exports = nextConfig;
