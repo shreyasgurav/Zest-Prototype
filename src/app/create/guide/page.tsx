@@ -21,7 +21,7 @@ const CreateGuide = () => {
   useEffect(() => {
     const checkAuth = () => {
       const user = auth.currentUser;
-      setIsAuthorized(user?.email === "shrreyasgurav@gmail.com");
+      setIsAuthorized(user?.providerData[0]?.providerId === 'phone');
     };
     checkAuth();
     const unsubscribe = onAuthStateChanged(auth, checkAuth);
@@ -33,7 +33,7 @@ const CreateGuide = () => {
       <div className={styles["unauthorized-message-container"]}>
         <div className={styles["unauthorized-message"]}>
           <h1>Unauthorized Access</h1>
-          <p>You can't create anything because you are not Shreyas.</p>
+          <p>Only organizations can create guides. Please login as an organization to continue.</p>
           <button onClick={() => router.push("/")} className={styles["back-button"]}>
             Back to Home
           </button>

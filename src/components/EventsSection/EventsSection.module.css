@@ -1,0 +1,481 @@
+/* Events Section Styling */
+.eventsSection {
+    flex: 1;
+    margin-top: 70px;
+    margin-bottom: 50px;
+    position: relative;
+}
+
+.eventsSectionHeading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 60px;
+    margin-bottom: 30px;
+    position: relative;
+    gap: 20px;
+}
+
+.eventsSectionHeading::after {
+    content: '';
+    position: absolute;
+    left: calc(50% - 150px);
+    right: calc(50% - 200px);
+    top: 50%;
+    height: 1px;
+    background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.1) 0%,
+        rgba(255, 255, 255, 0.2) 50%,
+        rgba(255, 255, 255, 0.1) 100%
+    );
+    z-index: 0;
+}
+
+.upcomingEventsHeading {
+    font-size: 24px;
+    color: white;
+    opacity: 0.7;
+    font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
+    font-weight: 400;
+    font-style: normal;
+    margin: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.seeAllLink {
+    color: white;
+    text-decoration: none;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    opacity: 0.7;
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
+}
+
+.seeAllLink:hover {
+    opacity: 1;
+    color: #9333ea;
+}
+
+.noEventsMessage {
+    text-align: center;
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 50px;
+    padding: 100px 20px;
+    font-family: 'Arial', sans-serif;
+}
+
+/* Carousel Container */
+.emblaContainer {
+    position: relative;
+    padding: 0 60px;
+}
+
+/* Embla Carousel Styling */
+.embla {
+    overflow: hidden;
+    width: 100%;
+}
+
+.embla__viewport {
+    overflow: hidden;
+    width: 100%;
+}
+
+.embla__container {
+    display: flex;
+    gap: 20px;
+    margin-left: -20px;
+}
+
+.embla__slide {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding-left: 20px;
+}
+
+/* Navigation Buttons */
+.emblaButton {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: white;
+    font-size: 24px;
+    transition: all 0.3s ease;
+    z-index: 2;
+}
+
+.emblaButton:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.emblaButtonPrev {
+    left: 10px;
+}
+
+.emblaButtonNext {
+    right: 10px;
+}
+
+.emblaButtonDisabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Error States */
+.errorContainer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+    padding: 20px;
+}
+
+.errorMessage {
+    color: #ff4444;
+    font-size: 16px;
+    text-align: center;
+}
+
+/* Skeleton Loading Styles */
+.skeletonSection {
+    opacity: 1;
+    animation: fadeIn 0.5s ease forwards;
+}
+
+/* Header Skeleton */
+.skeletonHeading {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.skeletonTitle {
+    width: 200px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.skeletonSeeAll {
+    margin-left: auto;
+}
+
+.skeletonButton {
+    width: 80px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+}
+
+/* Event Box Skeleton */
+.skeletonLoading .eventBoxCard {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.skeletonImage {
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 24px 24px 0 0;
+}
+
+.skeletonTypeBadge {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.skeletonBadgeText {
+    width: 60px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.skeletonEventTitle {
+    width: 80%;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.skeletonIcon {
+    width: 16px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.skeletonText {
+    flex: 1;
+    height: 13px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .emblaContainer {
+        padding: 0 50px;
+    }
+}
+
+@media (max-width: 768px) {
+    .eventsSection { 
+        margin-top: 130px;
+    }
+    .eventsSectionHeading {
+        padding: 0 30px;
+        gap: 15px;
+    }
+
+    .eventsSectionHeading::after {
+        left: calc(50% - 70px);
+        right: calc(50% - 150px);
+    }
+
+    .upcomingEventsHeading {
+        font-size: 20px;
+    }
+
+    .seeAllLink {
+        font-size: 14px;
+    }
+
+    .emblaContainer {
+        padding: 0 30px;
+    }
+
+    .emblaButton {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+
+    .emblaButtonPrev {
+        left: 5px;
+    }
+
+    .emblaButtonNext {
+        right: 5px;
+    }
+
+    .embla__container {
+        gap: 15px;
+        margin-left: -15px;
+    }
+
+    .embla__slide {
+        padding-left: 15px;
+    }
+
+    .skeletonLoading .eventBoxWrapper {
+        max-width: 240px;
+        padding: 10px;
+    }
+
+    .skeletonLoading .eventBoxInfo {
+        padding: 20px;
+    }
+
+    .skeletonTitle {
+        width: 160px;
+        height: 20px;
+    }
+
+    .skeletonButton {
+        width: 60px;
+        height: 20px;
+    }
+
+    .skeletonTypeBadge {
+        padding: 6px 12px;
+    }
+
+    .skeletonBadgeText {
+        width: 50px;
+        height: 11px;
+    }
+
+    .skeletonEventTitle {
+        height: 16px;
+    }
+
+    .skeletonIcon {
+        width: 14px;
+        height: 14px;
+    }
+
+    .skeletonText {
+        height: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .eventsSectionHeading {
+        padding: 0 20px;
+        gap: 10px;
+    }
+
+    .eventsSectionHeading::after {
+        left: calc(50% - 50px);
+        right: calc(50% - 100px);
+    }
+
+    .upcomingEventsHeading {
+        font-size: 18px;
+    }
+
+    .seeAllLink {
+        font-size: 13px;
+    }
+
+    .emblaContainer {
+        padding: 0 20px;
+    }
+
+    .emblaButton {
+        width: 35px;
+        height: 35px;
+        font-size: 18px;
+    }
+
+    .embla__container {
+        gap: 10px;
+        margin-left: -10px;
+    }
+
+    .embla__slide {
+        padding-left: 10px;
+    }
+
+    .skeletonLoading .eventBoxWrapper {
+        max-width: 200px;
+        padding: 8px;
+    }
+
+    .skeletonLoading .imageSection {
+        height: 55%;
+    }
+
+    .skeletonLoading .eventBoxInfo {
+        padding: 16px;
+    }
+
+    .skeletonTitle {
+        width: 120px;
+        height: 18px;
+    }
+
+    .skeletonButton {
+        width: 50px;
+        height: 18px;
+    }
+
+    .skeletonTypeBadge {
+        padding: 6px 12px;
+    }
+
+    .skeletonBadgeText {
+        width: 40px;
+        height: 11px;
+    }
+
+    .skeletonEventTitle {
+        height: 15px;
+    }
+
+    .skeletonIcon {
+        width: 12px;
+        height: 12px;
+    }
+
+    .skeletonText {
+        height: 11px;
+    }
+}
+
+/* Event Box Skeleton Specific */
+.eventBoxWrapper {
+    max-width: 280px;
+    position: relative;
+    cursor: default;
+    padding: 12px;
+}
+
+.eventBoxCard {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    border-radius: 24px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+.imageSection {
+    position: relative;
+    height: 60%;
+    overflow: hidden;
+}
+
+.eventBoxInfo {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 24px;
+    background: linear-gradient(
+        to top,
+        rgba(0, 0, 0, 0.8) 0%,
+        rgba(0, 0, 0, 0.6) 50%,
+        rgba(0, 0, 0, 0.3) 80%,
+        transparent 100%
+    );
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.infoRow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+} 

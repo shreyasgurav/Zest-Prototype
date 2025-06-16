@@ -13,7 +13,7 @@ const CreateType = () => {
   useEffect(() => {
     const checkAuth = () => {
       const user = auth.currentUser;
-      setIsAuthorized(user?.email === "shrreyasgurav@gmail.com");
+      setIsAuthorized(user?.providerData[0]?.providerId === 'phone');
     };
 
     checkAuth();
@@ -23,11 +23,11 @@ const CreateType = () => {
 
   if (!isAuthorized) {
     return (
-      <div className={styles["unauthorized-message-container"]}>
-        <div className={styles["unauthorized-message"]}>
+      <div className={styles.unauthorizedMessageContainer}>
+        <div className={styles.unauthorizedMessage}>
           <h1>Unauthorized Access</h1>
-          <p>You can't create anything because you are not Shreyas.</p>
-          <button onClick={() => router.push("/")} className={styles["back-button"]}>
+          <p>Only organizations can create events and guides. Please login as an organization to continue.</p>
+          <button onClick={() => router.push("/")} className={styles.backButton}>
             Back to Home
           </button>
         </div>
@@ -38,7 +38,7 @@ const CreateType = () => {
   const handleTypeSelection = (type: string) => {
     switch (type) {
       case "event":
-        router.push("/create-event");
+        router.push("/create/event");
         break;
       case "workshop":
         router.push("/create/guide");
@@ -47,7 +47,7 @@ const CreateType = () => {
         router.push("/create-experience");
         break;
       case "service":
-        router.push("/create-service");
+        router.push("/create/activity");
         break;
       default:
         break;
@@ -77,14 +77,6 @@ const CreateType = () => {
             <p>Create a Guide excluding bullshit.</p>
           </div>
 
-          <div
-            className={styles["type-card"]}
-            onClick={() => handleTypeSelection("experience")}
-          >
-            <div className={styles["type-icon"]}>🌟</div>
-            <h2>Experience</h2>
-            <p>Create an immersive experience</p>
-          </div>
 
           <div
             className={styles["type-card"]}

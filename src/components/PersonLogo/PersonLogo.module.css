@@ -1,6 +1,8 @@
 .person-logo-container {
     position: relative;
     display: inline-block;
+    margin-top: 4px;
+    margin-right: 15px;
 }
 
 .person-dropdown {

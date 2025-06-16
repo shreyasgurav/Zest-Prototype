@@ -1,0 +1,340 @@
+.bookingFlow {
+  background-color: rgba(40, 40, 40, 0.5);
+  max-width: 800px;
+  margin: 2rem auto;
+  margin-top: 100px;
+  padding: 25px;
+  border-radius: 10px;
+  color: white;
+}
+
+.bookingProgress {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background-color: rgba(40, 40, 40, 0.5);
+  border-radius: 8px;
+  color: white;
+}
+
+.progressStep {
+  color: #666;
+  position: relative;
+  padding-left: 2rem;
+}
+
+.progressStep.active {
+  color: white;
+  font-weight: bold;
+}
+
+.progressStep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  background: #ddd;
+  border-radius: 50%;
+}
+
+.progressStep.active::before {
+  background: #4CAF50;
+}
+
+.bookingStep {
+  background-color: rgba(40, 40, 40, 0.5);
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.bookingStep h2 {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.datetimeSelector {
+  margin-bottom: 2rem;
+}
+
+.datetimeSelector h4 {
+  margin-bottom: 1rem;
+}
+
+.availableSlots {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.selectTimeText {
+  margin-bottom: 10px;
+}
+
+.slotOption {
+  color: white;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  border: 0.2px solid #ddd;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.slotOption:hover:not(:disabled) {
+  background: #2c2c2c;
+}
+
+.slotOption.selected {
+  background: #393939;
+  border: 2px solid #ddd;
+}
+
+.slotOption:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.date, .time {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eventInfo {
+  margin: 2rem 0;
+  text-align: center;
+}
+
+.eventThumbnail {
+  width: 200px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.eventVenue {
+  color: #666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.ticketQuantitySection {
+  text-align: center;
+}
+
+.ticketQuantity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.quantityButton {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: #4CAF50;
+  color: white;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.quantityButton:disabled {
+  background: #ddd;
+  cursor: not-allowed;
+}
+
+.capacityInfo {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.nextButton, .bookButton {
+  width: 100%;
+  padding: 1rem;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: 2rem;
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.nextButton:disabled, .bookButton:disabled {
+  background: #ddd;
+  cursor: not-allowed;
+}
+
+.bookingSummary {
+  background-color: rgba(40, 40, 40, 0.5);
+  padding: 1.5rem;
+  border-radius: 8px;
+}
+
+.eventSummary {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.eventSummary img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.eventDetails {
+  flex: 1;
+}
+
+.eventDetails h3 {
+  margin-bottom: 1rem;
+}
+
+.eventDetails p {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  color: #666;
+}
+
+.ticketInfo {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.ticketInfo h3, .userInfo h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.ticketInfo p, .userInfo p {
+  margin-bottom: 0.5rem;
+  color: #666;
+}
+
+.error {
+  color: #f44336;
+  text-align: center;
+  padding: 1rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 2rem;
+}
+
+.dateSelector,
+.timeSelector {
+  margin-bottom: 2rem;
+}
+
+.availableDates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.dateOption {
+  color: white;
+  padding: 1rem 2rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dateOption:hover {
+  border-color: #4CAF50;
+}
+
+.dateOption.selected {
+  border-color: #4CAF50;
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.ticketTypes {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.ticketType {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  background: rgba(30, 30, 30, 0.5);
+  border-radius: 8px;
+  border: 1px solid #444;
+}
+
+.ticketDetails h3 {
+  margin-bottom: 0.5rem;
+  color: white;
+}
+
+.ticketPrice {
+  font-size: 1.2rem;
+  color: #4CAF50;
+  margin-bottom: 0.5rem;
+}
+
+.ticketsLeft {
+  font-size: 0.9rem;
+  color: #888;
+}
+
+.ticketSummary {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #444;
+}
+
+.totalAmount {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid #444;
+  font-weight: bold;
+  color: #4CAF50;
+  text-align: right;
+}
+
+.userDetails {
+  color: #888;
+}
+
+@media (max-width: 768px) {
+  .ticketType {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+  
+  .ticketQuantity {
+    justify-content: center;
+  }
+} 

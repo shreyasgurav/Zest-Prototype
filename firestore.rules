@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Allow read/write access to Organisations collection
+    match /Organisations/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isOwner(userId);
+    }
+    
+    // Allow read/write access to Users collection
+    match /Users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && isOwner(userId);
+    }
+    
+    // Allow public read access to Events collection
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Allow users to book events (Write to eventAttendees)
+    match /eventAttendees/{attendeeId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Any logged-in user can book an event
+    }
+
+    // Allow event organizers to read all attendees of their event
+    match /eventAttendees/{attendeeId} {
+      allow read: if isAuthenticated() || request.auth.token.role == "organizer";
+    }
+
+    // Allow event organizers to fetch all attendees for their event
+    match /eventAttendees/{document=**} {
+      allow read: if isAuthenticated();
+    }
+    
+    // Allow read/write access to Guides collection
+    match /guides/{guideId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Allow read/write access to Activities collection
+    match /activities/{activityId} {
+      allow read: if true; // Public read access
+      allow write: if isAuthenticated(); // Authenticated users can write
+    }
+
+    // Allow users to book activities
+    match /activity_bookings/{bookingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User who made the booking
+        request.auth.uid == resource.data.organizationId // Activity organizer
+      );
+    }
+
+    // Allow users to be added as activity attendees
+    match /activityAttendees/{attendeeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User who made the booking
+        request.auth.uid == resource.data.organizationId // Activity organizer
+      );
+    }
+  }
+}  

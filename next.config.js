@@ -14,8 +14,8 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   // Pass environment variables directly to the client
-  publicRuntimeConfig: {
-    firebaseConfig,
+  env: {
+    // Removed Razorpay key
   },
   // Ensure environment variables are available at build time
   webpack: (config, { isServer }) => {
