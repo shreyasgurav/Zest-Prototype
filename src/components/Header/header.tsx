@@ -9,7 +9,7 @@ import PersonLogo from "../PersonLogo/PersonLogo";
 import styles from "./header.module.css";
 import Link from 'next/link';
 import { Calendar, PartyPopper, Search, X, Building2, MapPin, Clock, ArrowRight, ChevronDown, Ticket, Sparkles } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface SearchResult {
     id: string;
@@ -29,6 +29,7 @@ const POPULAR_CITIES = [
 
 const Header = () => {
     const router = useRouter();
+    const pathname = usePathname();
     const [isSearchVisible, setSearchVisible] = useState(false);
     const [isNavActive, setNavActive] = useState(false);
     const [hideSecondaryNav, setHideSecondaryNav] = useState(false);
@@ -165,6 +166,12 @@ const Header = () => {
     const handleSearchSubmit = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) performSearch(); };
     const handleCitySelect = (city: string) => { setSelectedCity(city); setLocationOpen(false); };
 
+    // Function to check if we should show the secondary nav
+    const shouldShowSecondaryNav = () => {
+        const allowedPaths = ['/', '/events', '/activities'];
+        return allowedPaths.includes(pathname || '');
+    };
+
     return (
         <>
             <div className={styles.globalStyles}>
@@ -202,19 +209,21 @@ const Header = () => {
                                 <a className={styles['link-Profile-logo']}><PersonLogo /></a>
                             </li>
                         </ul>
-                        {/* This secondary nav will now hide on scroll down */}
-                        <ul className={`${styles['mobile-nav-secondary']} ${hideSecondaryNav ? styles.hide : ''}`}>
-                            <li className={styles.navItemWithIcon}>
-                                <Link href="/events" className={styles.navLinkWithIcon}>
-                                    <Ticket className={styles.navIcon} /><span>Events</span>
-                                </Link>
-                            </li>
-                            <li className={styles.navItemWithIcon}>
-                                <Link href="/activities" className={styles.navLinkWithIcon}>
-                                    <Sparkles className={styles.navIcon} /><span>Activities</span>
-                                </Link>
-                            </li>
-                        </ul>
+                        {/* Only render secondary nav on allowed pages */}
+                        {shouldShowSecondaryNav() && (
+                            <ul className={`${styles['mobile-nav-secondary']} ${hideSecondaryNav ? styles.hide : ''}`}>
+                                <li className={styles.navItemWithIcon}>
+                                    <Link href="/events" className={styles.navLinkWithIcon}>
+                                        <Ticket className={styles.navIcon} /><span>Events</span>
+                                    </Link>
+                                </li>
+                                <li className={styles.navItemWithIcon}>
+                                    <Link href="/activities" className={styles.navLinkWithIcon}>
+                                        <Sparkles className={styles.navIcon} /><span>Activities</span>
+                                    </Link>
+                                </li>
+                            </ul>
+                        )}
 
                         <ul className={`${styles['desktop-nav']} ${isNavActive ? styles.show : ''}`}>
                             <li><Link href="/" className={styles['link-logo']} onClick={handleNavItemClick}><img src={logo.src} alt="Zest Logo" /></Link></li>
