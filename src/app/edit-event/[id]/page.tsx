@@ -11,7 +11,17 @@ import styles from "./EditEvent.module.css";
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
 import Script from 'next/script';
 import { FaMapMarkerAlt } from 'react-icons/fa';
-import LocationSelector from '@/components/LocationSelector/LocationSelector';
+// A more extensive list of cities for better search results
+const ALL_CITIES = [
+    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad', 'Chennai', 'Kolkata', 'Surat', 'Pune', 'Jaipur',
+    'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad', 'Patna',
+    'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivali',
+    'Vasai-Virar', 'Varanasi', 'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
+    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur', 'Madurai', 'Raipur', 'Kota',
+    'Guwahati', 'Chandigarh', 'Solapur', 'Hubli-Dharwad', 'Mysore', 'Tiruchirappalli', 'Bareilly', 'Aligarh',
+    'Tiruppur', 'Gurgaon', 'Moradabad', 'Jalandhar', 'Bhubaneswar', 'Salem', 'Warangal', 'Guntur', 'Noida',
+    'Dehradun', 'Kochi'
+];
 
 interface EventSlot {
   date: string;
@@ -544,10 +554,18 @@ const EditEvent = ({ params }: { params: { id: string } }) => {
             <h2>Location</h2>
             <div className={styles.formGroup}>
               <label>City</label>
-              <LocationSelector
-                selectedCity={selectedCity}
-                onCitySelect={setSelectedCity}
-              />
+              <select
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className={styles.citySelect}
+                required
+              >
+                {ALL_CITIES.map((city) => (
+                  <option key={city} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className={styles.formGroup}>
               <label>Venue</label>
