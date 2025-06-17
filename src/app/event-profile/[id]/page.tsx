@@ -5,15 +5,37 @@ import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import styles from './EventProfile.module.css';
-import { FaBookmark, FaCalendarAlt, FaMapMarkerAlt, FaLanguage, FaClock, FaUsers } from 'react-icons/fa';
+import { FaBookmark, FaCalendarAlt, FaMapMarkerAlt, FaLanguage, FaClock, FaUsers, FaInfo } from 'react-icons/fa';
 import EventProfileSkeleton from './EventProfileSkeleton';
 
 interface TimeSlot {
   date: string;
-  start_time: string;
-  end_time: string;
-  available: boolean;
+  startTime: string;
+  endTime: string;
 }
+
+interface GuideOption {
+  id: string;
+  label: string;
+  placeholder: string;
+}
+
+const GUIDE_OPTIONS: GuideOption[] = [
+  { id: 'duration', label: 'Duration', placeholder: 'e.g., 2 hours' },
+  { id: 'age_requirement', label: 'Age Requirement', placeholder: 'e.g., 16+ years' },
+  { id: 'language', label: 'Language', placeholder: 'e.g., Hindi, English' },
+  { id: 'seating', label: 'Seating Arrangement', placeholder: 'e.g., Theater, Round Table' },
+  { id: 'kid_friendly', label: 'Kid Friendly', placeholder: 'e.g., Yes/No or details' },
+  { id: 'pet_friendly', label: 'Pet Friendly', placeholder: 'e.g., Yes/No or details' },
+  { id: 'wheelchair', label: 'Wheelchair Accessible', placeholder: 'e.g., Yes/No or details' },
+  { id: 'parking', label: 'Parking Available', placeholder: 'e.g., Yes/No or details' },
+  { id: 'food', label: 'Food & Beverages', placeholder: 'e.g., Snacks, Dinner, Drinks' },
+  { id: 'outdoor', label: 'Outdoor Event', placeholder: 'e.g., Yes/No or details' },
+  { id: 'indoor', label: 'Indoor Event', placeholder: 'e.g., Yes/No or details' },
+  { id: 'dress_code', label: 'Dress Code', placeholder: 'e.g., Formal, Casual' },
+  { id: 'photography', label: 'Photography Allowed?', placeholder: 'e.g., Yes/No or details' },
+  { id: 'alcohol', label: 'Alcohol allowed?', placeholder: 'e.g., Yes/No or details' },
+];
 
 interface EventData {
   id: string;
@@ -31,6 +53,7 @@ interface EventData {
   event_duration?: string;
   event_age_limit?: string;
   time_slots?: TimeSlot[];
+  event_guides?: { [key: string]: string };
 }
 
 function EventProfile() {
@@ -39,6 +62,52 @@ function EventProfile() {
   const [event, setEvent] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAllGuides, setShowAllGuides] = useState(false);
+
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'Date not set';
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid date';
+      
+      return date.toLocaleDateString('en-US', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }).replace(/(\d+)/, '$1th'); // Add ordinal suffix
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date format';
+    }
+  };
+
+  const formatTime = (timeString: string | undefined) => {
+    if (!timeString) return 'Time not set';
+    
+    try {
+      const [hours, minutes] = timeString.split(':');
+      if (!hours || !minutes) return 'Invalid time format';
+      
+      const date = new Date();
+      date.setHours(parseInt(hours), parseInt(minutes));
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      console.error('Error formatting time:', error);
+      return 'Invalid time format';
+    }
+  };
+
+  const handleLocationClick = () => {
+    if (event?.eventVenue) {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.eventVenue)}`;
+      window.open(mapsUrl, '_blank');
+    }
+  };
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -65,7 +134,8 @@ function EventProfile() {
             event_languages: data.event_languages || '',
             event_duration: data.event_duration || '',
             event_age_limit: data.event_age_limit || '',
-            time_slots: data.time_slots || []
+            time_slots: data.time_slots || [],
+            event_guides: data.event_guides || {}
           });
         } else {
           setError("Event not found");
@@ -104,9 +174,11 @@ function EventProfile() {
   const { eventImage, eventTitle, eventVenue, hostingClub, aboutEvent, time_slots } = event;
 
   // Determine the date text for the profile
-  const dateText = time_slots && time_slots.length > 1 
-    ? `${time_slots[0].date} onwards` 
-    : time_slots?.[0]?.date || 'Date to be announced';
+  const dateText = time_slots && time_slots.length > 0 
+    ? time_slots.length > 1 
+      ? `${formatDate(time_slots[0].date)} onwards` 
+      : formatDate(time_slots[0].date)
+    : 'Date to be announced';
 
   return (
     <div className={styles.eventProfileContainer}>
@@ -138,10 +210,14 @@ function EventProfile() {
             </div>
             {time_slots && time_slots.map((slot, index) => (
               <div key={index} className={styles.eventDetail}>
-                <FaClock /> {slot.start_time} - {slot.end_time}
+                <FaClock /> {formatTime(slot.startTime)} - {formatTime(slot.endTime)}
               </div>
             ))}
-            <div className={styles.eventDetail}>
+            <div 
+              className={`${styles.eventDetail} ${styles.locationDetail}`}
+              onClick={handleLocationClick}
+              style={{ cursor: 'pointer' }}
+            >
               <FaMapMarkerAlt /> {eventVenue}
             </div>
             <div className={styles.eventPrice}>
@@ -164,42 +240,33 @@ function EventProfile() {
       <div className={styles.eventGuide}>
         <h3>Event Guide</h3>
         <div className={styles.guideDetails}>
-          {event.event_languages && (
-            <div className={styles.guideItem}>
-              <div className={styles.guideIcon}>
-                <FaLanguage />
-              </div>
-              <div className={styles.guideInfo}>
-                <span className={styles.guideLabel}>Language</span>
-                <span className={styles.guideValue}>{event.event_languages}</span>
-              </div>
-            </div>
-          )}
-          
-          {event.event_duration && (
-            <div className={styles.guideItem}>
-              <div className={styles.guideIcon}>
-                <FaClock />
-              </div>
-              <div className={styles.guideInfo}>
-                <span className={styles.guideLabel}>Duration</span>
-                <span className={styles.guideValue}>{event.event_duration}</span>
-              </div>
-            </div>
-          )}
-          
-          {event.event_age_limit && (
-            <div className={styles.guideItem}>
-              <div className={styles.guideIcon}>
-                <FaUsers />
-              </div>
-              <div className={styles.guideInfo}>
-                <span className={styles.guideLabel}>Best Suited For Ages</span>
-                <span className={styles.guideValue}>{event.event_age_limit}</span>
-              </div>
-            </div>
-          )}
+          {event.event_guides && Object.entries(event.event_guides)
+            .slice(0, showAllGuides ? undefined : 3)
+            .map(([key, value]) => {
+              const guideOption = GUIDE_OPTIONS.find(option => option.id === key);
+              if (!guideOption) return null;
+              
+              return (
+                <div key={key} className={styles.guideItem}>
+                  <div className={styles.guideIcon}>
+                    <FaInfo />
+                  </div>
+                  <div className={styles.guideInfo}>
+                    <span className={styles.guideLabel}>{guideOption.label}</span>
+                    <span className={styles.guideValue}>{value}</span>
+                  </div>
+                </div>
+              );
+            })}
         </div>
+        {event.event_guides && Object.keys(event.event_guides).length > 3 && (
+          <button 
+            className={styles.moreGuidesButton}
+            onClick={() => setShowAllGuides(!showAllGuides)}
+          >
+            {showAllGuides ? 'Show Less' : 'Show More'}
+          </button>
+        )}
       </div>
     </div>
   );

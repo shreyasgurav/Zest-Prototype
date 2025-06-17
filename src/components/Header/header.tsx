@@ -38,6 +38,8 @@ const Header = () => {
     const [isSearchVisible, setSearchVisible] = useState(false);
     const [isNavActive, setNavActive] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
+    const [hideSecondaryNav, setHideSecondaryNav] = useState(false);
+    const [lastScrollY, setLastScrollY] = useState(0);
     const [user, setUser] = useState<User | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -92,13 +94,26 @@ const Header = () => {
 
     useEffect(() => {
         const handleScroll = () => {
-            const scrollPosition = window.scrollY;
-            setIsScrolled(scrollPosition > 10); // Hide after 10px scroll
+            const currentScrollY = window.scrollY;
+            
+            // Hide after 10px scroll for main nav transparency
+            setIsScrolled(currentScrollY > 10);
+            
+            // For secondary nav, check scroll direction
+            if (currentScrollY > lastScrollY && currentScrollY > 100) {
+                // Scrolling down & past threshold
+                setHideSecondaryNav(true);
+            } else if (currentScrollY < lastScrollY) {
+                // Scrolling up
+                setHideSecondaryNav(false);
+            }
+            
+            setLastScrollY(currentScrollY);
         };
 
-        window.addEventListener('scroll', handleScroll);
+        window.addEventListener('scroll', handleScroll, { passive: true });
         return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
+    }, [lastScrollY]); // Add lastScrollY to dependencies
 
     const performSearch = async () => {
         try {
@@ -300,7 +315,7 @@ const Header = () => {
                                 <a className={styles['link-Profile-logo']}><PersonLogo /></a>
                             </li>
                         </ul>
-                        <ul className={`${styles['mobile-nav-secondary']} ${isScrolled ? styles.hide : ''}`}>
+                        <ul className={`${styles['mobile-nav-secondary']} ${hideSecondaryNav ? styles.hide : ''}`}>
                             <li className={styles.navItemWithIcon}>
                                 <Link href="/events" className={styles.navLinkWithIcon}>
                                     <Ticket className={styles.navIcon} />

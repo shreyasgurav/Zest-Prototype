@@ -7,9 +7,7 @@
     transition: transform 0.1s ease;
 }
 
-.eventBoxWrapper:hover {
-    transform: scale(1.01);
-}
+
 
 /* Main Event Card */
 .eventBoxCard {

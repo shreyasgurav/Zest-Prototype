@@ -504,4 +504,30 @@
     .skeletonGuideItem {
         width: 100%;
     }
+}
+
+.locationDetail {
+    color: #6a6969;
+    transition: color 0.3s ease;
+}
+
+.locationDetail:hover {
+    color: #22d3ee;
+}
+
+.moreGuidesButton {
+    margin-top: 20px;
+    padding: 8px 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: #aeadad;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s ease;
+}
+
+.moreGuidesButton:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
 } 

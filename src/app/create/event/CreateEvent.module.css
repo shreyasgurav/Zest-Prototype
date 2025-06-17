@@ -189,14 +189,57 @@
 }
 
 .ticketSlot {
-    background: rgba(30, 30, 30, 0.5);
-    padding: 15px;
+    background: rgba(25, 58, 19, 0.2);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    position: relative;
+}
+
+.ticketSlot .formRow {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.ticketSlot .formGroup {
+    flex: 1 1 0;
+    min-width: 120px;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.ticketSlot .formGroup input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.removeDateButton {
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: #a41919;
+    color: white;
+    border: none;
+    padding: 8px 15px;
     border-radius: 8px;
-    margin-bottom: 15px;
+    cursor: pointer;
+    transition: 0.25s ease-in-out;
+    z-index: 2;
+}
+
+.removeDateButton:hover {
+    background: #b13030;
 }
 
 .addDateButton {
-    background: #4CAF50;
+    background: #276529;
     color: white;
     border: none;
     padding: 10px 20px;
@@ -207,22 +250,7 @@
 }
 
 .addDateButton:hover {
-    background: #377e3a;
-}
-
-.removeDateButton {
-    background: #ff4444;
-    color: white;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 8px;
-    cursor: pointer;
-    margin-left: 10px;
-    transition: 0.25s ease-in-out;
-}
-
-.removeDateButton:hover {
-    background: #b13030;
+    background: #295f2c;
 }
 
 .formActions {
@@ -235,7 +263,7 @@
 .submitButton,
 .cancelButton {
     padding: 10px 25px;
-    border-radius: 8px;
+    border-radius: 12px;
     border: none;
     font-size: 1em;
     cursor: pointer;
@@ -243,12 +271,12 @@
 }
 
 .submitButton {
-    background: #4CAF50;
+    background: #2c7d2f;
     color: white;
 }
 
 .submitButton:hover {
-    background: #39883d;
+    background: #1d441f;
 }
 
 .submitButton:disabled {
@@ -257,12 +285,12 @@
 }
 
 .cancelButton {
-    background: #666;
+    background: #7c7c7c;
     color: white;
 }
 
 .cancelButton:hover {
-    background: #555;
+    background: #474747;
 }
 
 .cancelButton:disabled {
@@ -477,25 +505,6 @@
     background: #356e56;
 }
 
-.removeDateButton {
-    position: absolute;
-    right: 24px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: #a41919;
-    color: white;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: 0.25s ease-in-out;
-    z-index: 2;
-}
-
-.removeDateButton:hover {
-    background: #b13030;
-}
-
 @media (max-width: 600px) {
     .scheduleSlotContainer {
         padding: 10px 6px;
@@ -695,33 +704,26 @@
     }
 }
 
-.ticketSlot .formRow {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-
-.ticketSlot .formGroup {
-    flex: 1 1 0;
-    min-width: 120px;
-    max-width: 100%;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.ticketSlot .formGroup input {
-    width: 100%;
-    box-sizing: border-box;
-}
-
 @media (max-width: 900px) {
+    .ticketSlot {
+        padding: 15px;
+    }
+    
     .ticketSlot .formRow {
         flex-direction: column;
         gap: 10px;
     }
+    
     .ticketSlot .formGroup {
         min-width: 0;
         max-width: 100%;
+        width: 100%;
+    }
+    
+    .removeDateButton {
+        position: static;
+        transform: none;
+        margin-top: 10px;
         width: 100%;
     }
 } 

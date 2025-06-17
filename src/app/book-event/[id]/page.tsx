@@ -13,7 +13,7 @@ import {
   addDoc
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaTicketAlt, FaUser } from 'react-icons/fa';
+import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaTicketAlt, FaUser, FaChevronRight } from 'react-icons/fa';
 import styles from './BookingFlow.module.css';
 
 interface TimeSlot {
@@ -250,157 +250,179 @@ function BookingFlow() {
 
   return (
     <div className={styles.bookingFlow}>
-      <div className={styles.bookingProgress}>
-        <div className={`${styles.progressStep} ${step >= 1 ? styles.active : ''}`}>Select Date & Time</div>
-        <div className={`${styles.progressStep} ${step >= 2 ? styles.active : ''}`}>Select Tickets</div>
-        <div className={`${styles.progressStep} ${step >= 3 ? styles.active : ''}`}>Review & Pay</div>
-      </div>
-
-      {step === 1 && (
-        <div className={styles.bookingStep}>
-          <h2>Select Date & Time</h2>
-          
-          {availableDates.length > 1 && (
-            <div className={styles.dateSelector}>
-              <h4><FaCalendarAlt /> Select Date</h4>
-              <div className={styles.availableDates}>
-                {availableDates.map((date) => (
-                  <button
-                    key={date}
-                    className={`${styles.dateOption} ${selectedDate === date ? styles.selected : ''}`}
-                    onClick={() => handleDateSelect(date)}
-                  >
-                    {formatDate(date)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {selectedDate && (
-            <div className={styles.timeSelector}>
-              <h4 className={styles.selectTimeText}><FaClock /> Select Time</h4>
-              <div className={styles.availableSlots}>
-                {timeSlots.map((slot, index) => (
-                  <button
-                    key={index}
-                    className={`${styles.slotOption} ${selectedTimeSlot === slot ? styles.selected : ''}`}
-                    onClick={() => handleTimeSlotSelect(slot)}
-                    disabled={!slot.available}
-                  >
-                    {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <button
-            className={styles.nextButton}
-            onClick={() => setStep(2)}
-            disabled={!selectedTimeSlot}
-          >
-            Select Tickets
-          </button>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className={styles.bookingStep}>
-          <h2>Select Tickets</h2>
-          <div className={styles.ticketTypes}>
-            {event.tickets.map((ticket, index) => (
-              <div key={index} className={styles.ticketType}>
-                <div className={styles.ticketDetails}>
-                  <h3>{ticket.name}</h3>
-                  <p className={styles.ticketPrice}>₹{ticket.price}</p>
-                  <p className={styles.ticketsLeft}>
-                    {ticket.available_capacity} tickets available
-                  </p>
-                </div>
-                <div className={styles.ticketQuantity}>
-                  <button
-                    onClick={() => handleTicketQuantityChange(ticket, -1)}
-                    className={styles.quantityButton}
-                    disabled={!selectedTickets[ticket.name]}
-                  >
-                    -
-                  </button>
-                  <span>{selectedTickets[ticket.name] || 0}</span>
-                  <button
-                    onClick={() => handleTicketQuantityChange(ticket, 1)}
-                    className={styles.quantityButton}
-                    disabled={
-                      (selectedTickets[ticket.name] || 0) >= ticket.available_capacity
-                    }
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-            ))}
+      <div className={styles.bookingContainer}>
+        <div className={styles.bookingProgress}>
+          <div className={`${styles.progressStep} ${step >= 1 ? styles.active : ''}`}>
+            <FaCalendarAlt />
+            <span>Date & Time</span>
           </div>
-
-          <button
-            className={styles.nextButton}
-            onClick={() => setStep(3)}
-            disabled={getTotalTickets() === 0}
-          >
-            Continue to Review
-          </button>
+          <div className={`${styles.progressStep} ${step >= 2 ? styles.active : ''}`}>
+            <FaTicketAlt />
+            <span>Tickets</span>
+          </div>
+          <div className={`${styles.progressStep} ${step >= 3 ? styles.active : ''}`}>
+            <FaUser />
+            <span>Review</span>
+          </div>
         </div>
-      )}
 
-      {step === 3 && (
-        <div className={styles.bookingStep}>
-          <h2>Booking Summary</h2>
-          <div className={styles.bookingSummary}>
-            <div className={styles.eventSummary}>
-              <img src={event.event_image} alt={event.title} />
-              <div className={styles.eventDetails}>
-                <h3>{event.title}</h3>
-                <p>
-                  <FaCalendarAlt /> {selectedDate && formatDate(selectedDate)}
-                </p>
-                <p>
-                  <FaClock /> {selectedTimeSlot && `${formatTime(selectedTimeSlot.start_time)} - ${formatTime(selectedTimeSlot.end_time)}`}
-                </p>
-                <p>
-                  <FaMapMarkerAlt /> {event.event_venue}
-                </p>
+        {step === 1 && (
+          <div className={styles.bookingStep}>
+            <h2>Select Date & Time</h2>
+            
+            {availableDates.length > 1 && (
+              <div className={styles.dateSelector}>
+                <h4><FaCalendarAlt /> Select Date</h4>
+                <div className={styles.availableDates}>
+                  {availableDates.map((date) => (
+                    <button
+                      key={date}
+                      className={`${styles.dateOption} ${selectedDate === date ? styles.selected : ''}`}
+                      onClick={() => handleDateSelect(date)}
+                    >
+                      {formatDate(date)}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className={styles.ticketInfo}>
-              <h3><FaTicketAlt /> Ticket Information</h3>
-              {Object.entries(selectedTickets).map(([ticketName, quantity]) => (
-                <div key={ticketName} className={styles.ticketSummary}>
-                  <p>{ticketName}: {quantity} tickets</p>
-                  <p>Price: ₹{event.tickets.find(t => t.name === ticketName)?.price! * quantity}</p>
+            {selectedDate && (
+              <div className={styles.timeSelector}>
+                <h4><FaClock /> Select Time</h4>
+                <div className={styles.availableSlots}>
+                  {timeSlots.map((slot, index) => (
+                    <button
+                      key={index}
+                      className={`${styles.slotOption} ${selectedTimeSlot === slot ? styles.selected : ''}`}
+                      onClick={() => handleTimeSlotSelect(slot)}
+                      disabled={!slot.available}
+                    >
+                      {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              className={styles.nextButton}
+              onClick={() => setStep(2)}
+              disabled={!selectedTimeSlot}
+            >
+              <span>Continue to Tickets</span>
+              <FaChevronRight />
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className={styles.bookingStep}>
+            <h2>Select Tickets</h2>
+            <div className={styles.ticketTypes}>
+              {event.tickets.map((ticket, index) => (
+                <div key={index} className={styles.ticketType}>
+                  <div className={styles.ticketDetails}>
+                    <h3>{ticket.name}</h3>
+                    <p className={styles.ticketPrice}>₹{ticket.price.toLocaleString()}</p>
+                    <p className={styles.ticketsLeft}>
+                      {ticket.available_capacity} tickets available
+                    </p>
+                  </div>
+                  <div className={styles.ticketQuantity}>
+                    <button
+                      onClick={() => handleTicketQuantityChange(ticket, -1)}
+                      className={styles.quantityButton}
+                      disabled={!selectedTickets[ticket.name]}
+                    >
+                      -
+                    </button>
+                    <span>{selectedTickets[ticket.name] || 0}</span>
+                    <button
+                      onClick={() => handleTicketQuantityChange(ticket, 1)}
+                      className={styles.quantityButton}
+                      disabled={
+                        (selectedTickets[ticket.name] || 0) >= ticket.available_capacity
+                      }
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               ))}
-              <p className={styles.totalAmount}>Total Amount: ₹{getTotalAmount()}</p>
             </div>
-            
-            <div className={styles.userInfo}>
-              <h3><FaUser /> Attendee Information</h3>
-              <div className={styles.userDetails}>
-                <p>Name: {userInfo.name || 'Not provided'}</p>
-                <p>Email: {userInfo.email || 'Not provided'}</p>
-                <p>Phone: {userInfo.phone || 'Not provided'}</p>
+
+            <button
+              className={styles.nextButton}
+              onClick={() => setStep(3)}
+              disabled={getTotalTickets() === 0}
+            >
+              <span>Continue to Review</span>
+              <FaChevronRight />
+            </button>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className={styles.bookingStep}>
+            <h2>Booking Summary</h2>
+            <div className={styles.bookingSummary}>
+              <div className={styles.eventSummary}>
+                <img src={event.event_image} alt={event.title} />
+                <div className={styles.eventDetails}>
+                  <h3>{event.title}</h3>
+                  <p>
+                    <FaCalendarAlt /> {selectedDate && formatDate(selectedDate)}
+                  </p>
+                  <p>
+                    <FaClock /> {selectedTimeSlot && `${formatTime(selectedTimeSlot.start_time)} - ${formatTime(selectedTimeSlot.end_time)}`}
+                  </p>
+                  <p>
+                    <FaMapMarkerAlt /> {event.event_venue}
+                  </p>
+                </div>
+              </div>
+
+              <div className={styles.ticketInfo}>
+                <h3><FaTicketAlt /> Ticket Information</h3>
+                {Object.entries(selectedTickets).map(([ticketName, quantity]) => (
+                  <div key={ticketName} className={styles.ticketSummary}>
+                    <p>{ticketName}: {quantity} tickets</p>
+                    <p>₹{(event.tickets.find(t => t.name === ticketName)?.price! * quantity).toLocaleString()}</p>
+                  </div>
+                ))}
+                <p className={styles.totalAmount}>Total Amount: ₹{getTotalAmount().toLocaleString()}</p>
+              </div>
+              
+              <div className={styles.userInfo}>
+                <h3><FaUser /> Attendee Information</h3>
+                <div className={styles.userDetails}>
+                  <p>Name: {userInfo.name || 'Not provided'}</p>
+                  <p>Email: {userInfo.email || 'Not provided'}</p>
+                  <p>Phone: {userInfo.phone || 'Not provided'}</p>
+                </div>
               </div>
             </div>
-          </div>
 
-          <button
-            className={styles.bookButton}
-            onClick={handleBooking}
-            disabled={loading}
-          >
-            {loading ? 'Processing...' : 'Confirm Booking'}
-          </button>
-        </div>
-      )}
+            <button
+              className={styles.bookButton}
+              onClick={handleBooking}
+              disabled={loading}
+            >
+              {loading ? (
+                'Processing...'
+              ) : (
+                <>
+                  <span>Confirm Booking</span>
+                  <FaChevronRight />
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {error && <div className={styles.error}>{error}</div>}
+      </div>
     </div>
   );
 }
