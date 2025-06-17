@@ -47,11 +47,67 @@ const activityTypes = [
 ];
 
 export default function ActivitiesPage() {
+  const [allActivities, setAllActivities] = useState<Activity[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [selectedCity, setSelectedCity] = useState<string>('Mumbai');
   const [loading, setLoading] = useState(true);
   const [isHeaderLoaded, setIsHeaderLoaded] = useState(false);
+
+  // Listen for location changes from header
+  useEffect(() => {
+    // Get initial city from localStorage
+    const storedCity = localStorage.getItem('selectedCity');
+    if (storedCity) {
+      setSelectedCity(storedCity);
+    }
+
+    // Listen for location changes from header
+    const handleLocationChange = (event: CustomEvent) => {
+      setSelectedCity(event.detail.city);
+    };
+
+    window.addEventListener('locationChanged', handleLocationChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('locationChanged', handleLocationChange as EventListener);
+    };
+  }, []);
+
+  // Filter activities based on selected city
+  const filterActivitiesByLocation = (activities: Activity[], city: string) => {
+    if (!city || city === 'All Cities') return activities;
+    
+    return activities.filter(activity => {
+      const location = activity.activityLocation || '';
+      // Check if location contains the city name (case insensitive)
+      return location.toLowerCase().includes(city.toLowerCase());
+    });
+  };
+
+  // Apply both location and type filters
+  useEffect(() => {
+    let filtered = filterActivitiesByLocation(allActivities, selectedCity);
+    
+    if (activeFilter !== 'all') {
+      filtered = filtered.filter(activity => {
+        const activityType = activity.activityType.toLowerCase();
+        // Handle special cases for indoor/outdoor
+        if (activeFilter === 'indoor' && activityType.includes('indoor')) return true;
+        if (activeFilter === 'outdoor' && activityType.includes('outdoor')) return true;
+        // Handle special cases for participation type
+        if (activeFilter === 'solo' && activityType.includes('solo')) return true;
+        if (activeFilter === 'couple' && activityType.includes('couple')) return true;
+        if (activeFilter === 'group' && activityType.includes('group')) return true;
+        // Handle other categories
+        return activityType === activeFilter;
+      });
+    }
+    
+    setFilteredActivities(filtered);
+    console.log(`Filtered ${filtered.length} activities for ${selectedCity} and type ${activeFilter}`);
+  }, [allActivities, selectedCity, activeFilter]);
 
   // Load header and filters first
   useEffect(() => {
@@ -82,8 +138,8 @@ export default function ActivitiesPage() {
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
           );
           
+          setAllActivities(sortedActivities);
           setActivities(sortedActivities);
-          setFilteredActivities(sortedActivities);
           
           // Add a small delay before showing activities for smooth transition
           setTimeout(() => {
@@ -101,23 +157,6 @@ export default function ActivitiesPage() {
 
   const handleFilter = (filter: FilterType) => {
     setActiveFilter(filter);
-    if (filter === 'all') {
-      setFilteredActivities(activities);
-    } else {
-      const filtered = activities.filter(activity => {
-        const activityType = activity.activityType.toLowerCase();
-        // Handle special cases for indoor/outdoor
-        if (filter === 'indoor' && activityType.includes('indoor')) return true;
-        if (filter === 'outdoor' && activityType.includes('outdoor')) return true;
-        // Handle special cases for participation type
-        if (filter === 'solo' && activityType.includes('solo')) return true;
-        if (filter === 'couple' && activityType.includes('couple')) return true;
-        if (filter === 'group' && activityType.includes('group')) return true;
-        // Handle other categories
-        return activityType === filter;
-      });
-      setFilteredActivities(filtered);
-    }
   };
 
   const getActivityTypeIcon = (type: string) => {
@@ -156,7 +195,10 @@ export default function ActivitiesPage() {
         <div className={`${styles.header} ${isHeaderLoaded ? styles.fadeIn : ''}`}>
           <h1 className={styles.title}>Discover Activities</h1>
           <p className={styles.subtitle}>
-            Find your perfect activity - from solo adventures to group experiences, indoor fun to outdoor excitement.
+            {selectedCity !== 'All Cities' 
+              ? `Find your perfect activity in ${selectedCity} - from solo adventures to group experiences`
+              : "Find your perfect activity - from solo adventures to group experiences, indoor fun to outdoor excitement."
+            }
           </p>
         </div>
 
@@ -182,6 +224,7 @@ export default function ActivitiesPage() {
             {filteredActivities.length > 0 && (
               <div className={styles.activitiesCount}>
                 Showing {filteredActivities.length} {filteredActivities.length === 1 ? 'activity' : 'activities'}
+                {selectedCity !== 'All Cities' && ` in ${selectedCity}`}
               </div>
             )}
             <div className={styles.activitiesGrid}>
@@ -201,9 +244,11 @@ export default function ActivitiesPage() {
                   </div>
                   <h2 className={styles.noActivitiesTitle}>No Activities Found</h2>
                   <p className={styles.noActivitiesText}>
-                    {activeFilter === 'all' 
-                      ? "There are no activities available at the moment. Check back later!"
-                      : `No ${activeFilter} activities found. Try a different category or check back later.`}
+                    {selectedCity !== 'All Cities' 
+                      ? `No ${activeFilter === 'all' ? '' : activeFilter + ' '}activities found in ${selectedCity}. Try a different city or category.`
+                      : activeFilter === 'all' 
+                        ? "There are no activities available at the moment. Check back later!"
+                        : `No ${activeFilter} activities found. Try a different category or check back later.`}
                   </p>
                 </div>
               )}

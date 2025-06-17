@@ -1,21 +1,17 @@
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { useParams, useRouter } from "next/navigation";
 import { db, storage } from "@/lib/firebase";
-import { 
-  doc, 
-  getDoc, 
-  updateDoc, 
-  serverTimestamp,
-  collection,
-  query,
-  where,
-  getDocs
-} from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import styles from "./EditEvent.module.css";
+// @ts-ignore
+import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
+import Script from 'next/script';
+import { FaMapMarkerAlt } from 'react-icons/fa';
+import LocationSelector from '@/components/LocationSelector/LocationSelector';
 
 interface EventSlot {
   date: string;
@@ -29,102 +25,118 @@ interface Ticket {
   price: string;
 }
 
-const EditEvent = () => {
-  const router = useRouter();
-  const params = useParams<{ id: string }>();
-  const eventId = params?.id;
-  const auth = getAuth();
+const EVENT_CATEGORIES = [
+  { id: 'music', label: 'Music' },
+  { id: 'comedy', label: 'Comedy' },
+  { id: 'clubbing', label: 'Clubbing' },
+  { id: 'party', label: 'Party' },
+  { id: 'art', label: 'Art' },
+  { id: 'adventure', label: 'Adventure' },
+  { id: 'sports', label: 'Sports' }
+];
 
+const GUIDE_OPTIONS = [
+  { id: 'duration', label: 'Duration', placeholder: 'e.g., 2 hours' },
+  { id: 'age_requirement', label: 'Age Requirement', placeholder: 'e.g., 16+ years' },
+  { id: 'language', label: 'Language', placeholder: 'e.g., Hindi, English' },
+  { id: 'seating', label: 'Seating Arrangement', placeholder: 'e.g., Theater, Round Table' },
+  { id: 'kid_friendly', label: 'Kid Friendly', placeholder: 'e.g., Yes/No or details' },
+  { id: 'pet_friendly', label: 'Pet Friendly', placeholder: 'e.g., Yes/No or details' },
+  { id: 'wheelchair', label: 'Wheelchair Accessible', placeholder: 'e.g., Yes/No or details' },
+  { id: 'parking', label: 'Parking Available', placeholder: 'e.g., Yes/No or details' },
+  { id: 'food', label: 'Food & Beverages', placeholder: 'e.g., Snacks, Dinner, Drinks' },
+  { id: 'outdoor', label: 'Outdoor Event', placeholder: 'e.g., Yes/No or details' },
+  { id: 'indoor', label: 'Indoor Event', placeholder: 'e.g., Yes/No or details' },
+  { id: 'dress_code', label: 'Dress Code', placeholder: 'e.g., Formal, Casual' },
+  { id: 'photography', label: 'Photography Allowed?', placeholder: 'e.g., Yes/No or details' },
+  { id: 'alcohol', label: 'Alcohol allowed?', placeholder: 'e.g., Yes/No or details' },
+];
+
+const EditEvent = ({ params }: { params: { id: string } }) => {
+  const router = useRouter();
   const [eventTitle, setEventTitle] = useState<string>("");
   const [eventVenue, setEventVenue] = useState<string>("");
   const [aboutEvent, setAboutEvent] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
-  const [saving, setSaving] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
-  const [orgName, setOrgName] = useState<string>("");
-  const [orgUsername, setOrgUsername] = useState<string>("");
   const [eventImage, setEventImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
-  const [eventCategory, setEventCategory] = useState<string>("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [eventLanguages, setEventLanguages] = useState<string>("");
-  const [eventDuration, setEventDuration] = useState<string>("");
-  const [eventAgeLimit, setEventAgeLimit] = useState<string>("");
-  const [eventSlots, setEventSlots] = useState<EventSlot[]>([]);
-  const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+  const [eventSlots, setEventSlots] = useState<EventSlot[]>([
+    { date: '', startTime: '', endTime: '' }
+  ]);
+  const [tickets, setTickets] = useState<Ticket[]>([
+    { name: '', capacity: '', price: '' }
+  ]);
+  const [address, setAddress] = useState('');
+  const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
+  const [isLocationFocused, setIsLocationFocused] = useState(false);
+  const [guides, setGuides] = useState<{ [key: string]: string }>({});
+  const [currentImageUrl, setCurrentImageUrl] = useState<string>("");
+  const [selectedCity, setSelectedCity] = useState('Mumbai');
+  
+  const auth = getAuth();
 
   useEffect(() => {
-    if (!eventId || !auth.currentUser) {
-      router.push('/');
-      return;
-    }
-
-    fetchEventData();
-  }, [eventId, auth.currentUser]);
-
-  const fetchEventData = async () => {
-    if (!eventId || !auth.currentUser) return;
-
-    try {
-      const eventDoc = await getDoc(doc(db, 'events', eventId));
-      
-      if (!eventDoc.exists()) {
-        setMessage("Event not found");
+    const fetchEventDetails = async () => {
+      if (!auth.currentUser) {
+        router.push('/');
         return;
       }
 
-      const eventData = eventDoc.data();
-      
-      // Check authorization
-      if (eventData.organizationId !== auth.currentUser.uid) {
-        setMessage("You are not authorized to edit this event");
-        return;
+      try {
+        const eventDoc = await getDoc(doc(db, "events", params.id));
+        if (eventDoc.exists()) {
+          const data = eventDoc.data();
+          
+          // Check if the current user is the event creator
+          if (data.organizationId !== auth.currentUser.uid) {
+            router.push('/');
+            return;
+          }
+
+          setEventTitle(data.title || "");
+          setEventVenue(data.event_venue || "");
+          setAddress(data.event_venue || "");
+          setAboutEvent(data.about_event || "");
+          setCurrentImageUrl(data.event_image || "");
+          setImagePreview(data.event_image || null);
+          setSelectedCategories(data.event_categories || []);
+          setEventLanguages(data.event_languages || "");
+          setGuides(data.event_guides || {});
+          setSelectedCity(data.city || "Mumbai");
+
+          // Format time slots
+          if (data.time_slots && data.time_slots.length > 0) {
+            const formattedSlots = data.time_slots.map((slot: any) => ({
+              date: slot.date || '',
+              startTime: slot.start_time || '',
+              endTime: slot.end_time || ''
+            }));
+            setEventSlots(formattedSlots);
+          }
+
+          // Format tickets
+          if (data.tickets && data.tickets.length > 0) {
+            const formattedTickets = data.tickets.map((ticket: any) => ({
+              name: ticket.name || '',
+              capacity: ticket.capacity.toString() || '',
+              price: ticket.price.toString() || ''
+            }));
+            setTickets(formattedTickets);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching event details:", error);
+        setMessage("Error loading event details");
+      } finally {
+        setLoading(false);
       }
+    };
 
-      setIsAuthorized(true);
-
-      // Set form data
-      setEventTitle(eventData.title || eventData.eventTitle || "");
-      setEventVenue(eventData.event_venue || "");
-      setAboutEvent(eventData.about_event || "");
-      setEventCategory(eventData.event_category || "");
-      setEventLanguages(eventData.event_languages || "");
-      setEventDuration(eventData.event_duration || "");
-      setEventAgeLimit(eventData.event_age_limit || "");
-      setOrgName(eventData.hosting_club || "");
-      setOrgUsername(eventData.organization_username || "");
-      
-      if (eventData.event_image) {
-        setCurrentImageUrl(eventData.event_image);
-        setImagePreview(eventData.event_image);
-      }
-
-      // Set time slots
-      if (eventData.time_slots) {
-        setEventSlots(eventData.time_slots.map((slot: any) => ({
-          date: slot.date,
-          startTime: slot.start_time,
-          endTime: slot.end_time
-        })));
-      }
-
-      // Set tickets
-      if (eventData.tickets) {
-        setTickets(eventData.tickets.map((ticket: any) => ({
-          name: ticket.name,
-          capacity: ticket.capacity.toString(),
-          price: ticket.price.toString()
-        })));
-      }
-
-    } catch (err) {
-      console.error("Error fetching event data:", err);
-      setMessage("Failed to load event data");
-    } finally {
-      setLoading(false);
-    }
-  };
+    fetchEventDetails();
+  }, [params.id, auth.currentUser, router]);
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -192,22 +204,18 @@ const EditEvent = () => {
     if (!file) return null;
     
     try {
-      // Delete old image if exists
-      if (currentImageUrl) {
-        try {
-          const oldImageRef = ref(storage, currentImageUrl);
-          await deleteObject(oldImageRef);
-        } catch (err) {
-          console.error("Error deleting old image:", err);
-        }
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error("Image size should be less than 5MB");
       }
 
-      // Create a unique filename
+      if (!file.type.startsWith('image/')) {
+        throw new Error("File must be an image");
+      }
+
       const fileExtension = file.name.split('.').pop();
       const fileName = `events/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
       const storageRef = ref(storage, fileName);
 
-      // Set metadata
       const metadata = {
         contentType: file.type,
         customMetadata: {
@@ -216,42 +224,68 @@ const EditEvent = () => {
         }
       };
 
-      // Upload new image
-      const uploadResult = await uploadBytes(storageRef, file, metadata);
-      const downloadURL = await getDownloadURL(uploadResult.ref);
-      
-      return downloadURL;
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+      const uploadResult = await uploadBytes(storageRef, blob, metadata);
+      return await getDownloadURL(uploadResult.ref);
     } catch (error: any) {
       console.error('Error in uploadImage:', error);
       throw new Error(`Image upload failed: ${error.message}`);
     }
   };
 
+  const handleCategoryChange = (categoryId: string) => {
+    setSelectedCategories(prev => {
+      if (prev.includes(categoryId)) {
+        return prev.filter(id => id !== categoryId);
+      } else {
+        return [...prev, categoryId];
+      }
+    });
+  };
+
+  const handleSelectAddress = (address: string) => {
+    setAddress(address);
+    setEventVenue(address);
+    setIsLocationFocused(false);
+  };
+
+  const handleGuideToggle = (id: string) => {
+    setGuides(prev =>
+      id in prev ? Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)) : { ...prev, [id]: '' }
+    );
+  };
+
+  const handleGuideInput = (id: string, value: string) => {
+    setGuides(prev => ({ ...prev, [id]: value }));
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
-    if (!auth.currentUser || !eventId) {
-      setMessage("Please sign in to edit the event");
+    if (!auth.currentUser) {
+      setMessage("Please sign in to update the event");
       return;
     }
 
-    if (!eventTitle.trim() || !eventVenue.trim() || !validateSlots() || !validateTickets()) {
-      setMessage("Please fill in all required fields and ensure valid time slots and tickets");
+    if (!eventTitle.trim() || !eventVenue.trim() || !validateSlots() || !validateTickets() || selectedCategories.length === 0) {
+      setMessage("Please fill in all required fields and ensure valid time slots, tickets, and at least one category");
       return;
     }
 
-    setSaving(true);
+    setLoading(true);
     setMessage("");
 
     try {
-      let imageUrl: string | null = currentImageUrl;
+      let imageUrl = currentImageUrl;
       let imageUploadError = false;
       let imageUploadErrorMessage = '';
 
-      // Upload new image if one is selected
       if (eventImage) {
         try {
-          imageUrl = await uploadImage(eventImage);
+          const uploadedUrl = await uploadImage(eventImage);
+          if (uploadedUrl) {
+            imageUrl = uploadedUrl;
+          }
         } catch (uploadError: any) {
           console.error('Image upload failed:', uploadError);
           imageUploadError = true;
@@ -259,13 +293,6 @@ const EditEvent = () => {
         }
       }
 
-      // Check if any attendees exist for the event
-      const attendeesRef = collection(db, 'eventAttendees');
-      const attendeesQuery = query(attendeesRef, where('eventId', '==', eventId));
-      const attendeesSnapshot = await getDocs(attendeesQuery);
-      const hasAttendees = !attendeesSnapshot.empty;
-
-      // Prepare event data
       const eventData = {
         title: eventTitle.trim(),
         time_slots: eventSlots.map(slot => ({
@@ -278,41 +305,28 @@ const EditEvent = () => {
           name: ticket.name.trim(),
           capacity: parseInt(ticket.capacity),
           price: parseFloat(ticket.price),
-          // If there are attendees, maintain the current available capacity
-          available_capacity: hasAttendees ? 
-            (() => {
-              const existingTicket = attendeesSnapshot.docs
-                .flatMap(doc => Object.entries(doc.data().tickets || {}))
-                .find(([name]) => name === ticket.name) as [string, number] | undefined;
-              return existingTicket ? 
-                parseInt(ticket.capacity) - existingTicket[1] : 
-                parseInt(ticket.capacity);
-            })() : 
-            parseInt(ticket.capacity)
+          available_capacity: parseInt(ticket.capacity)
         })),
         event_venue: eventVenue.trim(),
         about_event: aboutEvent.trim(),
         event_image: imageUrl,
-        event_category: eventCategory.trim(),
+        event_categories: selectedCategories,
         event_languages: eventLanguages.trim(),
-        event_duration: eventDuration.trim(),
-        event_age_limit: eventAgeLimit.trim(),
+        event_guides: guides,
         updatedAt: serverTimestamp(),
         image_upload_status: imageUploadError ? 'failed' : (imageUrl ? 'success' : 'none')
       };
 
-      // Update event document
-      await updateDoc(doc(db, 'events', eventId), eventData);
+      await updateDoc(doc(db, "events", params.id), eventData);
       
       if (imageUploadError) {
-        setMessage(`Event updated successfully! Note: ${imageUploadErrorMessage} You can try uploading the image again later.`);
+        setMessage(`Event updated successfully! Note: ${imageUploadErrorMessage}`);
       } else {
         setMessage("Event updated successfully!");
       }
 
-      // Redirect after a short delay
       setTimeout(() => {
-        router.push(`/event-dashboard/${eventId}`);
+        router.push('/');
         router.refresh();
       }, 2000);
 
@@ -320,35 +334,14 @@ const EditEvent = () => {
       console.error("Error updating event:", error);
       setMessage(`Failed to update event: ${error.message}`);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
   if (loading) {
     return (
       <div className={styles.editEventPage}>
-        <div className={styles.editEventContainer}>
-          <div className={styles.loadingState}>Loading event data...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthorized) {
-    return (
-      <div className={styles.editEventPage}>
-        <div className={styles.editEventContainer}>
-          <div className={styles.unauthorizedMessage}>
-            <h1>Unauthorized</h1>
-            <p>{message || "You are not authorized to edit this event."}</p>
-            <button 
-              className={styles.backButton}
-              onClick={() => router.push('/')}
-            >
-              Back to Home
-            </button>
-          </div>
-        </div>
+        <div className={styles.loadingState}>Loading event details...</div>
       </div>
     );
   }
@@ -360,19 +353,25 @@ const EditEvent = () => {
         <form onSubmit={handleSubmit} className={styles.editEventForm}>
           {/* Image Upload Section */}
           <div className={styles.formSection}>
-            <h2>Event Image</h2>
+            <h2>Event Profile Image</h2>
+            <label htmlFor="event-image-upload" className={styles.imageUploadBox}>
+              <span className={styles.imageUploadLabel}>
+                {imagePreview ? 'Change Event Image' : 'Click to upload event profile image'}
+              </span>
+              {imagePreview && (
+                <div className={styles.imagePreview}>
+                  <img src={imagePreview} alt="Preview" className={styles.imagePreviewImg} />
+                </div>
+              )}
+              <input
+                id="event-image-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className={styles.fileInput}
+              />
+            </label>
             <p className={styles.imageTip}>Please upload a square image for best results (max 5MB)</p>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className={styles.fileInput}
-            />
-            {imagePreview && (
-              <div className={styles.imagePreview}>
-                <img src={imagePreview} alt="Preview" />
-              </div>
-            )}
           </div>
 
           {/* Event Details */}
@@ -390,20 +389,28 @@ const EditEvent = () => {
             </div>
 
             <div className={styles.formGroup}>
-              <label>Event Category</label>
-              <input
-                type="text"
-                value={eventCategory}
-                onChange={(e) => setEventCategory(e.target.value)}
-                placeholder="e.g., Music, Comedy, Tech"
-                required
-              />
+              <label>Event Categories</label>
+              <div className={styles.categoriesGrid}>
+                {EVENT_CATEGORIES.map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    className={`${styles.categoryButton} ${selectedCategories.includes(category.id) ? styles.categoryButtonActive : ''}`}
+                    onClick={() => handleCategoryChange(category.id)}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+              {selectedCategories.length === 0 && (
+                <p className={styles.errorText}>Please select at least one category</p>
+              )}
             </div>
           </div>
 
           {/* Tickets Section */}
           <div className={styles.formSection}>
-            <h2>Edit Tickets</h2>
+            <h2>Update Tickets</h2>
             {tickets.map((ticket, index) => (
               <div key={index} className={styles.ticketSlot}>
                 <div className={styles.formRow}>
@@ -465,45 +472,62 @@ const EditEvent = () => {
           <div className={styles.formSection}>
             <h2>Event Schedule</h2>
             {eventSlots.map((slot, index) => (
-              <div key={index} className={styles.dateSlot}>
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label>Date</label>
-                    <input
-                      type="date"
-                      value={slot.date}
-                      onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
-                      required
-                    />
+              <div key={index} className={styles.scheduleSlotContainer}>
+                <div className={styles.scheduleRow}>
+                  <div className={styles.scheduleIndicatorCol}>
+                    <span className={styles.scheduleCircleFilled}></span>
+                    <span className={styles.scheduleDashedLine}></span>
+                    <span className={styles.scheduleCircle}></span>
                   </div>
-                  <div className={styles.formGroup}>
-                    <label>Start Time</label>
-                    <input
-                      type="time"
-                      value={slot.startTime}
-                      onChange={(e) => handleSlotChange(index, 'startTime', e.target.value)}
-                      required
-                    />
+                  <div className={styles.scheduleLabelsCol}>
+                    <span className={styles.scheduleLabel}>Start</span>
+                    <span className={styles.scheduleLabel}>End</span>
                   </div>
-                  <div className={styles.formGroup}>
-                    <label>End Time</label>
-                    <input
-                      type="time"
-                      value={slot.endTime}
-                      onChange={(e) => handleSlotChange(index, 'endTime', e.target.value)}
-                      required
-                    />
+                  <div className={styles.schedulePickersCol}>
+                    <div className={styles.schedulePickerRow}>
+                      <input
+                        type="date"
+                        value={slot.date}
+                        onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
+                        className={styles.scheduleDateInput}
+                        required
+                      />
+                      <input
+                        type="time"
+                        value={slot.startTime}
+                        onChange={(e) => handleSlotChange(index, 'startTime', e.target.value)}
+                        className={styles.scheduleTimeInput}
+                        required
+                      />
+                    </div>
+                    <div className={styles.schedulePickerRow}>
+                      <input
+                        type="date"
+                        value={slot.date}
+                        onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
+                        className={styles.scheduleDateInput}
+                        required
+                        disabled
+                      />
+                      <input
+                        type="time"
+                        value={slot.endTime}
+                        onChange={(e) => handleSlotChange(index, 'endTime', e.target.value)}
+                        className={styles.scheduleTimeInput}
+                        required
+                      />
+                    </div>
                   </div>
-                  {eventSlots.length > 1 && (
-                    <button
-                      type="button"
-                      className={styles.removeDateButton}
-                      onClick={() => removeTimeSlot(index)}
-                    >
-                      Remove
-                    </button>
-                  )}
                 </div>
+                {eventSlots.length > 1 && (
+                  <button
+                    type="button"
+                    className={styles.removeDateButton}
+                    onClick={() => removeTimeSlot(index)}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             ))}
             <button
@@ -519,14 +543,81 @@ const EditEvent = () => {
           <div className={styles.formSection}>
             <h2>Location</h2>
             <div className={styles.formGroup}>
-              <label>Venue</label>
-              <input
-                type="text"
-                value={eventVenue}
-                onChange={(e) => setEventVenue(e.target.value)}
-                placeholder="Enter event venue"
-                required
+              <label>City</label>
+              <LocationSelector
+                selectedCity={selectedCity}
+                onCitySelect={setSelectedCity}
               />
+            </div>
+            <div className={styles.formGroup}>
+              <label>Venue</label>
+              <Script
+                src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjDazO71t0Deh_h6fMe_VHoKmVNEKygSM&libraries=places"
+                strategy="afterInteractive"
+                onLoad={() => setIsMapsScriptLoaded(true)}
+              />
+              {isMapsScriptLoaded ? (
+                <PlacesAutocomplete
+                  value={address}
+                  onChange={setAddress}
+                  onSelect={handleSelectAddress}
+                >
+                  {(props: {
+                    getInputProps: (options: any) => any;
+                    suggestions: Suggestion[];
+                    getSuggestionItemProps: (suggestion: Suggestion, options?: any) => any;
+                    loading: boolean;
+                  }) => {
+                    const { getInputProps, suggestions, getSuggestionItemProps, loading } = props;
+                    return (
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          {...getInputProps({
+                            placeholder: 'Search location...',
+                            className: styles.locationInput,
+                            required: true,
+                            onFocus: () => setIsLocationFocused(true),
+                            onBlur: () => setTimeout(() => setIsLocationFocused(false), 150),
+                          })}
+                        />
+                        {isLocationFocused && suggestions.length > 0 && (
+                          <div className={styles.autocompleteDropdown}>
+                            {loading && <div className={styles.suggestionItem}>Loading...</div>}
+                            {suggestions.map((suggestion: Suggestion) => {
+                              const className = suggestion.active
+                                ? styles.suggestionItemActive
+                                : styles.suggestionItem;
+                              const main = suggestion.structured_formatting?.main_text || suggestion.description;
+                              const secondary = suggestion.structured_formatting?.secondary_text;
+                              return (
+                                <div
+                                  {...getSuggestionItemProps(suggestion, { className })}
+                                  key={suggestion.placeId}
+                                >
+                                  <span className={styles.locationIcon}><FaMapMarkerAlt /></span>
+                                  <span>
+                                    <span className={styles.suggestionMain}>{main}</span>
+                                    {secondary && (
+                                      <div className={styles.suggestionSecondary}>{secondary}</div>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }}
+                </PlacesAutocomplete>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Loading Google Maps..."
+                  disabled
+                  className={styles.locationInput}
+                />
+              )}
             </div>
           </div>
 
@@ -544,42 +635,31 @@ const EditEvent = () => {
             </div>
           </div>
 
-          {/* Event Guide */}
+          {/* Event Guides */}
           <div className={styles.formSection}>
-            <h2>Event Guide</h2>
-            <div className={styles.formRow}>
-              <div className={styles.formGroup}>
-                <label>Duration</label>
-                <input
-                  type="text"
-                  value={eventDuration}
-                  onChange={(e) => setEventDuration(e.target.value)}
-                  placeholder="e.g., 2 Hours"
-                  required
-                />
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>Age Requirement</label>
-                <input
-                  type="text"
-                  value={eventAgeLimit}
-                  onChange={(e) => setEventAgeLimit(e.target.value)}
-                  placeholder="e.g., 16+ years"
-                  required
-                />
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>Event Languages</label>
-                <input
-                  type="text"
-                  value={eventLanguages}
-                  onChange={(e) => setEventLanguages(e.target.value)}
-                  placeholder="e.g., English, Hindi"
-                  required
-                />
-              </div>
+            <h2>Event Guides</h2>
+            <div className={styles.guidesGrid}>
+              {GUIDE_OPTIONS.map(option => (
+                <div key={option.id} className={styles.guideRow}>
+                  <label className={styles.guideCheckboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={option.id in guides}
+                      onChange={() => handleGuideToggle(option.id)}
+                    />
+                    {option.label}
+                  </label>
+                  {option.id in guides && (
+                    <input
+                      type="text"
+                      className={styles.guideInput}
+                      placeholder={option.placeholder}
+                      value={guides[option.id]}
+                      onChange={e => handleGuideInput(option.id, e.target.value)}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
@@ -590,14 +670,14 @@ const EditEvent = () => {
           )}
 
           <div className={styles.formActions}>
-            <button type="submit" className={styles.submitButton} disabled={saving}>
-              {saving ? "Saving Changes..." : "Save Changes"}
+            <button type="submit" className={styles.submitButton} disabled={loading}>
+              {loading ? "Updating Event..." : "Update Event"}
             </button>
             <button 
               type="button" 
               className={styles.cancelButton} 
-              onClick={() => router.push(`/event-dashboard/${eventId}`)}
-              disabled={saving}
+              onClick={() => router.push('/')}
+              disabled={loading}
             >
               Cancel
             </button>

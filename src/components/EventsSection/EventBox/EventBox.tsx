@@ -9,6 +9,7 @@ interface Event {
   id: string;
   eventTitle: string;
   eventType: string;
+  eventCategories?: string[];
   hostingClub: string;
   eventDateTime?: any;
   eventVenue: string;
@@ -44,6 +45,11 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
   const timeSlots = Array.isArray(event?.time_slots) ? event.time_slots : [];
   const firstDate = timeSlots.length > 0 ? timeSlots[0].date : "No Date Available";
   const firstTime = timeSlots.length > 0 ? timeSlots[0].start_time : "";
+  
+  // Use first category from eventCategories array, fallback to eventType
+  const displayEventType = event.eventCategories && event.eventCategories.length > 0 
+    ? event.eventCategories[0] 
+    : event.eventType;
 
   const formatDate = (dateString: string) => {
     if (dateString === "No Date Available") return "TBA";
@@ -144,14 +150,14 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
               {!imageLoaded && <div className={styles.imagePlaceholder} />}
             </>
           ) : (
-            <div className={styles.noImagePlaceholder}>{getEventTypeIcon(event.eventType)}</div>
-          )}
+                      <div className={styles.noImagePlaceholder}>{getEventTypeIcon(displayEventType)}</div>
+        )}
 
-          {/* Event Type Badge */}
-          <div className={`${styles.eventTypeBadge} ${styles[getEventTypeColor(event.eventType)]}`}>
-            {getEventTypeIcon(event.eventType)}
-            <span>{event.eventType}</span>
-          </div>
+        {/* Event Type Badge */}
+        <div className={`${styles.eventTypeBadge} ${styles[getEventTypeColor(displayEventType)]}`}>
+          {getEventTypeIcon(displayEventType)}
+          <span>{displayEventType}</span>
+        </div>
         </div>
 
         {/* Content Section */}

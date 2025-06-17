@@ -11,6 +11,19 @@ import styles from "./CreateEvent.module.css";
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
 import Script from 'next/script';
 import { FaMapMarkerAlt } from 'react-icons/fa';
+import LocationSelector from '@/components/LocationSelector/LocationSelector';
+
+// A more extensive list of cities for better search results
+const ALL_CITIES = [
+    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad', 'Chennai', 'Kolkata', 'Surat', 'Pune', 'Jaipur',
+    'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad', 'Patna',
+    'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivali',
+    'Vasai-Virar', 'Varanasi', 'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
+    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur', 'Madurai', 'Raipur', 'Kota',
+    'Guwahati', 'Chandigarh', 'Solapur', 'Hubli-Dharwad', 'Mysore', 'Tiruchirappalli', 'Bareilly', 'Aligarh',
+    'Tiruppur', 'Gurgaon', 'Moradabad', 'Jalandhar', 'Bhubaneswar', 'Salem', 'Warangal', 'Guntur', 'Noida',
+    'Dehradun', 'Kochi'
+];
 
 interface EventSlot {
   date: string;
@@ -74,6 +87,7 @@ const CreateEvent = () => {
   const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
   const [isLocationFocused, setIsLocationFocused] = useState(false);
   const [guides, setGuides] = useState<{ [key: string]: string }>({});
+  const [selectedCity, setSelectedCity] = useState('Mumbai');
   
   const auth = getAuth();
 
@@ -241,6 +255,33 @@ const CreateEvent = () => {
   const handleSelectAddress = (address: string) => {
     setAddress(address);
     setEventVenue(address);
+    
+    // Extract city from the address
+    const addressParts = address.split(',');
+    if (addressParts.length >= 2) {
+      // Try to find a city name from the address parts
+      // Usually the city is one of the later parts in Google Places results
+      for (let i = addressParts.length - 3; i >= 0; i--) {
+        const part = addressParts[i].trim();
+        // Check if this part might be a city (not a postal code or country)
+        if (part && !/^\d+$/.test(part) && part.length > 2) {
+          // Check if it matches any of our known cities
+          const matchedCity = ALL_CITIES.find((city: string) => 
+            city.toLowerCase().includes(part.toLowerCase()) || 
+            part.toLowerCase().includes(city.toLowerCase())
+          );
+          if (matchedCity) {
+            setSelectedCity(matchedCity);
+            break;
+          } else {
+            // If no exact match, use the first valid part as city
+            setSelectedCity(part);
+            break;
+          }
+        }
+      }
+    }
+    
     setIsLocationFocused(false);
   };
 
@@ -551,6 +592,29 @@ const CreateEvent = () => {
           <div className={styles.formSection}>
             <h2>Location</h2>
             <div className={styles.formGroup}>
+              <label>City</label>
+              <div className={styles.locationSelectorWrapper}>
+                <div className={styles.cityInputGroup}>
+                  <input
+                    type="text"
+                    value={selectedCity}
+                    onChange={(e) => setSelectedCity(e.target.value)}
+                    placeholder="Enter city name"
+                    className={styles.cityInput}
+                    list="cities-list"
+                  />
+                  <datalist id="cities-list">
+                    {ALL_CITIES.map(city => (
+                      <option key={city} value={city} />
+                    ))}
+                  </datalist>
+                </div>
+                <p className={styles.locationNote}>
+                  The city will be automatically detected from the venue address below, or you can manually enter it above.
+                </p>
+              </div>
+            </div>
+            <div className={styles.formGroup}>
               <label>Venue</label>
               <Script
                 src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjDazO71t0Deh_h6fMe_VHoKmVNEKygSM&libraries=places"
@@ -574,7 +638,7 @@ const CreateEvent = () => {
                       <div style={{ position: 'relative' }}>
                         <input
                           {...getInputProps({
-                            placeholder: 'Search location...',
+                            placeholder: 'Search for venue location...',
                             className: styles.locationInput,
                             required: true,
                             onFocus: () => setIsLocationFocused(true),

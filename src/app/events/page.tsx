@@ -17,6 +17,7 @@ interface Event {
   eventVenue: string
   eventDateTime: string
   eventType: string
+  eventCategories: string[]
   hostingClub: string
   isEventBox: boolean
   eventRegistrationLink?: string
@@ -44,10 +45,57 @@ const EVENT_TYPES = [
 ]
 
 export default function EventsPage() {
+  const [allEvents, setAllEvents] = useState<Event[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [selectedType, setSelectedType] = useState<string>("all")
+  const [selectedCity, setSelectedCity] = useState<string>("Mumbai")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Listen for location changes from header
+  useEffect(() => {
+    // Get initial city from localStorage
+    const storedCity = localStorage.getItem('selectedCity');
+    if (storedCity) {
+      setSelectedCity(storedCity);
+    }
+
+    // Listen for location changes from header
+    const handleLocationChange = (event: CustomEvent) => {
+      setSelectedCity(event.detail.city);
+    };
+
+    window.addEventListener('locationChanged', handleLocationChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('locationChanged', handleLocationChange as EventListener);
+    };
+  }, []);
+
+  // Filter events based on selected city
+  const filterEventsByLocation = (events: Event[], city: string) => {
+    if (!city || city === 'All Cities') return events;
+    
+    return events.filter(event => {
+      const venue = event.event_venue || event.eventVenue || '';
+      // Check if venue contains the city name (case insensitive)
+      return venue.toLowerCase().includes(city.toLowerCase());
+    });
+  };
+
+  // Apply both location and type filters
+  useEffect(() => {
+    let filtered = filterEventsByLocation(allEvents, selectedCity);
+    
+    if (selectedType !== "all") {
+      filtered = filtered.filter((event) => 
+        event.eventCategories && event.eventCategories.includes(selectedType)
+      );
+    }
+    
+    setEvents(filtered);
+    console.log(`Filtered ${filtered.length} events for ${selectedCity} and type ${selectedType}`);
+  }, [allEvents, selectedCity, selectedType]);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -64,6 +112,7 @@ export default function EventsPage() {
             id: doc.id,
             eventTitle: data.title || data.eventTitle || "",
             eventType: data.event_type || data.eventType || "event",
+            eventCategories: data.event_categories || [],
             hostingClub: data.hosting_club || data.hostingClub || "",
             eventDateTime: data.event_date_time || data.eventDateTime,
             eventVenue: data.event_venue || data.eventVenue || "",
@@ -72,11 +121,12 @@ export default function EventsPage() {
             event_image: data.event_image || "",
             organizationId: data.organizationId || "",
             time_slots: data.time_slots || [],
+            isEventBox: true,
             createdAt: data.createdAt
           }
         }) as Event[]
         
-        setEvents(eventsData)
+        setAllEvents(eventsData)
         setError(null)
       } catch (error) {
         console.error("Error fetching events:", error)
@@ -89,7 +139,7 @@ export default function EventsPage() {
     fetchEvents()
   }, [])
 
-  const filteredEvents = selectedType === "all" ? events : events.filter((event) => event.eventType.toLowerCase() === selectedType)
+  const filteredEvents = events
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -174,7 +224,12 @@ export default function EventsPage() {
           <PartyPopper className={styles.noEventsIconSvg} />
         </div>
         <h2 className={styles.noEventsTitle}>No Events Found</h2>
-        <p className={styles.noEventsText}>There are no events available at the moment. Check back later!</p>
+        <p className={styles.noEventsText}>
+          {selectedCity !== 'All Cities' 
+            ? `No events found in ${selectedCity}. Try selecting a different city or category.`
+            : "There are no events available at the moment. Check back later!"
+          }
+        </p>
       </div>
     )
   }
@@ -184,7 +239,12 @@ export default function EventsPage() {
       <div className={styles.wrapper}>
         <header className={styles.header}>
           <h1 className={styles.title}>All Events</h1>
-          <p className={styles.subtitle}>Discover and join exciting events happening around you</p>
+          <p className={styles.subtitle}>
+            {selectedCity !== 'All Cities' 
+              ? `Discover exciting events happening in ${selectedCity}`
+              : "Discover and join exciting events happening around you"
+            }
+          </p>
         </header>
 
         <div className={styles.filters}>

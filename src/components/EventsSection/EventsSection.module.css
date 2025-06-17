@@ -1,11 +1,12 @@
 /* Events Section Styling */
 .eventsSection {
     flex: 1;
-    margin-top: 70px;
+    margin-top: 50px;
     margin-bottom: 50px;
     position: relative;
 }
 
+/* Events Section Heading */
 .eventsSectionHeading {
     display: flex;
     justify-content: space-between;
@@ -23,12 +24,7 @@
     right: calc(50% - 200px);
     top: 50%;
     height: 1px;
-    background: linear-gradient(
-        90deg,
-        rgba(255, 255, 255, 0.1) 0%,
-        rgba(255, 255, 255, 0.2) 50%,
-        rgba(255, 255, 255, 0.1) 100%
-    );
+    background: linear-gradient(90deg, transparent 0%, #9333ea 50%, transparent 100%);
     z-index: 0;
 }
 
@@ -69,13 +65,12 @@
     font-family: 'Arial', sans-serif;
 }
 
-/* Carousel Container */
+/* Embla Carousel Container */
 .emblaContainer {
     position: relative;
     padding: 0 60px;
 }
 
-/* Embla Carousel Styling */
 .embla {
     overflow: hidden;
     width: 100%;
@@ -83,7 +78,6 @@
 
 .embla__viewport {
     overflow: hidden;
-    width: 100%;
 }
 
 .embla__container {
@@ -103,8 +97,8 @@
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
+    z-index: 100;
     background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 50%;
     width: 50px;
@@ -116,7 +110,7 @@
     color: white;
     font-size: 24px;
     transition: all 0.3s ease;
-    z-index: 2;
+    backdrop-filter: blur(8px);
 }
 
 .emblaButton:hover {
@@ -142,8 +136,8 @@
 /* Error States */
 .errorContainer {
     display: flex;
-    justify-content: center;
     align-items: center;
+    justify-content: center;
     min-height: 200px;
     padding: 20px;
 }
@@ -152,6 +146,98 @@
     color: #ff4444;
     font-size: 16px;
     text-align: center;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .eventsSection { 
+        margin-top: 130px;
+    }
+    .eventsSectionHeading {
+        padding: 0 30px;
+        gap: 15px;
+    }
+
+    .eventsSectionHeading::after {
+        left: calc(50% - 70px);
+        right: calc(50% - 150px);
+    }
+
+    .upcomingEventsHeading {
+        font-size: 20px;
+    }
+
+    .emblaContainer {
+        padding: 0 30px;
+    }
+
+    .emblaButton {
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+    }
+
+    .emblaButtonPrev {
+        left: 5px;
+    }
+
+    .emblaButtonNext {
+        right: 5px;
+    }
+
+    .embla__container {
+        gap: 15px;
+        margin-left: -15px;
+    }
+
+    .embla__slide {
+        padding-left: 15px;
+    }
+
+    .noEventsMessage {
+        padding: 50px 20px;
+        font-size: 16px;
+    }
+
+    .eventsSectionHeading::after {
+        height: 1px;
+    }
+}
+
+@media (max-width: 480px) {
+    .eventsSectionHeading {
+        padding: 0 20px;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .upcomingEventsHeading {
+        font-size: 18px;
+    }
+
+    .emblaContainer {
+        padding: 0 20px;
+    }
+
+    .emblaButton {
+        width: 35px;
+        height: 35px;
+        font-size: 18px;
+    }
+
+    .embla__container {
+        gap: 10px;
+        margin-left: -10px;
+    }
+
+    .embla__slide {
+        padding-left: 10px;
+    }
+
+    .eventsSectionHeading::after {
+        display: none;
+    }
 }
 
 /* Skeleton Loading Styles */
@@ -252,181 +338,6 @@
 @media (max-width: 1200px) {
     .emblaContainer {
         padding: 0 50px;
-    }
-}
-
-@media (max-width: 768px) {
-    .eventsSection { 
-        margin-top: 130px;
-    }
-    .eventsSectionHeading {
-        padding: 0 30px;
-        gap: 15px;
-    }
-
-    .eventsSectionHeading::after {
-        left: calc(50% - 70px);
-        right: calc(50% - 150px);
-    }
-
-    .upcomingEventsHeading {
-        font-size: 20px;
-    }
-
-    .seeAllLink {
-        font-size: 14px;
-    }
-
-    .emblaContainer {
-        padding: 0 30px;
-    }
-
-    .emblaButton {
-        width: 40px;
-        height: 40px;
-        font-size: 20px;
-    }
-
-    .emblaButtonPrev {
-        left: 5px;
-    }
-
-    .emblaButtonNext {
-        right: 5px;
-    }
-
-    .embla__container {
-        gap: 15px;
-        margin-left: -15px;
-    }
-
-    .embla__slide {
-        padding-left: 15px;
-    }
-
-    .skeletonLoading .eventBoxWrapper {
-        max-width: 240px;
-        padding: 10px;
-    }
-
-    .skeletonLoading .eventBoxInfo {
-        padding: 20px;
-    }
-
-    .skeletonTitle {
-        width: 160px;
-        height: 20px;
-    }
-
-    .skeletonButton {
-        width: 60px;
-        height: 20px;
-    }
-
-    .skeletonTypeBadge {
-        padding: 6px 12px;
-    }
-
-    .skeletonBadgeText {
-        width: 50px;
-        height: 11px;
-    }
-
-    .skeletonEventTitle {
-        height: 16px;
-    }
-
-    .skeletonIcon {
-        width: 14px;
-        height: 14px;
-    }
-
-    .skeletonText {
-        height: 12px;
-    }
-}
-
-@media (max-width: 480px) {
-    .eventsSectionHeading {
-        padding: 0 20px;
-        gap: 10px;
-    }
-
-    .eventsSectionHeading::after {
-        left: calc(50% - 50px);
-        right: calc(50% - 100px);
-    }
-
-    .upcomingEventsHeading {
-        font-size: 18px;
-    }
-
-    .seeAllLink {
-        font-size: 13px;
-    }
-
-    .emblaContainer {
-        padding: 0 20px;
-    }
-
-    .emblaButton {
-        width: 35px;
-        height: 35px;
-        font-size: 18px;
-    }
-
-    .embla__container {
-        gap: 10px;
-        margin-left: -10px;
-    }
-
-    .embla__slide {
-        padding-left: 10px;
-    }
-
-    .skeletonLoading .eventBoxWrapper {
-        max-width: 200px;
-        padding: 8px;
-    }
-
-    .skeletonLoading .imageSection {
-        height: 55%;
-    }
-
-    .skeletonLoading .eventBoxInfo {
-        padding: 16px;
-    }
-
-    .skeletonTitle {
-        width: 120px;
-        height: 18px;
-    }
-
-    .skeletonButton {
-        width: 50px;
-        height: 18px;
-    }
-
-    .skeletonTypeBadge {
-        padding: 6px 12px;
-    }
-
-    .skeletonBadgeText {
-        width: 40px;
-        height: 11px;
-    }
-
-    .skeletonEventTitle {
-        height: 15px;
-    }
-
-    .skeletonIcon {
-        width: 12px;
-        height: 12px;
-    }
-
-    .skeletonText {
-        height: 11px;
     }
 }
 

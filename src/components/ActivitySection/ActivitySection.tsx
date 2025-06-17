@@ -21,10 +21,12 @@ interface Activity {
 }
 
 const ActivitySection = () => {
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [allActivities, setAllActivities] = useState<Activity[]>([]);
+  const [filteredActivities, setFilteredActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [selectedCity, setSelectedCity] = useState('Mumbai');
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: 'start',
@@ -56,6 +58,44 @@ const ActivitySection = () => {
       emblaApi.off('reInit', onSelect);
     };
   }, [emblaApi, onSelect]);
+
+  // Listen for location changes
+  useEffect(() => {
+    // Get initial city from localStorage
+    const storedCity = localStorage.getItem('selectedCity');
+    if (storedCity) {
+      setSelectedCity(storedCity);
+    }
+
+    // Listen for location changes from header
+    const handleLocationChange = (event: CustomEvent) => {
+      setSelectedCity(event.detail.city);
+    };
+
+    window.addEventListener('locationChanged', handleLocationChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('locationChanged', handleLocationChange as EventListener);
+    };
+  }, []);
+
+  // Filter activities based on selected city
+  const filterActivitiesByLocation = useCallback((activities: Activity[], city: string) => {
+    if (!city || city === 'All Cities') return activities;
+    
+    return activities.filter(activity => {
+      const location = activity.activityLocation || '';
+      // Check if location contains the city name (case insensitive)
+      return location.toLowerCase().includes(city.toLowerCase());
+    });
+  }, []);
+
+  // Update filtered activities when city or all activities change
+  useEffect(() => {
+    const filtered = filterActivitiesByLocation(allActivities, selectedCity);
+    setFilteredActivities(filtered);
+    console.log(`Filtered ${filtered.length} activities for ${selectedCity}`);
+  }, [allActivities, selectedCity, filterActivitiesByLocation]);
 
   // Preload images
   const preloadImages = async (activitiesData: Activity[]) => {
@@ -92,16 +132,16 @@ const ActivitySection = () => {
           const data = doc.data();
           return {
             id: doc.id,
-            activityName: data.name || '',
-            activityLocation: data.location || '',
-            aboutActivity: data.about_activity || '',
+            activityName: data.name || data.activityName || '',
+            activityLocation: data.location || data.activityLocation || '',
+            aboutActivity: data.about_activity || data.aboutActivity || '',
             activity_image: data.activity_image || '',
             organizationId: data.organizationId || '',
             createdAt: data.createdAt
           };
         }) as Activity[];
         
-        setActivities(activitiesData);
+        setAllActivities(activitiesData);
         preloadImages(activitiesData);
         setError(null);
       } catch (error) {
@@ -115,6 +155,10 @@ const ActivitySection = () => {
     fetchActivities();
   }, []);
 
+  const handleActivityDelete = (activityId: string) => {
+    setAllActivities(prevActivities => prevActivities.filter(activity => activity.id !== activityId));
+  };
+
   if (error) {
     return (
       <div className={styles.errorContainer}>
@@ -127,7 +171,7 @@ const ActivitySection = () => {
     return <ActivitySectionSkeleton />;
   }
 
-  if (!activities.length) {
+  if (!filteredActivities.length) {
     return (
       <div className={styles.activitySection}>
         <div className={styles.activitySectionHeading}>
@@ -158,9 +202,9 @@ const ActivitySection = () => {
         <div className={styles.embla}>
           <div className={styles.embla__viewport} ref={emblaRef}>
             <div className={styles.embla__container}>
-              {activities.map((activity) => (
+              {filteredActivities.map((activity) => (
                 <div className={styles.embla__slide} key={activity.id}>
-                  <ActivityBox activity={activity} />
+                  <ActivityBox activity={activity} onDelete={handleActivityDelete} />
                 </div>
               ))}
             </div>

@@ -41,10 +41,12 @@ interface Event {
 }
 
 const EventsSection = () => {
-  const [events, setEvents] = useState<Event[]>([]);
+  const [allEvents, setAllEvents] = useState<Event[]>([]);
+  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [selectedCity, setSelectedCity] = useState('Mumbai');
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: 'start',
@@ -76,6 +78,44 @@ const EventsSection = () => {
       emblaApi.off('reInit', onSelect);
     };
   }, [emblaApi, onSelect]);
+
+  // Listen for location changes
+  useEffect(() => {
+    // Get initial city from localStorage
+    const storedCity = localStorage.getItem('selectedCity');
+    if (storedCity) {
+      setSelectedCity(storedCity);
+    }
+
+    // Listen for location changes from header
+    const handleLocationChange = (event: CustomEvent) => {
+      setSelectedCity(event.detail.city);
+    };
+
+    window.addEventListener('locationChanged', handleLocationChange as EventListener);
+    
+    return () => {
+      window.removeEventListener('locationChanged', handleLocationChange as EventListener);
+    };
+  }, []);
+
+  // Filter events based on selected city
+  const filterEventsByLocation = useCallback((events: Event[], city: string) => {
+    if (!city || city === 'All Cities') return events;
+    
+    return events.filter(event => {
+      const venue = event.event_venue || event.eventVenue || '';
+      // Check if venue contains the city name (case insensitive)
+      return venue.toLowerCase().includes(city.toLowerCase());
+    });
+  }, []);
+
+  // Update filtered events when city or all events change
+  useEffect(() => {
+    const filtered = filterEventsByLocation(allEvents, selectedCity);
+    setFilteredEvents(filtered);
+    console.log(`Filtered ${filtered.length} events for ${selectedCity}`);
+  }, [allEvents, selectedCity, filterEventsByLocation]);
 
   // Preload images
   const preloadImages = async (eventsData: Event[]) => {
@@ -128,7 +168,7 @@ const EventsSection = () => {
         }) as Event[];
         
         console.log("Fetched events with org IDs:", eventsData);
-        setEvents(eventsData);
+        setAllEvents(eventsData);
         preloadImages(eventsData);
         setError(null);
       } catch (error) {
@@ -143,7 +183,7 @@ const EventsSection = () => {
   }, []);
 
   const handleEventDelete = (eventId: string) => {
-    setEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
+    setAllEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
   };
 
   if (error) {
@@ -158,7 +198,7 @@ const EventsSection = () => {
     return <EventsSectionSkeleton />;
   }
 
-  if (!events.length) {
+  if (!filteredEvents.length) {
     return (
       <div className={styles.eventsSection}>
         <div className={styles.eventsSectionHeading}>
@@ -189,7 +229,7 @@ const EventsSection = () => {
         <div className={styles.embla}>
           <div className={styles.embla__viewport} ref={emblaRef}>
             <div className={styles.embla__container}>
-              {events.map((event) => (
+              {filteredEvents.map((event) => (
                 <div className={styles.embla__slide} key={event.id}>
                   <EventBox event={event} onDelete={handleEventDelete} />
                 </div>

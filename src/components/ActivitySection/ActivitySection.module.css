@@ -23,12 +23,7 @@
     right: calc(50% - 200px);
     top: 50%;
     height: 1px;
-    background: linear-gradient(
-        90deg,
-        rgba(255, 255, 255, 0.1) 0%,
-        rgba(255, 255, 255, 0.2) 50%,
-        rgba(255, 255, 255, 0.1) 100%
-    );
+    background: linear-gradient(90deg, transparent 0%, #9333ea 50%, transparent 100%);
     z-index: 0;
 }
 
@@ -288,8 +283,8 @@
     }
 
     .activitySectionHeading::after {
-        left: calc(50% - 65px);
-        right: calc(50% - 155px);
+        left: calc(50% - 70px);
+        right: calc(50% - 150px);
     }
 
     .upcomingActivitiesHeading {
@@ -340,8 +335,8 @@
     }
 
     .activitySectionHeading::after {
-        left: calc(50% - 45px);
-        right: calc(50% - 105px);
+        left: calc(50% - 70px);
+        right: calc(50% - 150px);
     }
 
     .upcomingActivitiesHeading {
