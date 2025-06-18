@@ -1,0 +1,53 @@
+[debug] [2025-06-18T16:06:48.329Z] ----------------------------------------------------------------------
+[debug] [2025-06-18T16:06:48.331Z] Command:       /usr/local/bin/node /Users/shreyasgurav/.npm-global/bin/firebase deploy --only firestore:indexes
+[debug] [2025-06-18T16:06:48.331Z] CLI Version:   14.0.1
+[debug] [2025-06-18T16:06:48.331Z] Platform:      darwin
+[debug] [2025-06-18T16:06:48.331Z] Node Version:  v22.12.0
+[debug] [2025-06-18T16:06:48.331Z] Time:          Wed Jun 18 2025 21:36:48 GMT+0530 (India Standard Time)
+[debug] [2025-06-18T16:06:48.332Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-06-18T16:06:48.333Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2025-06-18T16:06:48.435Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-06-18T16:06:48.435Z] > authorizing via signed-in user (shrreyasgurav@gmail.com)
+[debug] [2025-06-18T16:06:48.435Z] [iam] checking project zest-62191 for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2025-06-18T16:06:48.436Z] Checked if tokens are valid: false, expires at: 1749925424803
+[debug] [2025-06-18T16:06:48.436Z] Checked if tokens are valid: false, expires at: 1749925424803
+[debug] [2025-06-18T16:06:48.436Z] > refreshing access token with scopes: []
+[debug] [2025-06-18T16:06:48.436Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-06-18T16:06:48.436Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-06-18T16:06:48.708Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-06-18T16:06:48.709Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-06-18T16:06:48.721Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/zest-62191:testIamPermissions [none]
+[debug] [2025-06-18T16:06:48.721Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/zest-62191:testIamPermissions x-goog-quota-user=projects/zest-62191
+[debug] [2025-06-18T16:06:48.721Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/zest-62191:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2025-06-18T16:06:49.223Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2025-06-18T16:06:49.223Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2025-06-18T16:06:50.419Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/zest-62191:testIamPermissions 200
+[debug] [2025-06-18T16:06:50.419Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/zest-62191:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[info] 
+[info] === Deploying to 'zest-62191'...
+[info] 
+[info] i  deploying firestore 
+[info] i  firestore: reading indexes from firestore.indexes.json... 
+[info] i  cloud.firestore: checking firestore.rules for compilation errors... 
+[debug] [2025-06-18T16:06:50.421Z] Checked if tokens are valid: true, expires at: 1750266407709
+[debug] [2025-06-18T16:06:50.421Z] Checked if tokens are valid: true, expires at: 1750266407709
+[debug] [2025-06-18T16:06:50.421Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/zest-62191:test [none]
+[debug] [2025-06-18T16:06:50.421Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/zest-62191:test [omitted]
+[debug] [2025-06-18T16:06:52.094Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/zest-62191:test 200
+[debug] [2025-06-18T16:06:52.094Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/zest-62191:test {}
+[info] ✔  cloud.firestore: rules file firestore.rules compiled successfully 
+[info] i  firestore: deploying indexes... 
+[debug] [2025-06-18T16:06:52.096Z] Checked if tokens are valid: true, expires at: 1750266407709
+[debug] [2025-06-18T16:06:52.096Z] Checked if tokens are valid: true, expires at: 1750266407709
+[debug] [2025-06-18T16:06:52.096Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/zest-62191/databases/(default)/collectionGroups/-/indexes [none]
+[debug] [2025-06-18T16:06:53.924Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/zest-62191/databases/(default)/collectionGroups/-/indexes 200
+[debug] [2025-06-18T16:06:53.925Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/zest-62191/databases/(default)/collectionGroups/-/indexes {"indexes":[{"name":"projects/zest-62191/databases/(default)/collectionGroups/eventAttendees/indexes/CICAgOjXh4EK","queryScope":"COLLECTION","fields":[{"fieldPath":"eventId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"},{"fieldPath":"__name__","order":"DESCENDING"}],"state":"READY","density":"SPARSE_ALL"},{"name":"projects/zest-62191/databases/(default)/collectionGroups/activityAttendees/indexes/CICAgJiUpoMK","queryScope":"COLLECTION","fields":[{"fieldPath":"activityId","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"},{"fieldPath":"__name__","order":"DESCENDING"}],"state":"READY","density":"SPARSE_ALL"}]}
+[debug] [2025-06-18T16:06:53.925Z] Checked if tokens are valid: true, expires at: 1750266407709
+[debug] [2025-06-18T16:06:53.925Z] Checked if tokens are valid: true, expires at: 1750266407709
+[debug] [2025-06-18T16:06:53.925Z] >>> [apiv2][query] GET https://firestore.googleapis.com/v1/projects/zest-62191/databases/(default)/collectionGroups/-/fields?filter=indexConfig.usesAncestorConfig=false OR ttlConfig:* [none]
+[debug] [2025-06-18T16:06:54.308Z] <<< [apiv2][status] GET https://firestore.googleapis.com/v1/projects/zest-62191/databases/(default)/collectionGroups/-/fields?filter=indexConfig.usesAncestorConfig=false OR ttlConfig:* 200
+[debug] [2025-06-18T16:06:54.309Z] <<< [apiv2][body] GET https://firestore.googleapis.com/v1/projects/zest-62191/databases/(default)/collectionGroups/-/fields?filter=indexConfig.usesAncestorConfig=false OR ttlConfig:* {"fields":[{"name":"projects/zest-62191/databases/(default)/collectionGroups/__default__/fields/*","indexConfig":{"indexes":[{"queryScope":"COLLECTION","fields":[{"fieldPath":"*","order":"ASCENDING"}],"state":"READY"},{"queryScope":"COLLECTION","fields":[{"fieldPath":"*","order":"DESCENDING"}],"state":"READY"},{"queryScope":"COLLECTION","fields":[{"fieldPath":"*","arrayConfig":"CONTAINS"}],"state":"READY"}]}}]}
+[info] i  firestore: The following indexes are defined in your project but are not present in your firestore indexes file:
+	(eventAttendees) -- (eventId,ASCENDING) (createdAt,DESCENDING) 
+	(activityAttendees) -- (activityId,ASCENDING) (createdAt,DESCENDING)  

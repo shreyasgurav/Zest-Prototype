@@ -3,10 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, updateDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaUsers, FaLanguage, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaUsers, FaLanguage, FaChevronLeft, FaChevronRight, FaCreditCard } from 'react-icons/fa';
 import styles from './ActivityBookingFlow.module.css';
+import { initiateRazorpayPayment, BookingData } from '@/utils/razorpay';
 import dynamic from 'next/dynamic';
 import type { CalendarProps } from 'react-calendar';
 const Calendar = dynamic(() => import('react-calendar'), { ssr: false });
@@ -163,69 +164,54 @@ function ActivityBookingFlow() {
         return;
       }
 
+      setLoading(true);
+
       // Get user profile data
       const userDoc = await getDoc(doc(db, "Users", user.uid));
       const userData = userDoc.data();
 
-      const bookingData = {
-        activityId: activity.id,
-        userId: user.uid,
-        selectedDate,
-        selectedTimeSlot,
-        tickets: ticketQuantity,
-        totalAmount: activity.price_per_slot * ticketQuantity,
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      };
-
-      // Add booking to Firestore
-      const bookingRef = await addDoc(collection(db, "activity_bookings"), bookingData);
-
-      // Create attendee record
-      const attendeeData = {
+      const bookingData: BookingData = {
         activityId: activity.id,
         userId: user.uid,
         name: userData?.name || user.displayName || 'Anonymous',
         email: userData?.email || user.email || '',
         phone: userData?.phone || '',
-        tickets: ticketQuantity,
         selectedDate,
         selectedTimeSlot,
-        createdAt: new Date().toISOString()
+        tickets: ticketQuantity,
+        totalAmount: activity.price_per_slot * ticketQuantity,
       };
 
-      await addDoc(collection(db, "activityAttendees"), attendeeData);
-
-      // Update available capacity
-      const activityRef = doc(db, "activities", activity.id);
-      const updatedTimeSlots = activity.weekly_schedule.map(day => {
-        if (day.day === new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long' })) {
-          return {
-            ...day,
-            time_slots: day.time_slots.map(slot => {
-              if (slot.start_time === selectedTimeSlot.start_time && 
-                  slot.end_time === selectedTimeSlot.end_time) {
-                return {
-                  ...slot,
-                  available_capacity: slot.available_capacity - ticketQuantity
-                };
-              }
-              return slot;
-            })
-          };
+      // Initiate Razorpay payment
+      await initiateRazorpayPayment(
+        {
+          amount: activity.price_per_slot * ticketQuantity,
+          currency: 'INR',
+          receipt: `activity_${activity.id}_${Date.now()}`,
+          notes: {
+            activityId: activity.id,
+            userId: user.uid,
+          },
+        },
+        bookingData,
+        'activity',
+        (bookingId: string) => {
+          // Payment successful, navigate to confirmation page
+          router.push(`/booking-confirmation/${bookingId}`);
+        },
+        (error: string) => {
+          // Payment failed or cancelled
+          console.error('Payment failed:', error);
+          setLoading(false);
+          // Redirect to payment failed page with error details
+          router.push(`/payment-failed?activityId=${activity.id}&error=${encodeURIComponent(error)}`);
         }
-        return day;
-      });
+      );
 
-      await updateDoc(activityRef, {
-        weekly_schedule: updatedTimeSlots
-      });
-
-      // Redirect to booking confirmation
-      router.push(`/booking-confirmation/${bookingRef.id}`);
     } catch (err) {
-      console.error("Error creating booking:", err);
-      setError("Failed to create booking");
+      console.error("Error initiating booking:", err);
+      setError("Error initiating booking. Please try again.");
+      setLoading(false);
     }
   };
 
@@ -362,8 +348,19 @@ function ActivityBookingFlow() {
                       Total: ₹{(activity.price_per_slot * ticketQuantity).toLocaleString()}
                     </div>
 
-                    <button className={styles.bookButton} onClick={handleBooking}>
-                      Book Selected Slot
+                    <button 
+                      className={styles.bookButton} 
+                      onClick={handleBooking}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        'Processing Payment...'
+                      ) : (
+                        <>
+                          <FaCreditCard />
+                          <span>Pay ₹{(activity.price_per_slot * ticketQuantity).toLocaleString()}</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 )}

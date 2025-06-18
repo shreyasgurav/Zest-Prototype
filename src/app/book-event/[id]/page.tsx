@@ -9,12 +9,12 @@ import {
   collection,
   query, 
   where, 
-  getDocs,
-  addDoc
+  getDocs
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaTicketAlt, FaUser, FaChevronRight } from 'react-icons/fa';
+import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaTicketAlt, FaUser, FaChevronRight, FaCreditCard } from 'react-icons/fa';
 import styles from './BookingFlow.module.css';
+import { initiateRazorpayPayment, BookingData } from '@/utils/razorpay';
 
 interface TimeSlot {
   date: string;
@@ -215,31 +215,47 @@ function BookingFlow() {
       }
 
       // Prepare booking data
-      const bookingData = {
+      const bookingData: BookingData = {
         eventId: params.id,
         userId: auth.currentUser.uid,
         name: userInfo.name,
         email: userInfo.email,
         phone: userInfo.phone,
-        selectedDate,
+        selectedDate: selectedDate!,
         selectedTimeSlot,
         tickets: selectedTickets,
         totalAmount: getTotalAmount(),
-        status: 'confirmed',
-        createdAt: new Date().toISOString()
       };
 
-      // Save booking directly to database
-      const docRef = await addDoc(collection(db, 'eventAttendees'), bookingData);
-      console.log('Booking saved successfully with ID:', docRef.id);
-
-      // Navigate to confirmation page
-      router.push(`/booking-confirmation/${params.id}`);
+      // Initiate Razorpay payment
+      await initiateRazorpayPayment(
+        {
+          amount: getTotalAmount(),
+          currency: 'INR',
+          receipt: `event_${params.id}_${Date.now()}`,
+          notes: {
+            eventId: params.id,
+            userId: auth.currentUser.uid,
+          },
+        },
+        bookingData,
+        'event',
+        (bookingId: string) => {
+          // Payment successful, navigate to confirmation page
+          router.push(`/booking-confirmation/${bookingId}`);
+        },
+        (error: string) => {
+          // Payment failed or cancelled
+          console.error('Payment failed:', error);
+          setLoading(false);
+          // Redirect to payment failed page with error details
+          router.push(`/payment-failed?eventId=${params.id}&error=${encodeURIComponent(error)}`);
+        }
+      );
 
     } catch (err) {
-      console.error('Error saving booking:', err);
-      setError('Error saving booking. Please try again.');
-    } finally {
+      console.error('Error initiating booking:', err);
+      setError('Error initiating booking. Please try again.');
       setLoading(false);
     }
   };
@@ -410,10 +426,11 @@ function BookingFlow() {
               disabled={loading}
             >
               {loading ? (
-                'Processing...'
+                'Processing Payment...'
               ) : (
                 <>
-                  <span>Confirm Booking</span>
+                  <FaCreditCard />
+                  <span>Pay ₹{getTotalAmount().toLocaleString()}</span>
                   <FaChevronRight />
                 </>
               )}

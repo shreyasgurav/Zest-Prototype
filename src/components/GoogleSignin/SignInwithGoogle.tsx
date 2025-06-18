@@ -8,8 +8,11 @@ import GoogleSignInButton from "./GoogleButton";
 import { useRouter } from 'next/navigation';
 import styles from './SignInwithGoogle.module.css';
 
+interface SignInwithGoogleProps {
+  onSuccess?: () => void;
+}
 
-function SignInwithGoogle() {
+function SignInwithGoogle({ onSuccess }: SignInwithGoogleProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -30,23 +33,47 @@ function SignInwithGoogle() {
         const userSnap = await getDoc(userRef);
         
         if (!userSnap.exists()) {
-          await setDoc(userRef, {
+          // Create new user document
+          const userData = {
+            uid: user.uid,
             email: user.email,
             photo: user.photoURL,
-            createdAt: new Date().toISOString()
-          });
+            name: user.displayName || '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            providers: {
+              google: true
+            }
+          };
+          
+          await setDoc(userRef, userData);
+          toast.success("Account created successfully!");
           router.push('/postlogin');
-          return;
+        } else {
+          const userData = userSnap.data();
+          
+          // Update providers info
+          await setDoc(userRef, {
+            ...userData,
+            providers: {
+              ...(userData.providers || {}),
+              google: true
+            },
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+          
+          if (!userData.username || !userData.phone) {
+            toast.success("Welcome back! Please complete your profile.");
+            router.push('/postlogin');
+          } else {
+            toast.success("Welcome back!");
+            router.push('/profile');
+          }
         }
 
-        const userData = userSnap.data();
-        if (!userData.username || !userData.phone) {
-          router.push('/postlogin');
-          return;
+        if (onSuccess) {
+          onSuccess();
         }
-
-        toast.success("Logged in successfully");
-        router.push('/profile');
       }
     } catch (error) {
       console.error("Login error:", error);
@@ -55,6 +82,8 @@ function SignInwithGoogle() {
           toast.info("Sign-in cancelled");
         } else if (error.code === 'auth/popup-blocked') {
           toast.error("Popup was blocked. Please allow popups for this site.");
+        } else if (error.code === 'auth/account-exists-with-different-credential') {
+          toast.error("An account already exists with this email using a different sign-in method.");
         } else {
           toast.error("Login failed. Please try again.");
         }

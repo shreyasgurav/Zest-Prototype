@@ -149,6 +149,54 @@
     margin-bottom: 12px;
 }
 
+/* Initializing message */
+.initializingMessage {
+    text-align: center;
+    margin: 10px 0;
+    padding: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.initializingMessage p {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    margin: 0;
+}
+
+/* Back button */
+.backButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.3s ease;
+    width: 120px;
+    align-self: center;
+    margin-top: 10px;
+}
+
+.backButton:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.backButton:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* Responsive styles */
 @media screen and (max-width: 480px) {
     .phoneLogin,
@@ -164,8 +212,18 @@
     }
 
     .sendOtpButton,
-    .verifyOtpButton {
+    .verifyOtpButton,
+    .backButton {
         width: 120px;
+    }
+
+    .initializingMessage {
+        margin: 8px 0;
+        padding: 6px;
+    }
+
+    .initializingMessage p {
+        font-size: 11px;
     }
 }
 

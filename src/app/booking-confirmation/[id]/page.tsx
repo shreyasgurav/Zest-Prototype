@@ -26,6 +26,9 @@ interface EventBookingData {
   totalAmount: number;
   createdAt: any;
   status: string;
+  paymentStatus?: string;
+  paymentId?: string;
+  orderId?: string;
 }
 
 interface ActivityBookingData {
@@ -38,6 +41,9 @@ interface ActivityBookingData {
   totalAmount: number;
   createdAt: any;
   status: string;
+  paymentStatus?: string;
+  paymentId?: string;
+  orderId?: string;
 }
 
 interface EventData {
@@ -246,6 +252,26 @@ const BookingConfirmation = () => {
               <span className={styles.detailValue}>₹{eventBooking.totalAmount}</span>
             </div>
 
+            {eventBooking.paymentId && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailIcon}>💳</span>
+                <span className={styles.detailLabel}>Payment ID</span>
+                <span className={styles.detailValue}>{eventBooking.paymentId}</span>
+              </div>
+            )}
+
+            {eventBooking.paymentStatus && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailIcon}>✅</span>
+                <span className={styles.detailLabel}>Payment Status</span>
+                <span className={styles.detailValue} style={{ 
+                  color: eventBooking.paymentStatus === 'completed' ? '#10b981' : '#ef4444' 
+                }}>
+                  {eventBooking.paymentStatus === 'completed' ? 'Paid' : 'Failed'}
+                </span>
+              </div>
+            )}
+
             <div className={styles.detailRow}>
               <span className={styles.detailIcon}>👤</span>
               <span className={styles.detailLabel}>Attendee</span>
@@ -323,6 +349,26 @@ const BookingConfirmation = () => {
               <span className={styles.detailLabel}>Total Amount</span>
               <span className={styles.detailValue}>₹{activityBooking.totalAmount}</span>
             </div>
+
+            {activityBooking.paymentId && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailIcon}>💳</span>
+                <span className={styles.detailLabel}>Payment ID</span>
+                <span className={styles.detailValue}>{activityBooking.paymentId}</span>
+              </div>
+            )}
+
+            {activityBooking.paymentStatus && (
+              <div className={styles.detailRow}>
+                <span className={styles.detailIcon}>✅</span>
+                <span className={styles.detailLabel}>Payment Status</span>
+                <span className={styles.detailValue} style={{ 
+                  color: activityBooking.paymentStatus === 'completed' ? '#10b981' : '#ef4444' 
+                }}>
+                  {activityBooking.paymentStatus === 'completed' ? 'Paid' : 'Failed'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className={styles.confirmationActions}>

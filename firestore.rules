@@ -75,5 +75,28 @@ service cloud.firestore {
         request.auth.uid == resource.data.organizationId // Activity organizer
       );
     }
+
+    // Allow users to access their tickets
+    match /tickets/{ticketId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User who owns the ticket
+        request.auth.token.role == "organizer" || // Event/Activity organizers
+        request.auth.token.role == "admin" // System admins
+      );
+      allow create: if isAuthenticated(); // Server-side ticket creation
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User can update their own tickets
+        request.auth.token.role == "organizer" || // Organizers can validate tickets
+        request.auth.token.role == "admin" // Admins can manage tickets
+      );
+      allow delete: if isAuthenticated() && (
+        request.auth.token.role == "admin" // Only admins can delete tickets
+      );
+    }
+
+    // Allow querying tickets by userId for the tickets page
+    match /tickets/{document=**} {
+      allow read: if isAuthenticated();
+    }
   }
 }  

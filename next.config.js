@@ -15,7 +15,7 @@ const nextConfig = {
   },
   // Pass environment variables directly to the client
   env: {
-    // Removed Razorpay key
+    NEXT_PUBLIC_RAZORPAY_KEY_ID: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
   },
   // Ensure environment variables are available at build time
   webpack: (config, { isServer }) => {

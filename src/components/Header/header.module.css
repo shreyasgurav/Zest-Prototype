@@ -566,55 +566,63 @@
 .locationSearchWrapper {
     position: relative;
     margin-bottom: 20px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(246, 245, 245, 0.08);
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     transition: all 0.3s ease;
+    overflow: hidden;
 }
 
 .locationSearchWrapper:focus-within {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
 }
 
 .locationSearchIcon {
     position: absolute;
-    left: 16px;
+    left: 18px;
+    width: 20px;
+    height: 20px;
     top: 50%;
     transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
     color: rgba(255, 255, 255, 0.6);
     pointer-events: none;
+    z-index: 1;
 }
 
 .locationInput {
     width: 100%;
-    height: 48px;
-    padding: 0 50px 0 48px;
+    height: 52px;
+    padding: 0 48px 0 56px;
     background: transparent;
     border: none;
     color: #fff;
     font-size: 16px;
     font-family: 'Inter', sans-serif;
     outline: none;
+    line-height: 52px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
 }
 
 .locationInput::placeholder {
     color: rgba(255, 255, 255, 0.5);
+    font-size: 16px;
 }
 
 .locationClearButton {
     position: absolute;
-    right: 12px;
+    right: 8px;
     top: 50%;
     transform: translateY(-50%);
     background: none;
     border: none;
-    padding: 8px;
+    padding: 6px;
     cursor: pointer;
     color: rgba(255, 255, 255, 0.6);
-    border-radius: 8px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -847,11 +855,12 @@
 
     /* Mobile location popup adjustments */
     .location-container {
-        width: 95%;
+        width: 92%;
         max-width: none;
         padding: 20px;
-        max-height: 90vh;
+        max-height: 85vh;
         border-radius: 20px;
+        margin: 0 auto;
     }
 
     .locationHeader h2 {
@@ -877,18 +886,21 @@
     .locationInput {
         height: 52px;
         font-size: 16px;
-        padding: 0 60px 0 52px;
+        padding: 0 48px 0 56px;
+        line-height: 52px;
     }
 
     .locationSearchIcon {
         left: 18px;
         width: 20px;
         height: 20px;
+        top: 50%;
+        transform: translateY(-50%);
     }
 
     .locationClearButton {
-        right: 16px;
-        padding: 10px;
+        right: 12px;
+        padding: 8px;
         min-width: 36px;
         min-height: 36px;
     }
@@ -958,9 +970,10 @@
 /* Extra small screens */
 @media (max-width: 480px) {
     .location-container {
-        width: 98%;
+        width: 96%;
         padding: 16px;
         border-radius: 16px;
+        max-height: 80vh;
     }
 
     .locationHeader h2 {
@@ -970,6 +983,8 @@
     .locationInput {
         height: 48px;
         font-size: 16px;
+        padding: 0 44px 0 52px;
+        line-height: 48px;
     }
 
     .locationCityButton {
@@ -1065,3 +1080,24 @@
 .locationContainer { position: relative; margin-left: 20px; }
 .locationButton{display:flex;align-items:center;gap:5px;background:none;border:none;padding:6px 12px;color:rgba(255,255,255,.6);font-size:15px;cursor:pointer;border-radius:8px;transition:all .2s ease}.locationButton:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}.locationIcon{width:16px;height:16px;stroke-width:2}.chevronIcon{width:14px;height:14px;transition:transform .2s ease}.chevronIcon.rotate{transform:rotate(180deg)}.locationDropdown{position:absolute;top:100%;left:0;margin-top:8px;background:rgba(26,26,26,.98);border:1px solid rgba(255,255,255,.2);border-radius:12px;width:280px;box-shadow:0 4px 20px rgba(0,0,0,.3);animation:slideDown .2s ease;z-index:1000}.locationSearch{padding:12px;border-bottom:1px solid rgba(255,255,255,.1)}.locationInput{width:100%;padding:8px 12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;font-size:14px;outline:none;transition:all .2s ease}.locationInput:focus{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3)}.locationInput::placeholder{color:rgba(255,255,255,.5)}.popularCities{padding:8px 0;max-height:300px;overflow-y:auto}.popularCities h3{padding:8px 16px;color:rgba(255,255,255,.5);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.popularCities ul{list-style:none;padding:0;margin:0}.popularCities li{padding:8px 16px;color:rgba(255,255,255,.8);font-size:14px;cursor:pointer;transition:all .2s ease}.popularCities li:hover{background:rgba(255,255,255,.1);color:#fff}.popularCities li.selected{color:#2997ff;background:rgba(41,151,255,.1)}@media (max-width:768px){.locationContainer{margin-left:12px}.locationButton{padding:4px 8px;font-size:13px}.locationIcon{width:14px;height:14px}.chevronIcon{width:12px;height:12px}.locationDropdown{width:240px;right:0;left:auto}}
 .mobileLocationContainer{position:relative;}.mobileLocationButton{display:flex;align-items:center;font-size:15px;gap:3px;background:none;border:none;padding:6px;color:rgba(255,255,255,.6);cursor:pointer;border-radius:8px;transition:all .2s ease}.mobileLocationButton:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}.mobileLocationIcon{width:16px;height:16px;stroke-width:2}.mobileChevronIcon{width:14px;height:14px;transition:transform .2s ease}.mobileChevronIcon.rotate{transform:rotate(180deg)}.mobileLocationDropdown{position:fixed;top:44px;left:0;right:0;width:100%;background:rgba(26,26,26,.98);border:1px solid rgba(255,255,255,.2);border-top:none;border-radius:0 0 12px 12px;box-shadow:0 4px 20px rgba(0,0,0,.3);animation:slideDown .2s ease;z-index:1000}
+
+.orgLoginLink {
+    color: #007bff !important;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+    opacity: 0.9 !important;
+    transition: all 400ms;
+    white-space: nowrap;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 123, 255, 0.3);
+    background: rgba(0, 123, 255, 0.1);
+}
+
+.orgLoginLink:hover {
+    opacity: 1 !important;
+    background: rgba(0, 123, 255, 0.2);
+    border-color: rgba(0, 123, 255, 0.5);
+    transform: translateY(-1px);
+}

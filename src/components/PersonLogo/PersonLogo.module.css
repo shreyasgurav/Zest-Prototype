@@ -14,7 +14,7 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-radius: 12px;
-    min-width: 160px;
+    min-width: 180px;
     z-index: 1000;
     
     /* Initial state */
@@ -63,13 +63,42 @@
     border-radius: 8px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 12px;
+    font-weight: 500;
 }
 
 .dropdown-item:hover {
     background: rgba(255, 255, 255, 0.1);
     color: white;
     transform: translateX(2px);
+}
+
+.dropdown-icon {
+    font-size: 16px;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+}
+
+.dropdown-item:hover .dropdown-icon {
+    opacity: 1;
+}
+
+/* Specific icon colors */
+.dropdown-item:first-child .dropdown-icon {
+    color: #60a5fa; /* Profile - blue */
+}
+
+.dropdown-item:nth-child(2) .dropdown-icon {
+    color: #c084fc; /* Tickets - purple */
+}
+
+.dropdown-item:last-child .dropdown-icon {
+    color: #f87171; /* Logout - red */
 }
 
 /* Remove the border between items and use spacing instead */
@@ -112,6 +141,10 @@
 
 .person-dropdown.active .dropdown-item:nth-child(2) {
     transition-delay: 0.15s;
+}
+
+.person-dropdown.active .dropdown-item:nth-child(3) {
+    transition-delay: 0.2s;
 }
 
 /* Login Popup Styles */

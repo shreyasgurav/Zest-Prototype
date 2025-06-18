@@ -3,6 +3,7 @@ import { auth } from '../../lib/firebase';
 import { signOut, User, onAuthStateChanged } from "firebase/auth";
 import LoginPopup from '../Authentication/LoginPopup/LoginPopup';
 import { useRouter, usePathname } from 'next/navigation';
+import { FaTicketAlt } from 'react-icons/fa';
 import styles from "./PersonLogo.module.css";
 
 function PersonLogo() {
@@ -56,6 +57,12 @@ function PersonLogo() {
         } else {
             router.push('/profile');
         }
+        setShowDropdown(false);
+    };
+
+    const handleTicketsClick = () => {
+        router.push('/tickets');
+        setShowDropdown(false);
     };
 
     return (
@@ -85,9 +92,15 @@ function PersonLogo() {
                 ) : (
                     <>
                         <div className={styles["dropdown-item"]} onClick={handleProfileClick}>
+                            <span className={styles["dropdown-icon"]}>👤</span>
                             Profile
                         </div>
+                        <div className={styles["dropdown-item"]} onClick={handleTicketsClick}>
+                            <FaTicketAlt className={styles["dropdown-icon"]} />
+                            My Tickets
+                        </div>
                         <div className={styles["dropdown-item"]} onClick={handleLogout}>
+                            <span className={styles["dropdown-icon"]}>🚪</span>
                             Logout
                         </div>
                     </>

@@ -4,7 +4,7 @@ import logo from '../header-images/zest-logo.png';
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '../../lib/firebase';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import PersonLogo from "../PersonLogo/PersonLogo";
 import styles from "./header.module.css";
 import Link from 'next/link';
@@ -39,6 +39,7 @@ interface SearchResult {
     location?: string;
     date?: string;
     organizationName?: string;
+    username?: string; // For organization username
 }
 
 // Create a context for location
@@ -59,6 +60,7 @@ const Header = () => {
     const [hideSecondaryNav, setHideSecondaryNav] = useState(false);
     const [lastScrollY, setLastScrollY] = useState(0);
     const [user, setUser] = useState<User | null>(null);
+    const [isOrganization, setIsOrganization] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [locationQuery, setLocationQuery] = useState('');
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -67,6 +69,17 @@ const Header = () => {
     const searchContainerRef = useRef<HTMLDivElement>(null);
     const locationContainerRef = useRef<HTMLDivElement>(null);
     const [selectedCity, setSelectedCity] = useState('Mumbai');
+
+    // Check if user is an organization
+    const checkIfOrganization = async (user: User) => {
+        try {
+            const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
+            setIsOrganization(orgDoc.exists());
+        } catch (error) {
+            console.error("Error checking organization status:", error);
+            setIsOrganization(false);
+        }
+    };
 
     // Store location in localStorage and broadcast changes
     useEffect(() => {
@@ -88,8 +101,13 @@ const Header = () => {
     };
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
+            if (currentUser) {
+                await checkIfOrganization(currentUser);
+            } else {
+                setIsOrganization(false);
+            }
         });
 
         const handleClickOutside = (event: MouseEvent) => {
@@ -147,129 +165,178 @@ const Header = () => {
         return () => window.removeEventListener('scroll', handleScroll);
     }, [lastScrollY]);
 
+    // Optimized search function with correct field names
     const performSearch = async () => {
         try {
             const results: SearchResult[] = [];
-            const searchLower = searchQuery.toLowerCase();
+            const searchLower = searchQuery.toLowerCase().trim();
+            
+            // Early return if search query is too short
+            if (searchLower.length < 2) {
+                setSearchResults([]);
+                setIsLoading(false);
+                return;
+            }
 
-            // Search Events with better field matching
-            const eventsQuery = query(
-                collection(db, "events"), 
-                limit(10)
-            );
-            const eventsSnapshot = await getDocs(eventsQuery);
-            eventsSnapshot.forEach(doc => {
-                const data = doc.data();
-                const eventTitle = data.title || data.eventTitle || '';
-                const eventVenue = data.event_venue || data.eventVenue || '';
-                const hostingClub = data.hosting_club || data.hostingClub || '';
-                const aboutEvent = data.about_event || data.aboutEvent || '';
+            console.log('Searching for:', searchLower);
+
+            // Search Events with correct field names
+            try {
+                const eventsQuery = query(collection(db, "events"), limit(15));
+                const eventsSnapshot = await getDocs(eventsQuery);
                 
-                // Check if search query matches title, venue, hosting club, or description
-                if (eventTitle.toLowerCase().includes(searchLower) ||
-                    eventVenue.toLowerCase().includes(searchLower) ||
-                    hostingClub.toLowerCase().includes(searchLower) ||
-                    aboutEvent.toLowerCase().includes(searchLower)) {
+                eventsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const eventTitle = (data.title || data.eventTitle || '').toLowerCase();
+                    const eventVenue = (data.event_venue || data.eventVenue || '').toLowerCase();
+                    const hostingClub = (data.hosting_club || data.hostingClub || '').toLowerCase();
+                    const aboutEvent = (data.about_event || data.aboutEvent || '').toLowerCase();
                     
-                    results.push({ 
-                        id: doc.id, 
-                        type: 'event', 
-                        title: eventTitle,
-                        description: aboutEvent,
-                        location: eventVenue,
-                        organizationName: hostingClub,
-                        image: data.event_image,
-                        date: data.time_slots?.[0]?.date
+                    // More targeted search matching
+                    if (eventTitle.includes(searchLower) ||
+                        eventVenue.includes(searchLower) ||
+                        hostingClub.includes(searchLower) ||
+                        aboutEvent.includes(searchLower)) {
+                        
+                        results.push({ 
+                            id: doc.id, 
+                            type: 'event', 
+                            title: data.title || data.eventTitle || 'Untitled Event',
+                            description: data.about_event || data.aboutEvent || '',
+                            location: data.event_venue || data.eventVenue || '',
+                            organizationName: data.hosting_club || data.hostingClub || '',
+                            image: data.event_image || '',
+                            date: data.time_slots?.[0]?.date || ''
+                        });
+                    }
+                });
+                console.log('Found', results.filter(r => r.type === 'event').length, 'events');
+            } catch (error) {
+                console.error('Error searching events:', error);
+            }
+
+            // Search Activities with correct field names
+            try {
+                const activitiesQuery = query(collection(db, "activities"), limit(15));
+                const activitiesSnapshot = await getDocs(activitiesQuery);
+                
+                activitiesSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const activityName = (data.name || data.activityName || '').toLowerCase();
+                    const activityLocation = (data.location || data.activityLocation || data.activity_venue || '').toLowerCase();
+                    const hostingOrg = (data.hosting_organization || data.hostingClub || data.hosting_club || '').toLowerCase();
+                    const aboutActivity = (data.about_activity || data.aboutActivity || '').toLowerCase();
+                    
+                    if (activityName.includes(searchLower) ||
+                        activityLocation.includes(searchLower) ||
+                        hostingOrg.includes(searchLower) ||
+                        aboutActivity.includes(searchLower)) {
+                        
+                        results.push({ 
+                            id: doc.id, 
+                            type: 'activity', 
+                            title: data.name || data.activityName || 'Untitled Activity',
+                            description: data.about_activity || data.aboutActivity || '',
+                            location: data.location || data.activityLocation || data.activity_venue || '',
+                            organizationName: data.hosting_organization || data.hostingClub || data.hosting_club || '',
+                            image: data.activity_image || ''
+                        });
+                    }
+                });
+                console.log('Found', results.filter(r => r.type === 'activity').length, 'activities');
+            } catch (error) {
+                console.error('Error searching activities:', error);
+            }
+
+            // Search Organizations in both collections with correct field names
+            try {
+                // Search in Organisations collection (main one being used)
+                const orgsQuery = query(collection(db, "Organisations"), limit(15));
+                const orgsSnapshot = await getDocs(orgsQuery);
+                
+                orgsSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const orgName = (data.name || '').toLowerCase();
+                    const orgUsername = (data.username || '').toLowerCase();
+                    const orgBio = (data.bio || data.description || '').toLowerCase();
+                    
+                    if (orgName.includes(searchLower) ||
+                        orgUsername.includes(searchLower) ||
+                        orgBio.includes(searchLower)) {
+                        
+                        results.push({ 
+                            id: doc.id, 
+                            type: 'organization', 
+                            title: data.name || 'Unknown Organization',
+                            description: data.bio || data.description || '',
+                            image: data.photoURL || data.logo || data.profile_image || '',
+                            username: data.username || '' // Store username for routing
+                        });
+                    }
+                });
+
+                // Also search in organizations collection (if it exists)
+                try {
+                    const orgsQuery2 = query(collection(db, "organizations"), limit(10));
+                    const orgsSnapshot2 = await getDocs(orgsQuery2);
+                    
+                    orgsSnapshot2.forEach(doc => {
+                        const data = doc.data();
+                        const orgName = (data.organizationName || data.name || '').toLowerCase();
+                        const orgUsername = (data.username || '').toLowerCase();
+                        const orgDescription = (data.description || data.about || '').toLowerCase();
+                        
+                        if (orgName.includes(searchLower) ||
+                            orgUsername.includes(searchLower) ||
+                            orgDescription.includes(searchLower)) {
+                            
+                            results.push({ 
+                                id: doc.id, 
+                                type: 'organization', 
+                                title: data.organizationName || data.name || 'Unknown Organization',
+                                description: data.description || data.about || '',
+                                image: data.logo || data.profile_image || '',
+                                username: data.username || ''
+                            });
+                        }
                     });
+                } catch (error) {
+                    // organizations collection might not exist, ignore error
+                    console.log('organizations collection not found or empty');
                 }
+
+                console.log('Found', results.filter(r => r.type === 'organization').length, 'organizations');
+            } catch (error) {
+                console.error('Error searching organizations:', error);
+            }
+
+            // Remove duplicates and limit results
+            const uniqueResults = results.filter((result, index, self) => 
+                index === self.findIndex((r) => r.type === result.type && r.id === result.id)
+            );
+
+            // Sort results: prioritize exact matches, then partial matches
+            const sortedResults = uniqueResults.sort((a, b) => {
+                const aTitle = a.title.toLowerCase();
+                const bTitle = b.title.toLowerCase();
+                
+                // Exact match priority
+                if (aTitle === searchLower && bTitle !== searchLower) return -1;
+                if (bTitle === searchLower && aTitle !== searchLower) return 1;
+                
+                // Starts with search query priority
+                if (aTitle.startsWith(searchLower) && !bTitle.startsWith(searchLower)) return -1;
+                if (bTitle.startsWith(searchLower) && !aTitle.startsWith(searchLower)) return 1;
+                
+                // Alphabetical order for same priority
+                return aTitle.localeCompare(bTitle);
             });
 
-            // Search Activities with better field matching
-            const activitiesQuery = query(
-                collection(db, "activities"), 
-                limit(10)
-            );
-            const activitiesSnapshot = await getDocs(activitiesQuery);
-            activitiesSnapshot.forEach(doc => {
-                const data = doc.data();
-                const activityName = data.activityName || data.activity_name || '';
-                const activityVenue = data.activityVenue || data.activity_venue || '';
-                const hostingClub = data.hostingClub || data.hosting_club || '';
-                const aboutActivity = data.aboutActivity || data.about_activity || '';
-                
-                if (activityName.toLowerCase().includes(searchLower) ||
-                    activityVenue.toLowerCase().includes(searchLower) ||
-                    hostingClub.toLowerCase().includes(searchLower) ||
-                    aboutActivity.toLowerCase().includes(searchLower)) {
-                    
-                    results.push({ 
-                        id: doc.id, 
-                        type: 'activity', 
-                        title: activityName,
-                        description: aboutActivity,
-                        location: activityVenue,
-                        organizationName: hostingClub,
-                        image: data.activity_image
-                    });
-                }
-            });
-
-            // Search Organizations with better field matching
-            const orgsQuery = query(
-                collection(db, "organizations"), 
-                where("isPublic", "==", true), 
-                limit(10)
-            );
-            const orgsSnapshot = await getDocs(orgsQuery);
-            orgsSnapshot.forEach(doc => {
-                const data = doc.data();
-                const orgName = data.organizationName || data.name || '';
-                const orgUsername = data.username || '';
-                const orgDescription = data.description || data.about || '';
-                
-                if (orgName.toLowerCase().includes(searchLower) ||
-                    orgUsername.toLowerCase().includes(searchLower) ||
-                    orgDescription.toLowerCase().includes(searchLower)) {
-                    
-                    results.push({ 
-                        id: doc.id, 
-                        type: 'organization', 
-                        title: orgName,
-                        description: orgDescription,
-                        image: data.logo || data.profile_image
-                    });
-                }
-            });
-
-            // Also search Organizations collection (different structure)
-            const orgsQuery2 = query(
-                collection(db, "Organisations"), 
-                limit(10)
-            );
-            const orgsSnapshot2 = await getDocs(orgsQuery2);
-            orgsSnapshot2.forEach(doc => {
-                const data = doc.data();
-                const orgName = data.name || '';
-                const orgUsername = data.username || '';
-                const orgDescription = data.description || data.about || '';
-                
-                if (orgName.toLowerCase().includes(searchLower) ||
-                    orgUsername.toLowerCase().includes(searchLower) ||
-                    orgDescription.toLowerCase().includes(searchLower)) {
-                    
-                    results.push({ 
-                        id: doc.id, 
-                        type: 'organization', 
-                        title: orgName,
-                        description: orgDescription,
-                        image: data.logo || data.profile_image
-                    });
-                }
-            });
-
-            setSearchResults(results.slice(0, 8)); // Limit to 8 results
+            setSearchResults(sortedResults.slice(0, 10)); // Limit to top 10 results
+            console.log('Final search results:', sortedResults.slice(0, 10));
         } catch (error) {
-            console.error('Error searching:', error);
+            console.error('Error in performSearch:', error);
+            setSearchResults([]);
         } finally {
             setIsLoading(false);
         }
@@ -299,13 +366,31 @@ const Header = () => {
         }
     };
 
+    // Improved result click handler with proper routing
     const handleResultClick = (result: SearchResult) => {
         setSearchVisible(false);
         setSearchQuery('');
+        
+        console.log('Clicked result:', result);
+        
         switch (result.type) {
-            case 'event': router.push(`/event-profile/${result.id}`); break;
-            case 'activity': router.push(`/activity-profile/${result.id}`); break;
-            case 'organization': router.push(`/organisation/${result.id}`); break;
+            case 'event': 
+                router.push(`/event-profile/${result.id}`); 
+                break;
+            case 'activity': 
+                router.push(`/activity-profile/${result.id}`); 
+                break;
+            case 'organization': 
+                // Route to organization profile using username if available, otherwise use ID
+                if (result.username) {
+                    router.push(`/organisation/${result.username}`);
+                } else {
+                    // Fallback to ID if username is not available
+                    router.push(`/organisation/${result.id}`);
+                }
+                break;
+            default:
+                console.warn('Unknown result type:', result.type);
         }
     };
 
@@ -324,7 +409,6 @@ const Header = () => {
             city.toLowerCase().includes(locationQuery.toLowerCase())
           );
 
-    const isOrganization = () => user?.providerData[0]?.providerId === 'phone';
     const handleNavItemClick = () => setNavActive(false);
     const handleSearchSubmit = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) performSearch(); };
     const shouldShowSecondaryNav = () => ['/', '/events', '/activities'].includes(pathname || '');
@@ -372,7 +456,8 @@ const Header = () => {
                         <li><LocationSelector selectedCity={selectedCity} onLocationClick={toggleLocation} /></li>
                         <li className={styles.navItemWithIcon}><Link href="/events" onClick={handleNavItemClick} className={styles.navLinkWithIcon}><Ticket className={styles.navIcon} /><span>Events</span></Link></li>
                         <li className={styles.navItemWithIcon}><Link href="/activities" onClick={handleNavItemClick} className={styles.navLinkWithIcon}><Sparkles className={styles.navIcon} /><span>Activities</span></Link></li>
-                        {isOrganization() && (<li><Link href="/create" onClick={handleNavItemClick}>Create</Link></li>)}
+                        {isOrganization && (<li><Link href="/create" onClick={handleNavItemClick}>Create</Link></li>)}
+                        {!isOrganization && user && (<li><Link href="/organization/login" onClick={handleNavItemClick} className={styles.orgLoginLink}>List Events</Link></li>)}
                         <li className={styles.desktopNavSpacer}></li>
                         <li><button className={styles.searchNavButton} onClick={toggleSearch} aria-label="Search"><Search className={styles.searchNavIcon} /></button></li>
                         <li><a className={styles['link-Profile-logo']} onClick={handleNavItemClick}><PersonLogo /></a></li>
@@ -406,6 +491,7 @@ const Header = () => {
                                                 {result.location && <span className={styles.resultMetaItem}><MapPin className={styles.metaIcon} />{result.location}</span>}
                                                 {result.date && <span className={styles.resultMetaItem}><Clock className={styles.metaIcon} />{formatDate(result.date)}</span>}
                                                 {result.organizationName && <span className={styles.resultMetaItem}><Building2 className={styles.metaIcon} />{result.organizationName}</span>}
+                                                {result.type === 'organization' && result.username && <span className={styles.resultMetaItem}>@{result.username}</span>}
                                             </div>
                                         </div>
                                     </div>
@@ -418,7 +504,6 @@ const Header = () => {
                                 <div className={styles.quickLinksGrid}>
                                     <Link href="/events" className={styles.quickLink} onClick={() => setSearchVisible(false)}><Calendar className={styles.quickLinkIcon} /><span>Events</span></Link>
                                     <Link href="/activities" className={styles.quickLink} onClick={() => setSearchVisible(false)}><PartyPopper className={styles.quickLinkIcon} /><span>Activities</span></Link>
-                                    <Link href="/organizations" className={styles.quickLink} onClick={() => setSearchVisible(false)}><Building2 className={styles.quickLinkIcon} /><span>Organizations</span></Link>
                                 </div>
                             </div>
                         )}
@@ -446,7 +531,7 @@ const Header = () => {
                             <input 
                                 type="text" 
                                 className={styles.locationInput} 
-                                placeholder="Search for your city..." 
+                                placeholder="        Search for your city..." 
                                 value={locationQuery} 
                                 onChange={(e) => setLocationQuery(e.target.value)} 
                                 autoFocus
