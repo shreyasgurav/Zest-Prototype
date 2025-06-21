@@ -47,6 +47,7 @@ const EventsSection = () => {
   const [error, setError] = useState<string | null>(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [selectedCity, setSelectedCity] = useState('Mumbai');
+  const [forceShow, setForceShow] = useState(false);
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: 'start',
@@ -117,31 +118,74 @@ const EventsSection = () => {
     console.log(`Filtered ${filtered.length} events for ${selectedCity}`);
   }, [allEvents, selectedCity, filterEventsByLocation]);
 
-  // Preload images
+  // Preload images with timeout and fallback
   const preloadImages = async (eventsData: Event[]) => {
     try {
       const imagePromises = eventsData
         .filter(event => event.event_image)
+        .slice(0, 6) // Only preload first 6 images for performance
         .map(event => {
           return new Promise((resolve) => {
             const img = new window.Image();
-            img.onload = resolve;
-            img.onerror = resolve;
+            
+            // Set a timeout for each image
+            const timeout = setTimeout(() => {
+              resolve('timeout');
+            }, 1000); // 1 second timeout per image
+            
+            img.onload = () => {
+              clearTimeout(timeout);
+              resolve('loaded');
+            };
+            img.onerror = () => {
+              clearTimeout(timeout);
+              resolve('error');
+            };
             img.src = event.event_image;
           });
         });
 
-      await Promise.all(imagePromises);
+      // If no images to preload, set as loaded immediately
+      if (imagePromises.length === 0) {
+        setImagesLoaded(true);
+        return;
+      }
+
+      // Wait for images with a global timeout
+      const globalTimeout = new Promise(resolve => 
+        setTimeout(() => resolve('global_timeout'), 2000) // 2 second global timeout
+      );
+      
+      await Promise.race([
+        Promise.all(imagePromises),
+        globalTimeout
+      ]);
+      
       setImagesLoaded(true);
     } catch (err) {
       console.error('Error preloading images:', err);
-      setImagesLoaded(true); // Continue even if preloading fails
+      setImagesLoaded(true); // Always continue even if preloading fails
     }
   };
 
   useEffect(() => {
     const fetchEvents = async () => {
       try {
+        // Check cache first
+        const cachedEvents = sessionStorage.getItem('cachedEvents');
+        const cacheTimestamp = sessionStorage.getItem('eventsTimestamp');
+        const now = Date.now();
+        
+        // Use cache if it's less than 5 minutes old
+        if (cachedEvents && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 300000) {
+          console.log('Using cached events data');
+          const eventsData = JSON.parse(cachedEvents);
+          setAllEvents(eventsData);
+          setImagesLoaded(true);
+          setLoading(false);
+          return;
+        }
+
         if (!db) throw new Error('Firebase is not initialized');
 
         const eventsCollectionRef = collection(db, "events");
@@ -168,12 +212,18 @@ const EventsSection = () => {
         }) as Event[];
         
         console.log("Fetched events with org IDs:", eventsData);
+        
+        // Cache the data
+        sessionStorage.setItem('cachedEvents', JSON.stringify(eventsData));
+        sessionStorage.setItem('eventsTimestamp', Date.now().toString());
+        
         setAllEvents(eventsData);
         preloadImages(eventsData);
         setError(null);
       } catch (error) {
         console.error('Error fetching events:', error);
         setError(error instanceof Error ? error.message : 'Failed to fetch events');
+        setImagesLoaded(true); // Set images as loaded even on error
       } finally {
         setLoading(false);
       }
@@ -181,6 +231,19 @@ const EventsSection = () => {
 
     fetchEvents();
   }, []);
+
+  // Backup timer to force show content after 8 seconds
+  useEffect(() => {
+    const backupTimer = setTimeout(() => {
+      if (!imagesLoaded) {
+        console.log('Backup timer: Force showing content');
+        setForceShow(true);
+        setImagesLoaded(true);
+      }
+    }, 3000); // 3 second backup timer
+
+    return () => clearTimeout(backupTimer);
+  }, [imagesLoaded]);
 
   const handleEventDelete = (eventId: string) => {
     setAllEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
@@ -194,7 +257,8 @@ const EventsSection = () => {
     );
   }
 
-  if (loading || !imagesLoaded) {
+  // Show content immediately, even while loading
+  if (loading && allEvents.length === 0) {
     return <EventsSectionSkeleton />;
   }
 

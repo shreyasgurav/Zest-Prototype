@@ -163,33 +163,33 @@ function Login() {
       const result = await window.confirmationResult.confirm(otp);
       
       if (result.user) {
-        // Check if organization document already exists
-        const orgDoc = await getDoc(doc(db, "Organisations", result.user.uid));
+        // Check if user document already exists (NOT organization!)
+        const userDoc = await getDoc(doc(db, "Users", result.user.uid));
         
-        if (!orgDoc.exists()) {
-          // Only create new document if it doesn't exist
-          const orgData = {
+        if (!userDoc.exists()) {
+          // Create new USER document
+          const userData = {
             uid: result.user.uid,
-            phoneNumber: phoneNumber,
-            isActive: true,
-            role: 'Organisation',
+            phone: phoneNumber,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            settings: {
-              notifications: true,
-              emailUpdates: false,
-              privacy: {
-                profileVisibility: 'public',
-                contactVisibility: 'followers'
-              }
+            providers: {
+              phone: true
             }
           };
 
-          await setDoc(doc(db, "Organisations", result.user.uid), orgData);
+          await setDoc(doc(db, "Users", result.user.uid), userData);
+          toast.success("Account created successfully!");
+          router.push('/profile'); // Send to profile page
+        } else {
+          toast.success("Login successful!");
+          const userData = userDoc.data();
+          if (!userData.username) {
+            router.push('/profile'); // Complete profile setup
+          } else {
+            router.push('/profile'); // Go to profile if setup is complete
+          }
         }
-        
-        toast.success("Login successful!");
-        router.push('/organisation');
       }
     } catch (error) {
       console.error("Error verifying OTP:", error);

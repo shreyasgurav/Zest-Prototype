@@ -6,6 +6,8 @@ import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "fireb
 import { updateProfile, User } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { toast } from "react-toastify";
+import PhotoUpload from "../PhotoUpload/PhotoUpload";
+import { FaCamera, FaCrop, FaTimes } from 'react-icons/fa';
 import styles from "./UserProfile.module.css";
 
 interface UserDetails {
@@ -14,9 +16,11 @@ interface UserDetails {
   bio: string;
   phone: string;
   email: string;
+  contactEmail: string;
   photo?: string;
   providers?: {
     google?: boolean;
+    phone?: boolean;
   };
 }
 
@@ -26,6 +30,7 @@ interface FormData {
   bio: string;
   phone: string;
   email: string;
+  contactEmail: string;
 }
 
 function ProfileSkeleton() {
@@ -52,18 +57,20 @@ function UserProfile() {
   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
+  const [isEditingExistingPhoto, setIsEditingExistingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState<FormData>({
     name: "",
     username: "",
     bio: "",
     phone: "",
-    email: ""
+    email: "",
+    contactEmail: ""
   });
   const [isCheckingUsername, setIsCheckingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string>("");
-  const [phoneError, setPhoneError] = useState<string>("");
 
   const fetchUserData = async () => {
     try {
@@ -73,14 +80,25 @@ function UserProfile() {
           const docRef = doc(db, "Users", user.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-            const data = docSnap.data() as Omit<UserDetails, 'email'>;
-            setUserDetails({ ...data, email: user.email || "" });
+            const data = docSnap.data();
+            const userDetails = { 
+              name: data.name || "",
+              username: data.username || "",
+              bio: data.bio || "",
+              email: user.email || "", 
+              phone: user.phoneNumber || data.phone || "",
+              contactEmail: data.contactEmail || "",
+              photo: data.photo || "",
+              providers: data.providers || {}
+            };
+            setUserDetails(userDetails);
             setFormData({
               name: data.name || "",
               username: data.username || "",
               bio: data.bio || "",
-              phone: data.phone || "",
-              email: user.email || ""
+              phone: user.phoneNumber || data.phone || "",
+              email: user.email || "",
+              contactEmail: data.contactEmail || ""
             });
           }
           setIsLoading(false);
@@ -97,40 +115,49 @@ function UserProfile() {
     fetchUserData();
   }, []);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handlePhotoClick = () => {
+    setShowPhotoModal(true);
+  };
 
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Image size should be less than 2MB');
-      return;
-    }
+  const handleUploadPhotoClick = () => {
+    setShowPhotoModal(false);
+    setIsEditingExistingPhoto(false);
+    setShowPhotoUpload(true);
+  };
+
+  const handleEditPhotoClick = () => {
+    setShowPhotoModal(false);
+    setIsEditingExistingPhoto(true);
+    setShowPhotoUpload(true);
+  };
+
+  const handlePhotoChange = async (imageUrl: string) => {
     try {
-      setUploading(true);
       const user = auth.currentUser;
       if (!user) return;
-      const storageRef = ref(storage, `profilePics/${user.uid}`);
-      await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(storageRef);
-      await updateProfile(user, { photoURL: downloadURL });
+
+      // Update Firebase Auth profile
+      await updateProfile(user, { photoURL: imageUrl });
+      
+      // Update Firestore document
       const userRef = doc(db, "Users", user.uid);
-      await updateDoc(userRef, { photo: downloadURL });
-      setUserDetails(prev => prev ? { ...prev, photo: downloadURL } : null);
+      await updateDoc(userRef, { photo: imageUrl });
+      
+      // Update local state
+      setUserDetails(prev => prev ? { ...prev, photo: imageUrl } : null);
+      setShowPhotoUpload(false);
+      
       toast.success('Profile picture updated successfully!');
     } catch (error) {
-      console.error('Error uploading profile picture:', error);
+      console.error('Error updating profile picture:', error);
       toast.error('Failed to update profile picture');
-    } finally {
-      setUploading(false);
     }
   };
 
-  const handlePhotoClick = () => {
-    fileInputRef.current?.click();
+  const closePhotoModal = () => {
+    setShowPhotoModal(false);
+    setShowPhotoUpload(false);
+    setIsEditingExistingPhoto(false);
   };
 
   const checkUsernameAvailability = async (username: string): Promise<boolean> => {
@@ -160,16 +187,12 @@ function UserProfile() {
     }
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
-    setFormData({ ...formData, phone: value });
-    setPhoneError(value.length === 10 ? "" : "Phone number must be 10 digits");
-  };
-
   const handleUpdateProfile = async () => {
     try {
       const user = auth.currentUser;
       if (!user || !userDetails) return;
+      
+      // Check username availability
       if (formData.username && formData.username.length >= 3) {
         const isAvailable = await checkUsernameAvailability(formData.username);
         if (!isAvailable && formData.username !== userDetails.username) {
@@ -177,35 +200,36 @@ function UserProfile() {
           return;
         }
       }
-      if (phoneError) {
-        toast.error("Please fix phone number validation errors");
-        return;
-      }
-      if (formData.phone) {
-        const phoneQuery = query(
-          collection(db, "Users"),
-          where("phone", "==", formData.phone)
-        );
-        const phoneSnapshot = await getDocs(phoneQuery);
-        if (!phoneSnapshot.empty && phoneSnapshot.docs[0].id !== user.uid) {
-          setPhoneError("This phone number is already linked to another account");
-          return;
-        }
-      }
+
+      // Update Firebase Auth display name
       await updateProfile(user, { displayName: formData.name });
+      
+      // Update Firestore document
       const userRef = doc(db, "Users", user.uid);
       const userData = {
         name: formData.name,
         username: formData.username.toLowerCase(),
         bio: formData.bio,
-        phone: formData.phone,
+        contactEmail: formData.contactEmail,
+        updatedAt: new Date().toISOString(),
         providers: {
           ...(userDetails.providers || {}),
-          google: user.providerData.some((p: any) => p.providerId === 'google.com')
+          google: user.providerData.some((p: any) => p.providerId === 'google.com'),
+          phone: user.providerData.some((p: any) => p.providerId === 'phone')
         }
       };
+      
       await updateDoc(userRef, userData);
-      setUserDetails({ ...userData, email: user.email || "" });
+      
+      // Update local state with the new data
+      setUserDetails({ 
+        ...userDetails,
+        name: formData.name,
+        username: formData.username.toLowerCase(),
+        bio: formData.bio,
+        contactEmail: formData.contactEmail
+      });
+      
       setIsEditing(false);
       toast.success("Profile updated successfully!");
     } catch (error) {
@@ -226,28 +250,25 @@ function UserProfile() {
             <div className={styles.profileMainSection}>
               <div className={styles.profileLeftSection}>
                 <div className={styles.profileAvatar} onClick={handlePhotoClick} style={{ cursor: 'pointer' }}>
-                  {uploading ? (
-                    <div className={styles.uploadOverlay}>Uploading...</div>
-                  ) : (
-                    <>
-                      <img
-                        className={styles.avatarImage}
-                        src={userDetails.photo || "/default-avatar.png"}
-                        alt="Profile"
-                      />
-                      <div className={styles.avatarOverlay}>
-                        <span>Change Photo</span>
-                      </div>
-                    </>
-                  )}
+                  {userDetails.photo ? (
+                    <img
+                      className={styles.avatarImage}
+                      src={userDetails.photo}
+                      alt="Profile"
+                      onError={(e) => {
+                        // Fallback to initials if image fails to load
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.nextElementSibling?.classList.add(styles.showInitials);
+                      }}
+                    />
+                  ) : null}
+                  <div className={`${styles.defaultAvatar} ${!userDetails.photo ? styles.showInitials : ''}`}>
+                    {userDetails.name ? userDetails.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'US'}
+                  </div>
+                  <div className={styles.avatarOverlay}>
+                    <span>Edit Photo</span>
+                  </div>
                 </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                />
               </div>
               <div className={styles.profileRightSection}>
                 {isEditing ? (
@@ -285,28 +306,20 @@ function UserProfile() {
                         className={`${styles.profileInput} ${styles.bioInput}`}
                         placeholder="Tell us about yourself"
                         maxLength={200}
+                        rows={4}
                       />
+                      <span className={styles.helperText}>{formData.bio.length}/200 characters</span>
                     </div>
                     <div className={styles.inputGroup}>
-                      <label>Phone:</label>
-                      <input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={handlePhoneChange}
-                        className={styles.profileInput}
-                        placeholder="Enter 10-digit phone number"
-                        maxLength={10}
-                      />
-                      {phoneError && <span className={styles.error}>{phoneError}</span>}
-                    </div>
-                    <div className={styles.inputGroup}>
-                      <label>Email:</label>
+                      <label>Contact Email:</label>
                       <input
                         type="email"
-                        value={formData.email}
-                        className={`${styles.profileInput} ${styles.disabledInput}`}
-                        disabled
+                        value={formData.contactEmail}
+                        onChange={(e) => setFormData({...formData, contactEmail: e.target.value})}
+                        className={styles.profileInput}
+                        placeholder="Enter contact email (optional)"
                       />
+                      <span className={styles.helperText}>Public contact email for others to reach you</span>
                     </div>
                     <div className={styles.buttonGroup}>
                       <button 
@@ -325,7 +338,8 @@ function UserProfile() {
                             username: userDetails.username,
                             bio: userDetails.bio,
                             phone: userDetails.phone,
-                            email: userDetails.email
+                            email: userDetails.email,
+                            contactEmail: userDetails.contactEmail
                           });
                         }}
                       >
@@ -352,6 +366,54 @@ function UserProfile() {
               </div>
             </div>
           </div>
+
+          {/* Photo Options Modal */}
+          {showPhotoModal && (
+            <div className={styles.modalOverlay} onClick={closePhotoModal}>
+              <div className={styles.photoModal} onClick={(e) => e.stopPropagation()}>
+                <div className={styles.modalHeader}>
+                  <h3>Edit Photo</h3>
+                  <button className={styles.closeButton} onClick={closePhotoModal}>
+                    <FaTimes />
+                  </button>
+                </div>
+                <div className={styles.modalContent}>
+                  <button className={styles.photoOption} onClick={handleUploadPhotoClick}>
+                    <FaCamera className={styles.optionIcon} />
+                    <span>Upload Photo</span>
+                  </button>
+                  {userDetails.photo && (
+                    <button className={styles.photoOption} onClick={handleEditPhotoClick}>
+                      <FaCrop className={styles.optionIcon} />
+                      <span>Edit Photo</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Photo Upload/Crop Modal */}
+          {showPhotoUpload && (
+            <div className={styles.modalOverlay} onClick={closePhotoModal}>
+              <div className={styles.uploadModal} onClick={(e) => e.stopPropagation()}>
+                <div className={styles.modalHeader}>
+                  <h3>{isEditingExistingPhoto ? 'Edit Profile Photo' : 'Upload & Crop Photo'}</h3>
+                  <button className={styles.closeButton} onClick={closePhotoModal}>
+                    <FaTimes />
+                  </button>
+                </div>
+                <div className={styles.modalContent}>
+                  <PhotoUpload
+                    currentImageUrl={userDetails.photo}
+                    onImageChange={handlePhotoChange}
+                    type="profile"
+                    startWithCropping={isEditingExistingPhoto}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <p>Loading...</p>

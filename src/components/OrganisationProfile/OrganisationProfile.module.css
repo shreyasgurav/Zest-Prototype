@@ -113,6 +113,22 @@
   padding: 20px;
 }
 
+.photoUploadSection {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.photoUploadSection h3 {
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 20px 0;
+  text-align: center;
+}
+
 .inputGroup {
   margin-bottom: 20px;
 }

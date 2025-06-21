@@ -14,6 +14,8 @@
     margin-top: 20px;
 }
 
+
+
 .phoneNoText {
     margin-bottom: 10px;
     color: #ffffff;
@@ -25,7 +27,7 @@
 .phoneNoInput {
     display: flex;
     align-items: center;
-    background-color: black;
+    background-color: none;
     color: #000000;
     border-radius: 10px;
     padding: 12px 16px;
@@ -41,7 +43,37 @@
 
 .phoneNoInput:focus {
     border-color: #454545;
+    background-color: none;
+}
+
+
+/* Email Input Styles */
+.emailInput {
+    display: flex;
+    align-items: center;
+    background-color: #1c1c1c;
+    color: #ffffff;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: text;
+    outline: none;
+    transition: all 0.3s ease;
+    width: 270px; /* Matched with other inputs */
+    margin-bottom: 15px;
+}
+
+.emailInput:focus {
+    border-color: #454545;
     background-color: #252525;
+}
+
+.emailInput:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 .sendOtpButton {
@@ -110,6 +142,30 @@
 .otpInput:focus {
     border-color: #454545;
     background-color: #252525;
+}
+
+/* Email Verification Message */
+.verificationMessage {
+    text-align: center;
+    margin: 20px 0;
+    padding: 20px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.verificationMessage h3 {
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0 0 12px 0;
+}
+
+.verificationMessage p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 14px;
+    margin: 8px 0;
+    line-height: 1.5;
 }
 
 .verifyOtpButton {
@@ -205,7 +261,8 @@
     }
 
     .phoneNoInput,
-    .otpInput {
+    .otpInput,
+    .emailInput {
         width: 100%;
         max-width: 300px;
         font-size: 16px;
@@ -224,6 +281,19 @@
 
     .initializingMessage p {
         font-size: 11px;
+    }
+
+    .verificationMessage {
+        margin: 15px 0;
+        padding: 15px;
+    }
+
+    .verificationMessage h3 {
+        font-size: 16px;
+    }
+
+    .verificationMessage p {
+        font-size: 13px;
     }
 }
 

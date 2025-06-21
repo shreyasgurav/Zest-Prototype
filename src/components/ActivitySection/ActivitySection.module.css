@@ -151,32 +151,189 @@
 
 /* Skeleton Loading Styles */
 .skeletonSection {
-    opacity: 0;
+    opacity: 1;
     animation: fadeIn 0.5s ease forwards;
 }
 
 .skeletonLoading {
     pointer-events: none;
+    cursor: default;
 }
 
-.skeletonLine {
-    height: 16px;
-    border-radius: 4px;
-    margin: 8px 0;
-    background: linear-gradient(
-        90deg,
-        rgba(255, 255, 255, 0.05) 25%,
-        rgba(255, 255, 255, 0.1) 37%,
-        rgba(255, 255, 255, 0.05) 63%
-    );
-    background-size: 400% 100%;
-    animation: shimmer 1.5s infinite linear;
-}
-
+/* Header Skeleton */
 .skeletonHeading {
-    width: 300px;
-    height: 32px;
-    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.skeletonTitle {
+    width: 200px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    min-width: 150px;
+}
+
+.skeletonSeeAll {
+    margin-left: auto;
+}
+
+.skeletonButton {
+    width: 80px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    min-width: 60px;
+}
+
+/* Navigation Buttons Skeleton */
+.skeletonNavButton {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    cursor: default !important;
+    pointer-events: none;
+    opacity: 0.7 !important;
+}
+
+.skeletonNavIcon {
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    min-width: 20px;
+    min-height: 20px;
+}
+
+/* Activity Box Skeleton */
+.skeletonLoading .activityBoxCard {
+    background: rgba(255, 255, 255, 0.12) !important;
+    backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15) !important;
+}
+
+.skeletonImage {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, 
+        rgba(168, 85, 247, 0.3) 0%,
+        rgba(236, 72, 153, 0.3) 50%,
+        rgba(168, 85, 247, 0.3) 100%) !important;
+    background-size: 400% 400%;
+    animation: gradientShift 3s ease infinite;
+    border-radius: 20px 20px 0 0;
+}
+
+@keyframes gradientShift {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+/* Activity Type Badge Skeleton */
+.activityTypeBadge {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+}
+
+.skeletonTypeBadge {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    backdrop-filter: blur(12px);
+    width: 80px !important;
+    height: 32px !important;
+}
+
+.skeletonBadgeText {
+    width: 60px;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+/* Info Rows */
+.infoRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+/* Content Section Skeleton */
+.skeletonActivityTitle {
+    width: 85%;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    margin-bottom: 12px;
+    min-width: 120px;
+}
+
+.skeletonIcon {
+    width: 16px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 50%;
+    flex-shrink: 0;
+    min-width: 16px;
+    min-height: 16px;
+}
+
+.skeletonText {
+    height: 14px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    flex: 1;
+    max-width: 70%;
+    min-width: 80px;
+}
+
+/* Add shimmer effect to all skeleton elements */
+.skeletonTitle,
+.skeletonButton,
+.skeletonNavIcon,
+.skeletonBadgeText,
+.skeletonActivityTitle,
+.skeletonIcon,
+.skeletonText {
+    position: relative;
+    overflow: hidden;
+}
+
+.skeletonTitle::after,
+.skeletonButton::after,
+.skeletonNavIcon::after,
+.skeletonBadgeText::after,
+.skeletonActivityTitle::after,
+.skeletonIcon::after,
+.skeletonText::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, 
+        transparent 0%, 
+        rgba(255, 255, 255, 0.2) 50%, 
+        transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
 }
 
 /* Activity Box Skeleton Styles (for skeleton component) */
@@ -265,6 +422,53 @@
     }
     100% {
         background-position: -100% 0;
+    }
+}
+
+/* Responsive Skeleton Adjustments */
+@media (max-width: 768px) {
+    .skeletonTitle {
+        width: 150px;
+        height: 20px;
+    }
+    
+    .skeletonButton {
+        width: 60px;
+        height: 20px;
+    }
+    
+    .skeletonNavIcon {
+        width: 20px;
+        height: 20px;
+    }
+
+    .skeletonActivityTitle {
+        height: 18px;
+        min-width: 100px;
+    }
+}
+
+@media (max-width: 480px) {
+    .skeletonTitle {
+        width: 120px;
+        height: 18px;
+    }
+    
+    .skeletonActivityTitle {
+        height: 16px;
+        min-width: 80px;
+    }
+    
+    .skeletonIcon {
+        width: 14px;
+        height: 14px;
+        min-width: 14px;
+        min-height: 14px;
+    }
+    
+    .skeletonText {
+        height: 12px;
+        min-width: 60px;
     }
 }
 

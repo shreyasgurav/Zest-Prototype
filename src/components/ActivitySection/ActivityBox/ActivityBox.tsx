@@ -5,24 +5,42 @@ import { useRouter } from 'next/navigation';
 import { getAuth } from 'firebase/auth';
 import { db } from '@/lib/firebase';
 import { deleteDoc, doc } from 'firebase/firestore';
-import { MapPin, Calendar, Trash2, Users, Clock } from 'lucide-react';
+import { MapPin, Calendar, Trash2, Users, Clock, Tag } from 'lucide-react';
 import styles from './ActivityBox.module.css';
+
+interface WeeklySchedule {
+  day: string;
+  is_open: boolean;
+  time_slots: Array<{
+    start_time: string;
+    end_time: string;
+    capacity: number;
+    available_capacity: number;
+  }>;
+}
 
 interface Activity {
   id: string;
-  activityName: string;
-  activityLocation: string;
-  aboutActivity: string;
+  name: string;
+  location: string;
+  city?: string;
+  about_activity: string;
   activity_image: string;
   organizationId: string;
-  activityType?: string;
+  hosting_organization: string;
+  activity_categories: string[];
+  activity_languages?: string;
+  activity_duration?: string;
+  activity_age_limit?: string;
+  price_per_slot: number;
+  weekly_schedule: WeeklySchedule[];
+  closed_dates?: string[];
   createdAt: any;
-  time_slots?: Array<{
-    date: string;
-    start_time: string;
-    end_time: string;
-    available: boolean;
-  }>;
+  // Legacy field support
+  activityName?: string;
+  activityLocation?: string;
+  aboutActivity?: string;
+  activity_category?: string;
 }
 
 interface ActivityBoxProps {
@@ -38,18 +56,56 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const timeSlots = Array.isArray(activity?.time_slots) ? activity.time_slots : [];
-  const firstDate = timeSlots.length > 0 ? timeSlots[0].date : "No Date Available";
-  const firstTime = timeSlots.length > 0 ? timeSlots[0].start_time : "";
+  // Handle both new and legacy field names
+  const activityName = activity.name || activity.activityName || 'Untitled Activity';
+  const activityLocation = activity.location || activity.activityLocation || 'Location TBA';
+  const aboutActivity = activity.about_activity || activity.aboutActivity || '';
+  const categories = activity.activity_categories || (activity.activity_category ? [activity.activity_category] : []);
 
-  const formatDate = (dateString: string) => {
-    if (dateString === "No Date Available") return "TBA";
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
+  // Get the next available time slot from weekly schedule
+  const getNextAvailableSlot = () => {
+    const today = new Date();
+    const todayDay = today.toLocaleDateString('en-US', { weekday: 'long' });
+    
+    // Find today's schedule first
+    const todaySchedule = activity.weekly_schedule?.find(day => day.day === todayDay && day.is_open);
+    if (todaySchedule && todaySchedule.time_slots.length > 0) {
+      const firstSlot = todaySchedule.time_slots[0];
+      return {
+        day: todayDay,
+        time: firstSlot.start_time,
+        displayText: `Today • ${firstSlot.start_time}`
+      };
+    }
+
+    // Find next available day
+    const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const todayIndex = daysOfWeek.indexOf(todayDay);
+    
+    for (let i = 1; i <= 7; i++) {
+      const nextDayIndex = (todayIndex + i) % 7;
+      const nextDay = daysOfWeek[nextDayIndex];
+      const daySchedule = activity.weekly_schedule?.find(day => day.day === nextDay && day.is_open);
+      
+      if (daySchedule && daySchedule.time_slots.length > 0) {
+        const firstSlot = daySchedule.time_slots[0];
+        const dayLabel = i === 1 ? 'Tomorrow' : nextDay;
+        return {
+          day: nextDay,
+          time: firstSlot.start_time,
+          displayText: `${dayLabel} • ${firstSlot.start_time}`
+        };
+      }
+    }
+
+    return {
+      day: 'TBA',
+      time: '',
+      displayText: 'Schedule TBA'
+    };
   };
+
+  const nextSlot = getNextAvailableSlot();
 
   const truncateText = (text: string, wordLimit: number): string => {
     if (!text) return "";
@@ -58,6 +114,24 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
       return words.slice(0, wordLimit).join(' ') + '...';
     }
     return text;
+  };
+
+  const formatLocation = (location: string, city?: string): string => {
+    if (!location) return 'Location TBA';
+    
+    // If city is provided and not already in location, show both
+    if (city && !location.toLowerCase().includes(city.toLowerCase())) {
+      return `${truncateText(location, 15)}, ${city}`;
+    }
+    
+    return truncateText(location, 20);
+  };
+
+  const formatCategories = (categories: string[]): string => {
+    if (!categories || categories.length === 0) return '';
+    if (categories.length === 1) return categories[0];
+    if (categories.length === 2) return categories.join(' & ');
+    return `${categories[0]} +${categories.length - 1}`;
   };
 
   const handleClick = () => {
@@ -104,7 +178,7 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
             <>
               <img
                 src={activity.activity_image}
-                alt={activity.activityName}
+                alt={activityName}
                 className={`${styles.activityImage} ${imageLoaded ? styles.imageLoaded : styles.imageLoading}`}
                 onLoad={() => setImageLoaded(true)}
                 onError={() => setImageError(true)}
@@ -117,10 +191,10 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
             </div>
           )}
 
-          {/* Activity Type Badge */}
-          {activity.activityType && (
-            <div className={styles.activityTypeBadge}>
-              <span>{activity.activityType}</span>
+          {/* Price Badge */}
+          {activity.price_per_slot && (
+            <div className={styles.priceBadge}>
+              <span>₹{activity.price_per_slot}</span>
             </div>
           )}
         </div>
@@ -128,24 +202,37 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
         {/* Content Section */}
         <div className={styles.activityBoxInfo}>
           {/* Title */}
-          <h3>{truncateText(activity.activityName, 20)}</h3>
+          <h3>{truncateText(activityName, 20)}</h3>
+
+          {/* Categories */}
+          {categories.length > 0 && (
+            <div className={styles.infoRow}>
+              <Tag className={styles.categoryIcon} />
+              <span className={styles.categoryText}>{formatCategories(categories)}</span>
+            </div>
+          )}
 
           {/* Location */}
           <div className={styles.infoRow}>
             <MapPin className={styles.locationIcon} />
-            <span>{truncateText(activity.activityLocation, 25)}</span>
+            <span>{formatLocation(activityLocation, activity.city)}</span>
           </div>
 
-          {/* Date & Time */}
+          {/* Next Available Slot */}
           <div className={styles.infoRow}>
             <Clock className={styles.timeIcon} />
-            <span>{formatDate(firstDate)} {firstTime && `• ${firstTime}`}</span>
+            <span>{nextSlot.displayText}</span>
           </div>
 
-          {/* About */}
+          {/* About/Duration */}
           <div className={styles.infoRow}>
             <Users className={styles.aboutIcon} />
-            <span>{truncateText(activity.aboutActivity, 20)}</span>
+            <span>
+              {activity.activity_duration 
+                ? `${activity.activity_duration} sessions`
+                : truncateText(aboutActivity, 15)
+              }
+            </span>
           </div>
         </div>
       </div>

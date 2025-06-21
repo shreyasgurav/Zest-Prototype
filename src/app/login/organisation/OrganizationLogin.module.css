@@ -75,6 +75,116 @@
     margin-bottom: 30px;
 }
 
+/* Message Container Styles */
+.messageContainer {
+    margin-bottom: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.notAvailableMessage {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 40px 30px;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(8px);
+    animation: fadeInUp 0.6s ease;
+}
+
+.notAvailableMessage::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255, 193, 7, 0.6), transparent);
+}
+
+.messageTitle {
+    color: #ffffff;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 20px 0;
+    letter-spacing: -0.3px;
+    position: relative;
+}
+
+.messageTitle::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 2px;
+    background: linear-gradient(90deg, #ffc107, #ff9800);
+    border-radius: 1px;
+}
+
+.messageText {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 16px;
+    line-height: 1.6;
+    margin: 0 0 25px 0;
+    font-weight: 400;
+}
+
+.contactText {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 15px;
+    line-height: 1.5;
+    margin: 0;
+    font-weight: 500;
+}
+
+.contactEmail {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.3s ease;
+    background: rgba(0, 123, 255, 0.1);
+    border: 1px solid rgba(0, 123, 255, 0.2);
+    display: inline-block;
+    margin-left: 4px;
+}
+
+.contactEmail:hover {
+    color: #0056b3;
+    background: rgba(0, 123, 255, 0.2);
+    border-color: rgba(0, 123, 255, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
 .inputGroup {
     margin-bottom: 20px;
 }
@@ -297,6 +407,35 @@
     .initializingMessage p {
         font-size: 13px;
     }
+
+    /* Message Container Mobile Styles */
+    .messageContainer {
+        min-height: 150px;
+    }
+
+    .notAvailableMessage {
+        padding: 30px 20px;
+        border-radius: 12px;
+    }
+
+    .messageTitle {
+        font-size: 20px;
+        margin-bottom: 16px;
+    }
+
+    .messageText {
+        font-size: 15px;
+        margin-bottom: 20px;
+    }
+
+    .contactText {
+        font-size: 14px;
+    }
+
+    .contactEmail {
+        padding: 3px 6px;
+        font-size: 14px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -313,6 +452,40 @@
     .otpInput,
     .submitButton {
         padding: 12px;
+    }
+
+    /* Small Mobile Message Styles */
+    .messageContainer {
+        min-height: 120px;
+    }
+
+    .notAvailableMessage {
+        padding: 25px 15px;
+        border-radius: 10px;
+    }
+
+    .messageTitle {
+        font-size: 18px;
+        margin-bottom: 14px;
+    }
+
+    .messageTitle::after {
+        width: 40px;
+    }
+
+    .messageText {
+        font-size: 14px;
+        margin-bottom: 18px;
+    }
+
+    .contactText {
+        font-size: 13px;
+    }
+
+    .contactEmail {
+        padding: 2px 4px;
+        font-size: 13px;
+        margin-left: 2px;
     }
 }
 

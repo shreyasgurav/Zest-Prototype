@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import styles from './EventProfile.module.css';
 import { FaBookmark, FaCalendarAlt, FaMapMarkerAlt, FaLanguage, FaClock, FaUsers, FaInfo } from 'react-icons/fa';
 import EventProfileSkeleton from './EventProfileSkeleton';
@@ -63,6 +64,15 @@ function EventProfile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAllGuides, setShowAllGuides] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const formatDate = (dateString: string | undefined) => {
     if (!dateString) return 'Date not set';
@@ -163,6 +173,9 @@ function EventProfile() {
     }
   };
 
+  // Check if current user is an organization (uses phone auth)
+  const isOrganization = user?.providerData[0]?.providerId === 'phone';
+
   if (loading) {
     return <EventProfileSkeleton />;
   }
@@ -220,14 +233,25 @@ function EventProfile() {
             >
               <FaMapMarkerAlt /> {eventVenue}
             </div>
-            <div className={styles.eventPrice}>
-              <button 
-                className={styles.bookNowButton} 
-                onClick={handleBookNow}
-              >
-                Book Now
-              </button>
-            </div>
+            
+            {/* Only show Book Now button for regular users, not organizations */}
+            {!isOrganization && user && (
+              <div className={styles.eventPrice}>
+                <button 
+                  className={styles.bookNowButton} 
+                  onClick={handleBookNow}
+                >
+                  Book Now
+                </button>
+              </div>
+            )}
+
+            {/* Show message for organizations */}
+            {isOrganization && (
+              <div className={styles.orgMessage}>
+                <p>As an organization, you can explore events but cannot book them.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

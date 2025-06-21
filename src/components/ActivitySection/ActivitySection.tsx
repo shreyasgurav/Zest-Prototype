@@ -12,12 +12,26 @@ import ActivitySectionSkeleton from './ActivitySectionSkeleton';
 
 interface Activity {
   id: string;
-  activityName: string;
-  activityLocation: string;
-  aboutActivity: string;
+  name: string;
+  location: string;
+  city?: string;
+  about_activity: string;
   activity_image: string;
   organizationId: string;
+  hosting_organization: string;
+  activity_categories: string[];
+  activity_languages?: string;
+  activity_duration?: string;
+  activity_age_limit?: string;
+  price_per_slot: number;
+  weekly_schedule: any[];
+  closed_dates?: string[];
   createdAt: any;
+  // Legacy field support
+  activityName?: string;
+  activityLocation?: string;
+  aboutActivity?: string;
+  activity_category?: string;
 }
 
 const ActivitySection = () => {
@@ -27,6 +41,7 @@ const ActivitySection = () => {
   const [error, setError] = useState<string | null>(null);
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [selectedCity, setSelectedCity] = useState('Mumbai');
+  const [forceShow, setForceShow] = useState(false);
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: 'start',
@@ -84,9 +99,11 @@ const ActivitySection = () => {
     if (!city || city === 'All Cities') return activities;
     
     return activities.filter(activity => {
-      const location = activity.activityLocation || '';
-      // Check if location contains the city name (case insensitive)
-      return location.toLowerCase().includes(city.toLowerCase());
+      const location = activity.location || activity.activityLocation || '';
+      const activityCity = activity.city || '';
+      // Check if location or city contains the city name (case insensitive)
+      return location.toLowerCase().includes(city.toLowerCase()) || 
+             activityCity.toLowerCase().includes(city.toLowerCase());
     });
   }, []);
 
@@ -97,31 +114,74 @@ const ActivitySection = () => {
     console.log(`Filtered ${filtered.length} activities for ${selectedCity}`);
   }, [allActivities, selectedCity, filterActivitiesByLocation]);
 
-  // Preload images
+  // Preload images with timeout and fallback
   const preloadImages = async (activitiesData: Activity[]) => {
     try {
       const imagePromises = activitiesData
         .filter(activity => activity.activity_image)
+        .slice(0, 6) // Only preload first 6 images for performance
         .map(activity => {
           return new Promise((resolve) => {
             const img = new window.Image();
-            img.onload = resolve;
-            img.onerror = resolve;
+            
+            // Set a timeout for each image
+            const timeout = setTimeout(() => {
+              resolve('timeout');
+            }, 1000); // 1 second timeout per image
+            
+            img.onload = () => {
+              clearTimeout(timeout);
+              resolve('loaded');
+            };
+            img.onerror = () => {
+              clearTimeout(timeout);
+              resolve('error');
+            };
             img.src = activity.activity_image;
           });
         });
 
-      await Promise.all(imagePromises);
+      // If no images to preload, set as loaded immediately
+      if (imagePromises.length === 0) {
+        setImagesLoaded(true);
+        return;
+      }
+
+      // Wait for images with a global timeout
+      const globalTimeout = new Promise(resolve => 
+        setTimeout(() => resolve('global_timeout'), 2000) // 2 second global timeout
+      );
+      
+      await Promise.race([
+        Promise.all(imagePromises),
+        globalTimeout
+      ]);
+      
       setImagesLoaded(true);
     } catch (err) {
       console.error('Error preloading images:', err);
-      setImagesLoaded(true); // Continue even if preloading fails
+      setImagesLoaded(true); // Always continue even if preloading fails
     }
   };
 
   useEffect(() => {
     const fetchActivities = async () => {
       try {
+        // Check cache first
+        const cachedActivities = sessionStorage.getItem('cachedActivities');
+        const cacheTimestamp = sessionStorage.getItem('activitiesTimestamp');
+        const now = Date.now();
+        
+        // Use cache if it's less than 5 minutes old
+        if (cachedActivities && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 300000) {
+          console.log('Using cached activities data');
+          const activitiesData = JSON.parse(cachedActivities);
+          setAllActivities(activitiesData);
+          setImagesLoaded(true);
+          setLoading(false);
+          return;
+        }
+
         if (!db) throw new Error('Firebase is not initialized');
 
         const activitiesCollectionRef = collection(db, "activities");
@@ -132,14 +192,32 @@ const ActivitySection = () => {
           const data = doc.data();
           return {
             id: doc.id,
+            name: data.name || data.activityName || '',
+            location: data.location || data.activityLocation || '',
+            city: data.city || '',
+            about_activity: data.about_activity || data.aboutActivity || '',
+            activity_image: data.activity_image || '',
+            organizationId: data.organizationId || '',
+            hosting_organization: data.hosting_organization || '',
+            activity_categories: data.activity_categories || (data.activity_category ? [data.activity_category] : []),
+            activity_languages: data.activity_languages || '',
+            activity_duration: data.activity_duration || '',
+            activity_age_limit: data.activity_age_limit || '',
+            price_per_slot: data.price_per_slot || 0,
+            weekly_schedule: data.weekly_schedule || [],
+            closed_dates: data.closed_dates || [],
+            createdAt: data.createdAt,
+            // Legacy field support
             activityName: data.name || data.activityName || '',
             activityLocation: data.location || data.activityLocation || '',
             aboutActivity: data.about_activity || data.aboutActivity || '',
-            activity_image: data.activity_image || '',
-            organizationId: data.organizationId || '',
-            createdAt: data.createdAt
+            activity_category: data.activity_category || ''
           };
         }) as Activity[];
+        
+        // Cache the data
+        sessionStorage.setItem('cachedActivities', JSON.stringify(activitiesData));
+        sessionStorage.setItem('activitiesTimestamp', Date.now().toString());
         
         setAllActivities(activitiesData);
         preloadImages(activitiesData);
@@ -147,6 +225,7 @@ const ActivitySection = () => {
       } catch (error) {
         console.error('Error fetching activities:', error);
         setError(error instanceof Error ? error.message : 'Failed to fetch activities');
+        setImagesLoaded(true); // Set images as loaded even on error
       } finally {
         setLoading(false);
       }
@@ -154,6 +233,19 @@ const ActivitySection = () => {
 
     fetchActivities();
   }, []);
+
+  // Backup timer to force show content after 8 seconds
+  useEffect(() => {
+    const backupTimer = setTimeout(() => {
+      if (!imagesLoaded) {
+        console.log('Backup timer: Force showing activities content');
+        setForceShow(true);
+        setImagesLoaded(true);
+      }
+    }, 3000); // 3 second backup timer
+
+    return () => clearTimeout(backupTimer);
+  }, [imagesLoaded]);
 
   const handleActivityDelete = (activityId: string) => {
     setAllActivities(prevActivities => prevActivities.filter(activity => activity.id !== activityId));
@@ -167,7 +259,8 @@ const ActivitySection = () => {
     );
   }
 
-  if (loading || !imagesLoaded) {
+  // Show content immediately, even while loading
+  if (loading && allActivities.length === 0) {
     return <ActivitySectionSkeleton />;
   }
 

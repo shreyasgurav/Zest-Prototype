@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Music, Laugh, PartyPopper, Car, Mountain, Plane, Users, Sparkles, Heart, ArrowRight } from "lucide-react";
 import styles from './About.module.css';
 
@@ -10,6 +11,7 @@ export default function About() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const heroRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -86,6 +88,7 @@ export default function About() {
                 <Button
                   size="lg"
                   className={styles.primaryButton}
+                  onClick={() => router.push('/')}
                 >
                   Explore
                   <ArrowRight className={styles.buttonIcon} />
@@ -94,6 +97,7 @@ export default function About() {
                   size="lg"
                   variant="outline"
                   className={styles.secondaryButton}
+                  onClick={() => router.push('/listevents')}
                 >
                   List Events
                 </Button>

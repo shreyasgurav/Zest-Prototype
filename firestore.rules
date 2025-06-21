@@ -16,10 +16,20 @@ service cloud.firestore {
       allow write: if isAuthenticated() && isOwner(userId);
     }
     
-    // Allow read/write access to Users collection
+    // Enhanced Users collection rules for better security and clarity
     match /Users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isOwner(userId);
+      // Allow public read for authentication checks (email/phone existence)
+      // This is needed for account linking during signup
+      allow read: if true;
+      
+      // Allow users to create their own profile during signup
+      allow create: if isAuthenticated() && isOwner(userId);
+      
+      // Allow users to update their own profile
+      allow update: if isAuthenticated() && isOwner(userId);
+      
+      // Prevent deletion of user profiles (safety measure)
+      allow delete: if false;
     }
     
     // Allow public read access to Events collection

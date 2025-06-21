@@ -205,18 +205,85 @@
   font-size: 1.1em;
 }
 
-/* Remove all schedule-related styles */
-.scheduleSection,
-.scheduleGrid,
-.scheduleDay,
-.timeSlots,
-.timeSlot,
-.capacity,
-.closedDay,
-.closedText,
-.closedDatesSection,
-.closedDatesList,
+/* Weekly Schedule Styles */
+.scheduleGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.scheduleDay {
+  background: rgba(20, 20, 20, 0.5);
+  border-radius: 10px;
+  padding: 15px;
+  text-align: center;
+}
+
+.scheduleDay h4 {
+  color: #aeadad;
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.timeSlots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeSlot {
+  background: rgba(60, 60, 60, 0.5);
+  padding: 8px 12px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.timeSlot span:first-child {
+  color: #fff;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.capacity {
+  color: #888;
+  font-size: 12px;
+}
+
+.closedDay {
+  padding: 20px;
+}
+
+.closedText {
+  color: #666;
+  font-style: italic;
+  font-size: 14px;
+}
+
+/* Closed Dates Styles */
+.closedDatesList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
 .closedDate {
+  background: rgba(255, 68, 68, 0.2);
+  color: #ff6b6b;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid rgba(255, 68, 68, 0.3);
+}
+
+/* Remove all legacy schedule-related styles */
+.scheduleSection {
   display: none;
 }
 
@@ -279,6 +346,36 @@
     justify-content: flex-start;
     width: 100%;
   }
+
+  .scheduleGrid {
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+  }
+
+  .scheduleDay {
+    padding: 12px;
+  }
+
+  .scheduleDay h4 {
+    font-size: 14px;
+  }
+
+  .timeSlot span:first-child {
+    font-size: 13px;
+  }
+
+  .capacity {
+    font-size: 11px;
+  }
+
+  .closedDatesList {
+    gap: 8px;
+  }
+
+  .closedDate {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -301,5 +398,25 @@
 
   .guideValue {
     font-size: 1em;
+  }
+
+  .scheduleGrid {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  }
+
+  .scheduleDay {
+    padding: 10px;
+  }
+
+  .scheduleDay h4 {
+    font-size: 13px;
+  }
+
+  .timeSlot {
+    padding: 6px 8px;
+  }
+
+  .timeSlot span:first-child {
+    font-size: 12px;
   }
 } 

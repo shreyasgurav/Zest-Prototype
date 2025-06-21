@@ -1,6 +1,6 @@
 .container {
   min-height: 100vh;
-  background-color: black;
+  background-color: none;
   color: white;
   overflow: hidden;
   position: relative;
@@ -132,15 +132,15 @@
 /* Contact Grid */
 .contactGrid {
   display: grid;
-  grid-template-columns: repeat(1, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
   max-width: 48rem;
   margin: 0 auto;
 }
 
 @media (min-width: 768px) {
   .contactGrid {
-    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
   }
 }
 
@@ -162,11 +162,23 @@
   padding: 2rem;
 }
 
+@media (max-width: 767px) {
+  .cardContent {
+    padding: 1.25rem;
+  }
+}
+
 .cardHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
+}
+
+@media (max-width: 767px) {
+  .cardHeader {
+    margin-bottom: 0.75rem;
+  }
 }
 
 .cardIcon {
@@ -177,6 +189,13 @@
   align-items: center;
   justify-content: center;
   transition: transform 300ms;
+}
+
+@media (max-width: 767px) {
+  .cardIcon {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
 }
 
 .contactCard:hover .cardIcon {
@@ -229,6 +248,20 @@
   color: white;
   margin-bottom: 0.5rem;
   transition: all 300ms;
+}
+
+@media (max-width: 767px) {
+  .cardValue {
+    font-size: 0.9rem;
+  }
+  
+  .cardTitle {
+    font-size: 0.75rem;
+  }
+  
+  .cardDescription {
+    font-size: 0.75rem;
+  }
 }
 
 .contactCard:hover .cardValue {

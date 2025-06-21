@@ -67,6 +67,8 @@
 .formGroup select,
 .formGroup textarea {
     width: 100%;
+    box-sizing: border-box;
+    max-width: 100%;
     padding: 10px;
     border: 1px solid #444;
     border-radius: 5px;
@@ -80,6 +82,45 @@
     padding: 15px;
 }
 
+/* Category Selection Styles */
+.categoriesGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.categoryButton {
+    padding: 10px 15px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #d1d5db;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 14px;
+    text-align: center;
+}
+
+.categoryButton:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.categoryButtonActive {
+    background: linear-gradient(90deg, #9333ea 0%, #ec4899 100%);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(147, 51, 234, 0.3);
+}
+
+.errorText {
+    color: #ef4444;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+/* Image Upload Styles */
 .imageSection {
     grid-column: 1 / -1;
 }
@@ -90,31 +131,158 @@
     font-size: 0.9em;
 }
 
-.fileInput {
-    width: 100%;
-    max-width: 300px;
-    margin: 0 auto;
-    padding: 10px;
-    background: rgba(20, 20, 20, 0.5);
-    border-radius: 5px;
-    border: 1px solid #444;
-    color: #fff;
+.imageUploadBox {
+    border: 2px dashed #3a4a3f;
+    border-radius: 14px;
+    background: #1d2a23;
+    padding: 32px 0 18px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: pointer;
+    margin-bottom: 18px;
 }
 
-.imagePreview {
-    margin: 20px auto;
-    width: 300px;
-    height: 300px;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 2px dashed #444;
+.imageUploadBox:hover {
+    border-color: #22d3ee;
+    background: #22302b;
+}
+
+.imageUploadLabel {
+    color: #b0bdb6;
+    font-size: 1.1em;
+    margin-bottom: 10px;
+    font-weight: 500;
+    cursor: pointer;
     text-align: center;
 }
 
-.imagePreview img {
+.imagePreview {
+    margin: 0 auto 10px auto;
+    width: 180px;
+    height: 180px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #232e2a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 12px rgba(34,211,238,0.08);
+}
+
+.imagePreviewImg {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 12px;
+    display: block;
+}
+
+.fileInput {
+    display: none;
+}
+
+/* Location Styles */
+.locationSelectorWrapper {
+    margin-bottom: 15px;
+}
+
+.cityInputGroup {
+    margin-bottom: 10px;
+}
+
+.cityInput {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #444;
+    border-radius: 5px;
+    background: rgba(20, 20, 20, 0.5);
+    color: #fff;
+}
+
+.locationNote {
+    color: #888;
+    font-size: 0.9em;
+    font-style: italic;
+    margin: 0;
+}
+
+.locationInput {
+    width: 100%;
+    padding: 16px 18px;
+    border-radius: 12px 12px 0 0;
+    background: #25332e;
+    color: #fff;
+    border: none;
+    font-size: 1em;
+    outline: none;
+    box-shadow: none;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+.autocompleteDropdown {
+    background: #22302b;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+    margin-top: 0;
+    padding: 0;
+    position: absolute;
+    width: 100%;
+    z-index: 10;
+    border-top: 1px solid #2c3e36;
+    max-height: 340px;
+    overflow-y: auto;
+}
+
+.suggestionItem, .suggestionItemActive {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px 18px 12px 18px;
+    background: transparent;
+    color: #e0e0e0;
+    cursor: pointer;
+    border: none;
+    border-bottom: 1px solid #2c3e36;
+    font-size: 1.08em;
+    min-height: 48px;
+    font-weight: 600;
+    transition: background 0.18s, color 0.18s;
+}
+
+.suggestionItem:last-child, .suggestionItemActive:last-child {
+    border-bottom: none;
+}
+
+.suggestionItemActive {
+    background: #2a3d36;
+    color: #fff;
+}
+
+.suggestionMain {
+    font-weight: 600;
+    font-size: 1.08em;
+    color: #fff;
+    line-height: 1.2;
+}
+
+.suggestionSecondary {
+    font-size: 0.98em;
+    color: #b0bdb6;
+    margin-top: 2px;
+    line-height: 1.1;
+}
+
+.locationIcon {
+    color: #b0bdb6;
+    margin-top: 2px;
+    min-width: 20px;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
 }
 
 .formRow {
@@ -250,6 +418,51 @@
 
 .removeSlotButton:hover {
     background: #b13030;
+}
+
+/* Activity Guides Styles */
+.guidesGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-top: 18px;
+}
+
+.guideRow {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+
+.guideCheckboxLabel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    color: #d1d5db;
+    font-weight: 500;
+    cursor: pointer;
+    min-width: 160px;
+}
+
+.guideInput {
+    flex: 1;
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid #2c3e36;
+    background: #232e2a;
+    color: #fff;
+    font-size: 15px;
+    outline: none;
+    transition: border 0.2s;
+}
+
+.guideInput:focus {
+    border: 1.5px solid #22d3ee;
+    background: #25332e;
 }
 
 /* General Button Styles */
@@ -436,5 +649,42 @@
 
     .toggleSwitch {
         align-self: flex-end;
+    }
+    
+    .categoriesGrid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px;
+    }
+    
+    .categoryButton {
+        font-size: 12px;
+        padding: 8px 12px;
+    }
+    
+    .guideRow {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px 8px;
+    }
+    
+    .guideCheckboxLabel {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 600px) {
+    .locationInput {
+        font-size: 1em;
+        padding: 14px 12px;
+    }
+    
+    .autocompleteDropdown {
+        max-height: 220px;
+    }
+    
+    .suggestionItem {
+        padding: 14px 12px 8px 12px;
+        font-size: 1em;
     }
 } 

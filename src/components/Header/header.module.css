@@ -1026,7 +1026,7 @@
     -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     z-index: 999;
-    transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    will-change: transform;
 }
 
 @supports not (backdrop-filter: blur(8px)) {
@@ -1035,12 +1035,7 @@
     }
 }
 
-/* FIX: This class is added via JS to hide the nav on scroll down */
-.mobile-nav-secondary.hide {
-    transform: translateY(-100%);
-    opacity: 0;
-    pointer-events: none;
-}
+/* Hide animation now handled by TailwindCSS classes */
 
 .mobile-nav-secondary .navLinkWithIcon {
     font-size: 16px;
@@ -1064,7 +1059,18 @@
     width: 20px;
     height: 20px;
 }
+
+.mobile-nav-secondary .emojiIcon {
+    filter: grayscale(100%) brightness(0) invert(1);
+    font-size: 20px;
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    text-align: center;
+    line-height: 20px;
+}
  
+/* Hide secondary nav on desktop - scroll effect only for mobile */
 @media (min-width: 769px) {
     .mobile-nav-secondary {
         display: none;
@@ -1077,6 +1083,15 @@
 .navLinkWithIcon { display: flex; align-items: center; gap: 6px; color: #fff; text-decoration: none; font-size: 14px; opacity: 0.6; transition: all 400ms; white-space: nowrap; }
 .navLinkWithIcon:hover { opacity: 1; }
 .navIcon { width: 16px; height: 16px; stroke-width: 2; }
+.emojiIcon { 
+    filter: grayscale(100%) brightness(0) invert(1);
+    font-size: 16px;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    text-align: center;
+    line-height: 16px;
+}
 .locationContainer { position: relative; margin-left: 20px; }
 .locationButton{display:flex;align-items:center;gap:5px;background:none;border:none;padding:6px 12px;color:rgba(255,255,255,.6);font-size:15px;cursor:pointer;border-radius:8px;transition:all .2s ease}.locationButton:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}.locationIcon{width:16px;height:16px;stroke-width:2}.chevronIcon{width:14px;height:14px;transition:transform .2s ease}.chevronIcon.rotate{transform:rotate(180deg)}.locationDropdown{position:absolute;top:100%;left:0;margin-top:8px;background:rgba(26,26,26,.98);border:1px solid rgba(255,255,255,.2);border-radius:12px;width:280px;box-shadow:0 4px 20px rgba(0,0,0,.3);animation:slideDown .2s ease;z-index:1000}.locationSearch{padding:12px;border-bottom:1px solid rgba(255,255,255,.1)}.locationInput{width:100%;padding:8px 12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);border-radius:8px;color:#fff;font-size:14px;outline:none;transition:all .2s ease}.locationInput:focus{background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3)}.locationInput::placeholder{color:rgba(255,255,255,.5)}.popularCities{padding:8px 0;max-height:300px;overflow-y:auto}.popularCities h3{padding:8px 16px;color:rgba(255,255,255,.5);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}.popularCities ul{list-style:none;padding:0;margin:0}.popularCities li{padding:8px 16px;color:rgba(255,255,255,.8);font-size:14px;cursor:pointer;transition:all .2s ease}.popularCities li:hover{background:rgba(255,255,255,.1);color:#fff}.popularCities li.selected{color:#2997ff;background:rgba(41,151,255,.1)}@media (max-width:768px){.locationContainer{margin-left:12px}.locationButton{padding:4px 8px;font-size:13px}.locationIcon{width:14px;height:14px}.chevronIcon{width:12px;height:12px}.locationDropdown{width:240px;right:0;left:auto}}
 .mobileLocationContainer{position:relative;}.mobileLocationButton{display:flex;align-items:center;font-size:15px;gap:3px;background:none;border:none;padding:6px;color:rgba(255,255,255,.6);cursor:pointer;border-radius:8px;transition:all .2s ease}.mobileLocationButton:hover{background:rgba(255,255,255,.1);color:rgba(255,255,255,.9)}.mobileLocationIcon{width:16px;height:16px;stroke-width:2}.mobileChevronIcon{width:14px;height:14px;transition:transform .2s ease}.mobileChevronIcon.rotate{transform:rotate(180deg)}.mobileLocationDropdown{position:fixed;top:44px;left:0;right:0;width:100%;background:rgba(26,26,26,.98);border:1px solid rgba(255,255,255,.2);border-top:none;border-radius:0 0 12px 12px;box-shadow:0 4px 20px rgba(0,0,0,.3);animation:slideDown .2s ease;z-index:1000}

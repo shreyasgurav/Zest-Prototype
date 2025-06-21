@@ -22,17 +22,9 @@ const CreateType = () => {
   }, [auth]);
 
   if (!isAuthorized) {
-    return (
-      <div className={styles.unauthorizedMessageContainer}>
-        <div className={styles.unauthorizedMessage}>
-          <h1>Unauthorized Access</h1>
-          <p>Only organizations can create events and guides. Please login as an organization to continue.</p>
-          <button onClick={() => router.push("/")} className={styles.backButton}>
-            Back to Home
-          </button>
-        </div>
-      </div>
-    );
+    // Redirect to organization landing page instead of showing unauthorized message
+    router.push("/listevents");
+    return null;
   }
 
   const handleTypeSelection = (type: string) => {

@@ -91,7 +91,7 @@
 
 .container {
   min-height: 100vh;
-  background-color: black;
+  background-color: none;
   color: white;
   overflow: hidden;
   position: relative;
@@ -249,15 +249,28 @@
 
 .heroButtons {
   display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  flex-direction: row;
+  gap: 1rem;
   justify-content: center;
   cursor: pointer;
 }
 
-@media (min-width: 640px) {
+@media (max-width: 639px) {
   .heroButtons {
+    display: flex;
     flex-direction: row;
+    gap: 0.75rem;
+    justify-content: center;
+    cursor: pointer;
+  }
+  
+  .primaryButton,
+  .secondaryButton {
+    flex: 1;
+    min-width: 0;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
   }
 }
 
@@ -272,6 +285,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  cursor: pointer;
 }
 
 .primaryButton:hover {
@@ -300,11 +314,13 @@
   border-radius: 9999px;
   backdrop-filter: blur(4px);
   transition: all 300ms;
+  cursor: pointer;
 }
 
 .secondaryButton:hover {
   background-color: rgba(255, 255, 255, 0.1);
   transform: scale(1.05);
+  color: rgb(109, 55, 184);
 }
 
 /* What We Do Section */
@@ -362,13 +378,13 @@
 
 .eventGrid {
   display: grid;
-  grid-template-columns: repeat(1, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
 }
 
 @media (min-width: 768px) {
   .eventGrid {
-    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
   }
 }
 
@@ -395,6 +411,16 @@
 .cardContent {
   padding: 2rem;
   text-align: center;
+}
+
+@media (max-width: 767px) {
+  .cardContent {
+    padding: 1.5rem 1rem;
+  }
+  
+  .cardTitle {
+    font-size: 1rem;
+  }
 }
 
 .cardIconContainer {

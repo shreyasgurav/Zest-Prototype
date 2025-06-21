@@ -205,38 +205,10 @@ export default function EventsPage() {
     )
   }
 
-  if (error) {
-    return (
-      <div className={styles.noEvents}>
-        <div className={styles.noEventsIcon}>
-          <MapPin className={styles.noEventsIconSvg} />
-        </div>
-        <h2 className={styles.noEventsTitle}>Error Loading Events</h2>
-        <p className={styles.noEventsText}>{error}</p>
-      </div>
-    )
-  }
-
-  if (!events.length) {
-    return (
-      <div className={styles.noEvents}>
-        <div className={styles.noEventsIcon}>
-          <PartyPopper className={styles.noEventsIconSvg} />
-        </div>
-        <h2 className={styles.noEventsTitle}>No Events Found</h2>
-        <p className={styles.noEventsText}>
-          {selectedCity !== 'All Cities' 
-            ? `No events found in ${selectedCity}. Try selecting a different city or category.`
-            : "There are no events available at the moment. Check back later!"
-          }
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className={styles.container}>
       <div className={styles.wrapper}>
+        {/* Header Section - Always visible */}
         <header className={styles.header}>
           <h1 className={styles.title}>All Events</h1>
           <p className={styles.subtitle}>
@@ -247,6 +219,7 @@ export default function EventsPage() {
           </p>
         </header>
 
+        {/* Filters Section - Always visible */}
         <div className={styles.filters}>
           {eventTypes.map((type) => (
             <button
@@ -260,14 +233,45 @@ export default function EventsPage() {
           ))}
         </div>
 
-        <div className={styles.eventsGrid}>
-          {filteredEvents.map((event) => (
-            <EventBox 
-              key={event.id} 
-              event={event}
-            />
-          ))}
-        </div>
+        {/* Content Section */}
+        {error ? (
+          <div className={styles.noEvents}>
+            <div className={styles.noEventsIcon}>
+              <MapPin className={styles.noEventsIconSvg} />
+            </div>
+            <h2 className={styles.noEventsTitle}>Error Loading Events</h2>
+            <p className={styles.noEventsText}>{error}</p>
+          </div>
+        ) : filteredEvents.length > 0 ? (
+          <>
+            <div className={styles.eventsCount}>
+              Showing {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+              {selectedCity !== 'All Cities' && ` in ${selectedCity}`}
+            </div>
+            <div className={styles.eventsGrid}>
+              {filteredEvents.map((event) => (
+                <EventBox 
+                  key={event.id} 
+                  event={event}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className={styles.noEvents}>
+            <div className={styles.noEventsIcon}>
+              <PartyPopper className={styles.noEventsIconSvg} />
+            </div>
+            <h2 className={styles.noEventsTitle}>No Events Found</h2>
+            <p className={styles.noEventsText}>
+              {selectedCity !== 'All Cities' 
+                ? `No ${selectedType === 'all' ? '' : selectedType + ' '}events found in ${selectedCity}. Try selecting a different city or category.`
+                : selectedType === 'all' 
+                  ? "There are no events available at the moment. Check back later!"
+                  : `No ${selectedType} events found. Try a different category or check back later.`}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

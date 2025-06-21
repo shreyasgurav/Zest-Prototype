@@ -70,11 +70,25 @@ const Header = () => {
     const locationContainerRef = useRef<HTMLDivElement>(null);
     const [selectedCity, setSelectedCity] = useState('Mumbai');
 
-    // Check if user is an organization
+    // Check if we're on organization-specific routes
+    const isOrganizationRoute = pathname?.startsWith('/organisation') || 
+                               pathname?.startsWith('/organization') || 
+                               pathname?.startsWith('/login/organisation') ||
+                               pathname?.startsWith('/create/') ||
+                               pathname?.startsWith('/edit-') ||
+                               pathname?.includes('dashboard');
+
+    // Check if user is an organization - only when on organization routes
     const checkIfOrganization = async (user: User) => {
         try {
-            const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
-            setIsOrganization(orgDoc.exists());
+            // Only check organization status if on organization routes
+            if (isOrganizationRoute) {
+                const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
+                setIsOrganization(orgDoc.exists());
+            } else {
+                // For regular user routes, default to false
+                setIsOrganization(false);
+            }
         } catch (error) {
             console.error("Error checking organization status:", error);
             setIsOrganization(false);
@@ -133,7 +147,7 @@ const Header = () => {
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, []);
+    }, [isOrganizationRoute]);
 
     useEffect(() => {
         if (searchQuery.length >= 2) {
@@ -150,20 +164,47 @@ const Header = () => {
         };
     }, [searchQuery]);
 
+    // Mobile scroll-based hide/show effect for secondary navigation (Nav 2)
     useEffect(() => {
+        let ticking = false;
+        
         const handleScroll = () => {
-            const currentScrollY = window.scrollY;
-            if (currentScrollY > lastScrollY && currentScrollY > 100) {
-                setHideSecondaryNav(true);
-            } else if (currentScrollY < lastScrollY) {
-                setHideSecondaryNav(false);
+            if (!ticking) {
+                requestAnimationFrame(() => {
+                    const currentScrollY = window.scrollY;
+                    const scrollDifference = Math.abs(currentScrollY - lastScrollY);
+                    
+                    // Only react to meaningful scroll movements (at least 2px)
+                    if (scrollDifference < 2) {
+                        ticking = false;
+                        return;
+                    }
+                    
+                    // Mobile-optimized: Hide Nav 2 when scrolling DOWN, show when scrolling UP
+                    if (currentScrollY > lastScrollY && currentScrollY > 50) {
+                        // Scrolling down - smoothly hide secondary nav
+                        setHideSecondaryNav(true);
+                    } else if (currentScrollY < lastScrollY || currentScrollY <= 50) {
+                        // Scrolling up or near top - smoothly show secondary nav  
+                        setHideSecondaryNav(false);
+                    }
+                    
+                    setLastScrollY(currentScrollY);
+                    ticking = false;
+                });
+                ticking = true;
             }
-            setLastScrollY(currentScrollY);
         };
 
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, [lastScrollY]);
+        // Only add scroll listener on pages that should show secondary nav
+        if (shouldShowSecondaryNav()) {
+            window.addEventListener('scroll', handleScroll, { passive: true });
+        }
+        
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+        };
+    }, [lastScrollY, pathname]);
 
     // Optimized search function with correct field names
     const performSearch = async () => {
@@ -436,7 +477,12 @@ const Header = () => {
                     </ul>
 
                     {shouldShowSecondaryNav() && (
-                        <ul className={`${styles['mobile-nav-secondary']} ${hideSecondaryNav ? styles.hide : ''}`}>
+                        <ul className={`${styles['mobile-nav-secondary']} 
+                            transform transition-all duration-300 ease-in-out
+                            ${hideSecondaryNav 
+                                ? '-translate-y-full opacity-0 pointer-events-none' 
+                                : 'translate-y-0 opacity-100'
+                            }`}>
                             <li className={styles.navItemWithIcon}>
                                 <Link href="/events" className={styles.navLinkWithIcon}>
                                     <Ticket className={styles.navIcon} /><span>Events</span>
@@ -457,7 +503,6 @@ const Header = () => {
                         <li className={styles.navItemWithIcon}><Link href="/events" onClick={handleNavItemClick} className={styles.navLinkWithIcon}><Ticket className={styles.navIcon} /><span>Events</span></Link></li>
                         <li className={styles.navItemWithIcon}><Link href="/activities" onClick={handleNavItemClick} className={styles.navLinkWithIcon}><Sparkles className={styles.navIcon} /><span>Activities</span></Link></li>
                         {isOrganization && (<li><Link href="/create" onClick={handleNavItemClick}>Create</Link></li>)}
-                        {!isOrganization && user && (<li><Link href="/organization/login" onClick={handleNavItemClick} className={styles.orgLoginLink}>List Events</Link></li>)}
                         <li className={styles.desktopNavSpacer}></li>
                         <li><button className={styles.searchNavButton} onClick={toggleSearch} aria-label="Search"><Search className={styles.searchNavIcon} /></button></li>
                         <li><a className={styles['link-Profile-logo']} onClick={handleNavItemClick}><PersonLogo /></a></li>

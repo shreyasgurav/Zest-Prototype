@@ -13,10 +13,30 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
+// Debug: Check if all config values are present
+console.log('Firebase Config Check:', {
+  apiKey: firebaseConfig.apiKey ? 'Set' : 'Missing',
+  authDomain: firebaseConfig.authDomain ? 'Set' : 'Missing',
+  projectId: firebaseConfig.projectId ? 'Set' : 'Missing',
+  storageBucket: firebaseConfig.storageBucket ? 'Set' : 'Missing',
+  messagingSenderId: firebaseConfig.messagingSenderId ? 'Set' : 'Missing',
+  appId: firebaseConfig.appId ? 'Set' : 'Missing'
+});
+
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+
+// Temporarily disable App Check for phone authentication
+// App Check can cause conflicts with phone auth and reCAPTCHA
+console.log('App Check disabled for phone authentication compatibility');
+
+if (typeof window !== 'undefined') {
+  console.log('Firebase initialized for phone authentication');
+  console.log('App Check status: DISABLED (for phone auth compatibility)');
+}
 
 export { app, auth, db, storage }; 

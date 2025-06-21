@@ -7,6 +7,50 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import styles from "./CreateActivity.module.css";
+// @ts-ignore
+import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
+import Script from 'next/script';
+import { FaMapMarkerAlt } from 'react-icons/fa';
+
+// A more extensive list of cities for better search results
+const ALL_CITIES = [
+    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad', 'Chennai', 'Kolkata', 'Surat', 'Pune', 'Jaipur',
+    'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad', 'Patna',
+    'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivali',
+    'Vasai-Virar', 'Varanasi', 'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
+    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur', 'Madurai', 'Raipur', 'Kota',
+    'Guwahati', 'Chandigarh', 'Solapur', 'Hubli-Dharwad', 'Mysore', 'Tiruchirappalli', 'Bareilly', 'Aligarh',
+    'Tiruppur', 'Gurgaon', 'Moradabad', 'Jalandhar', 'Bhubaneswar', 'Salem', 'Warangal', 'Guntur', 'Noida',
+    'Dehradun', 'Kochi'
+];
+
+const ACTIVITY_CATEGORIES = [
+  { id: 'fitness', label: 'Fitness' },
+  { id: 'art', label: 'Art' },
+  { id: 'music', label: 'Music' },
+  { id: 'sports', label: 'Sports' },
+  { id: 'dance', label: 'Dance' },
+  { id: 'cooking', label: 'Cooking' },
+  { id: 'technology', label: 'Technology' },
+  { id: 'education', label: 'Education' },
+  { id: 'wellness', label: 'Wellness' },
+  { id: 'adventure', label: 'Adventure' },
+  { id: 'crafts', label: 'Crafts' },
+  { id: 'photography', label: 'Photography' }
+];
+
+const GUIDE_OPTIONS = [
+  { id: 'equipment', label: 'Equipment Provided', placeholder: 'e.g., Yoga mats, Art supplies' },
+  { id: 'prerequisites', label: 'Prerequisites', placeholder: 'e.g., Basic fitness level' },
+  { id: 'what_to_bring', label: 'What to Bring', placeholder: 'e.g., Water bottle, Comfortable clothes' },
+  { id: 'facilities', label: 'Facilities Available', placeholder: 'e.g., Changing rooms, Parking' },
+  { id: 'instructor', label: 'Instructor Details', placeholder: 'e.g., Certified trainer with 5+ years experience' },
+  { id: 'group_size', label: 'Group Size', placeholder: 'e.g., Maximum 10 participants per session' },
+  { id: 'difficulty_level', label: 'Difficulty Level', placeholder: 'e.g., Beginner, Intermediate, Advanced' },
+  { id: 'cancellation', label: 'Cancellation Policy', placeholder: 'e.g., 24 hours notice required' },
+  { id: 'weather', label: 'Weather Policy', placeholder: 'e.g., Indoor alternative available' },
+  { id: 'accessibility', label: 'Accessibility', placeholder: 'e.g., Wheelchair accessible' }
+];
 
 interface TimeSlot {
   startTime: string;
@@ -31,7 +75,7 @@ const CreateActivity = () => {
   const [orgName, setOrgName] = useState<string>("");
   const [activityImage, setActivityImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [activityCategory, setActivityCategory] = useState<string>("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [activityLanguages, setActivityLanguages] = useState<string>("");
   const [activityDuration, setActivityDuration] = useState<string>("");
   const [activityAgeLimit, setActivityAgeLimit] = useState<string>("");
@@ -51,6 +95,15 @@ const CreateActivity = () => {
   // Specific closed dates
   const [closedDates, setClosedDates] = useState<string[]>([]);
   const [newClosedDate, setNewClosedDate] = useState<string>("");
+  
+  // Google Maps integration
+  const [address, setAddress] = useState('');
+  const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
+  const [isLocationFocused, setIsLocationFocused] = useState(false);
+  const [selectedCity, setSelectedCity] = useState('Mumbai');
+  
+  // Activity guides
+  const [guides, setGuides] = useState<{ [key: string]: string }>({});
   
   const auth = getAuth();
 
@@ -96,6 +149,54 @@ const CreateActivity = () => {
       const previewUrl = URL.createObjectURL(file);
       setImagePreview(previewUrl);
     }
+  };
+
+  const handleCategoryChange = (categoryId: string) => {
+    setSelectedCategories(prev => {
+      if (prev.includes(categoryId)) {
+        return prev.filter(id => id !== categoryId);
+      } else {
+        return [...prev, categoryId];
+      }
+    });
+  };
+
+  const handleSelectAddress = (address: string) => {
+    setAddress(address);
+    setActivityLocation(address);
+    
+    // Extract city from the address
+    const addressParts = address.split(',');
+    if (addressParts.length >= 2) {
+      // Try to find a city name from the address parts
+      for (let i = addressParts.length - 3; i >= 0; i--) {
+        const part = addressParts[i].trim();
+        if (part && !/^\d+$/.test(part) && part.length > 2) {
+          const matchedCity = ALL_CITIES.find((city: string) => 
+            city.toLowerCase().includes(part.toLowerCase()) || 
+            part.toLowerCase().includes(city.toLowerCase())
+          );
+          if (matchedCity) {
+            setSelectedCity(matchedCity);
+            break;
+          } else {
+            setSelectedCity(part);
+            break;
+          }
+        }
+      }
+    }
+    setIsLocationFocused(false);
+  };
+
+  const handleGuideToggle = (id: string) => {
+    setGuides(prev =>
+      id in prev ? Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)) : { ...prev, [id]: '' }
+    );
+  };
+
+  const handleGuideInput = (id: string, value: string) => {
+    setGuides(prev => ({ ...prev, [id]: value }));
   };
 
   // Day schedule management
@@ -172,19 +273,69 @@ const CreateActivity = () => {
 
   const uploadImage = async (file: File): Promise<string | null> => {
     if (!file) return null;
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `activities/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-    const storageRef = ref(storage, fileName);
-    await uploadBytes(storageRef, file);
-    return await getDownloadURL(storageRef);
+    
+    try {
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error("Image size should be less than 5MB");
+      }
+
+      if (!file.type.startsWith('image/')) {
+        throw new Error("File must be an image");
+      }
+
+      const fileExtension = file.name.split('.').pop();
+      const fileName = `activities/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
+      const storageRef = ref(storage, fileName);
+
+      const metadata = {
+        contentType: file.type,
+        customMetadata: {
+          uploadedBy: auth.currentUser?.uid || 'unknown',
+          uploadTime: new Date().toISOString()
+        }
+      };
+
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          console.log(`Attempt ${retryCount + 1} to upload image...`);
+          
+          const uploadResult = await uploadBytes(storageRef, blob, metadata);
+          console.log('Upload successful:', uploadResult);
+
+          const downloadURL = await getDownloadURL(uploadResult.ref);
+          console.log('Download URL obtained:', downloadURL);
+          
+          return downloadURL;
+        } catch (error: any) {
+          console.error(`Upload attempt ${retryCount + 1} failed:`, error);
+          
+          if (retryCount === maxRetries - 1) {
+            throw new Error(`Image upload failed after ${maxRetries} attempts: ${error.message}`);
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 1000));
+          retryCount++;
+        }
+      }
+
+      throw new Error('Upload failed after all retry attempts');
+    } catch (error: any) {
+      console.error('Error in uploadImage:', error);
+      throw new Error(`Image upload failed: ${error.message}`);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     console.log("Form submitted");
     
-    if (!activityName.trim() || !activityLocation.trim() || !activityCategory.trim() || !pricePerSlot.trim()) {
-      setMessage("Please fill in all required fields");
+    if (!activityName.trim() || !activityLocation.trim() || selectedCategories.length === 0 || !pricePerSlot.trim()) {
+      setMessage("Please fill in all required fields and select at least one category");
       return;
     }
 
@@ -204,15 +355,22 @@ const CreateActivity = () => {
     try {
       console.log("Starting upload process");
       let imageUrl: string | null = null;
+      let imageUploadError = false;
+      let imageUploadErrorMessage = '';
+
       if (activityImage) {
         try {
           console.log("Uploading image...");
           imageUrl = await uploadImage(activityImage);
           console.log("Image uploaded:", imageUrl);
-        } catch (uploadError) {
-          console.warn("Image upload failed, continuing without image:", uploadError);
-          setMessage("Note: Image upload failed, activity created without image");
-          // Continue without image
+        } catch (uploadError: any) {
+          console.error('Image upload failed:', uploadError);
+          imageUploadError = true;
+          imageUploadErrorMessage = uploadError.message;
+          
+          if (uploadError.message.includes('CORS') || uploadError.message.includes('network')) {
+            imageUploadErrorMessage = 'Image upload failed due to network restrictions. The activity will be created without an image.';
+          }
         }
       }
 
@@ -233,15 +391,18 @@ const CreateActivity = () => {
         closed_dates: closedDates,
         price_per_slot: parseFloat(pricePerSlot),
         location: activityLocation.trim(),
+        city: selectedCity,
         about_activity: aboutActivity.trim(),
         activity_image: imageUrl,
         organizationId: auth.currentUser?.uid,
         hosting_organization: orgName,
-        activity_category: activityCategory.trim(),
+        activity_categories: selectedCategories,
         activity_languages: activityLanguages.trim(),
         activity_duration: activityDuration.trim(),
         activity_age_limit: activityAgeLimit.trim(),
+        activity_guides: guides,
         createdAt: new Date().toISOString(),
+        image_upload_status: imageUploadError ? 'failed' : (imageUrl ? 'success' : 'none')
       };
 
       console.log("Activity data prepared:", activityData);
@@ -250,8 +411,16 @@ const CreateActivity = () => {
       await addDoc(activitiesCollectionRef, activityData);
       console.log("Activity created successfully in Firestore");
       
-      setMessage("Activity created successfully!");
-      setTimeout(() => router.push('/'), 2000);
+      if (imageUploadError) {
+        setMessage(`Activity created successfully! Note: ${imageUploadErrorMessage} You can try uploading the image again later.`);
+      } else {
+        setMessage("Activity created successfully!");
+      }
+
+      setTimeout(() => {
+        router.push('/');
+        router.refresh();
+      }, 2000);
     } catch (error: any) {
       console.error("Error creating activity:", error);
       setMessage(`Failed to create activity: ${error.message}`);
@@ -267,19 +436,25 @@ const CreateActivity = () => {
         <form onSubmit={handleSubmit} className={styles.createActivityForm}>
           {/* Image Upload Section */}
           <div className={styles.formSection}>
-            <h2>Activity Image (Optional)</h2>
-            <p className={styles.imageTip}>Please upload a square image for best results (max 5MB). You can skip this if experiencing upload issues.</p>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className={styles.fileInput}
-            />
-            {imagePreview && (
-              <div className={styles.imagePreview}>
-                <img src={imagePreview} alt="Preview" />
-              </div>
-            )}
+            <h2>Activity Profile Image</h2>
+            <label htmlFor="activity-image-upload" className={styles.imageUploadBox}>
+              <span className={styles.imageUploadLabel}>
+                {imagePreview ? 'Change Activity Image' : 'Click to upload activity profile image'}
+              </span>
+              {imagePreview && (
+                <div className={styles.imagePreview}>
+                  <img src={imagePreview} alt="Preview" className={styles.imagePreviewImg} />
+                </div>
+              )}
+              <input
+                id="activity-image-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className={styles.fileInput}
+              />
+            </label>
+            <p className={styles.imageTip}>Please upload a square image for best results (max 5MB)</p>
           </div>
 
           {/* Activity Details */}
@@ -297,14 +472,22 @@ const CreateActivity = () => {
             </div>
 
             <div className={styles.formGroup}>
-              <label>Activity Category</label>
-              <input
-                type="text"
-                value={activityCategory}
-                onChange={(e) => setActivityCategory(e.target.value)}
-                placeholder="e.g., Fitness, Art, Music, Sports"
-                required
-              />
+              <label>Activity Categories</label>
+              <div className={styles.categoriesGrid}>
+                {ACTIVITY_CATEGORIES.map((category) => (
+                  <button
+                    key={category.id}
+                    type="button"
+                    className={`${styles.categoryButton} ${selectedCategories.includes(category.id) ? styles.categoryButtonActive : ''}`}
+                    onClick={() => handleCategoryChange(category.id)}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+              {selectedCategories.length === 0 && (
+                <p className={styles.errorText}>Please select at least one category</p>
+              )}
             </div>
 
             <div className={styles.formGroup}>
@@ -321,44 +504,102 @@ const CreateActivity = () => {
             </div>
           </div>
 
-          {/* Closed Dates Section */}
+          {/* Location */}
           <div className={styles.formSection}>
-            <h2>Closed Dates (Optional)</h2>
-            <p className={styles.sectionDescription}>Add specific dates when your activity will be closed</p>
-            <div className={styles.formRow}>
-              <div className={styles.formGroup}>
-                <label>Add Closed Date</label>
-                <input
-                  type="date"
-                  value={newClosedDate}
-                  onChange={(e) => setNewClosedDate(e.target.value)}
-                />
+            <h2>Location</h2>
+            <div className={styles.formGroup}>
+              <label>City</label>
+              <div className={styles.locationSelectorWrapper}>
+                <div className={styles.cityInputGroup}>
+                  <input
+                    type="text"
+                    value={selectedCity}
+                    onChange={(e) => setSelectedCity(e.target.value)}
+                    placeholder="Enter city name"
+                    className={styles.cityInput}
+                    list="cities-list"
+                  />
+                  <datalist id="cities-list">
+                    {ALL_CITIES.map(city => (
+                      <option key={city} value={city} />
+                    ))}
+                  </datalist>
+                </div>
+                <p className={styles.locationNote}>
+                  The city will be automatically detected from the venue address below, or you can manually enter it above.
+                </p>
               </div>
-              <button
-                type="button"
-                className={styles.addDateButton}
-                onClick={addClosedDate}
-                disabled={!newClosedDate}
-              >
-                Add Date
-              </button>
             </div>
-            {closedDates.length > 0 && (
-              <div className={styles.closedDatesList}>
-                {closedDates.map((date, index) => (
-                  <div key={index} className={styles.closedDateItem}>
-                    <span>{date}</span>
-                    <button
-                      type="button"
-                      className={styles.removeDateButton}
-                      onClick={() => removeClosedDate(date)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className={styles.formGroup}>
+              <label>Activity Location</label>
+              <Script
+                src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjDazO71t0Deh_h6fMe_VHoKmVNEKygSM&libraries=places"
+                strategy="afterInteractive"
+                onLoad={() => setIsMapsScriptLoaded(true)}
+              />
+              {isMapsScriptLoaded ? (
+                <PlacesAutocomplete
+                  value={address}
+                  onChange={setAddress}
+                  onSelect={handleSelectAddress}
+                >
+                  {(props: {
+                    getInputProps: (options: any) => any;
+                    suggestions: Suggestion[];
+                    getSuggestionItemProps: (suggestion: Suggestion, options?: any) => any;
+                    loading: boolean;
+                  }) => {
+                    const { getInputProps, suggestions, getSuggestionItemProps, loading } = props;
+                    return (
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          {...getInputProps({
+                            placeholder: 'Search for activity location...',
+                            className: styles.locationInput,
+                            required: true,
+                            onFocus: () => setIsLocationFocused(true),
+                            onBlur: () => setTimeout(() => setIsLocationFocused(false), 150),
+                          })}
+                        />
+                        {isLocationFocused && suggestions.length > 0 && (
+                          <div className={styles.autocompleteDropdown}>
+                            {loading && <div className={styles.suggestionItem}>Loading...</div>}
+                            {suggestions.map((suggestion: Suggestion) => {
+                              const className = suggestion.active
+                                ? styles.suggestionItemActive
+                                : styles.suggestionItem;
+                              const main = suggestion.structured_formatting?.main_text || suggestion.description;
+                              const secondary = suggestion.structured_formatting?.secondary_text;
+                              return (
+                                <div
+                                  {...getSuggestionItemProps(suggestion, { className })}
+                                  key={suggestion.placeId}
+                                >
+                                  <span className={styles.locationIcon}><FaMapMarkerAlt /></span>
+                                  <span>
+                                    <span className={styles.suggestionMain}>{main}</span>
+                                    {secondary && (
+                                      <div className={styles.suggestionSecondary}>{secondary}</div>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }}
+                </PlacesAutocomplete>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Loading Google Maps..."
+                  disabled
+                  className={styles.locationInput}
+                />
+              )}
+            </div>
           </div>
 
           {/* Weekly Schedule Section */}
@@ -440,19 +681,44 @@ const CreateActivity = () => {
             ))}
           </div>
 
-          {/* Location */}
+          {/* Closed Dates Section */}
           <div className={styles.formSection}>
-            <h2>Location</h2>
-            <div className={styles.formGroup}>
-              <label>Location</label>
-              <input
-                type="text"
-                value={activityLocation}
-                onChange={(e) => setActivityLocation(e.target.value)}
-                placeholder="Enter activity location"
-                required
-              />
+            <h2>Specific Closed Dates (Optional)</h2>
+            <p className={styles.sectionDescription}>Add specific dates when your activity will be closed (holidays, maintenance, etc.)</p>
+            <div className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label>Add Closed Date</label>
+                <input
+                  type="date"
+                  value={newClosedDate}
+                  onChange={(e) => setNewClosedDate(e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                className={styles.addDateButton}
+                onClick={addClosedDate}
+                disabled={!newClosedDate}
+              >
+                Add Date
+              </button>
             </div>
+            {closedDates.length > 0 && (
+              <div className={styles.closedDatesList}>
+                {closedDates.map((date, index) => (
+                  <div key={index} className={styles.closedDateItem}>
+                    <span>{date}</span>
+                    <button
+                      type="button"
+                      className={styles.removeDateButton}
+                      onClick={() => removeClosedDate(date)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* About Activity */}
@@ -462,7 +728,7 @@ const CreateActivity = () => {
               <textarea
                 value={aboutActivity}
                 onChange={(e) => setAboutActivity(e.target.value)}
-                placeholder="Enter activity description"
+                placeholder="Describe your activity - what participants will learn, experience, or achieve"
                 rows={4}
                 required
               />
@@ -471,15 +737,15 @@ const CreateActivity = () => {
 
           {/* Activity Guide */}
           <div className={styles.formSection}>
-            <h2>Activity Guide</h2>
+            <h2>Activity Information</h2>
             <div className={styles.formRow}>
               <div className={styles.formGroup}>
-                <label>Duration per Slot</label>
+                <label>Duration per Session</label>
                 <input
                   type="text"
                   value={activityDuration}
                   onChange={(e) => setActivityDuration(e.target.value)}
-                  placeholder="e.g., 1 Hour"
+                  placeholder="e.g., 1 Hour, 90 Minutes"
                   required
                 />
               </div>
@@ -490,7 +756,7 @@ const CreateActivity = () => {
                   type="text"
                   value={activityAgeLimit}
                   onChange={(e) => setActivityAgeLimit(e.target.value)}
-                  placeholder="e.g., 16+ years"
+                  placeholder="e.g., 16+ years, All ages"
                   required
                 />
               </div>
@@ -501,10 +767,38 @@ const CreateActivity = () => {
                   type="text"
                   value={activityLanguages}
                   onChange={(e) => setActivityLanguages(e.target.value)}
-                  placeholder="e.g., English, Hindi"
+                  placeholder="e.g., English, Hindi, Local language"
                   required
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Activity Guides */}
+          <div className={styles.formSection}>
+            <h2>Additional Information (Optional)</h2>
+            <div className={styles.guidesGrid}>
+              {GUIDE_OPTIONS.map(option => (
+                <div key={option.id} className={styles.guideRow}>
+                  <label className={styles.guideCheckboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={option.id in guides}
+                      onChange={() => handleGuideToggle(option.id)}
+                    />
+                    {option.label}
+                  </label>
+                  {option.id in guides && (
+                    <input
+                      type="text"
+                      className={styles.guideInput}
+                      placeholder={option.placeholder}
+                      value={guides[option.id]}
+                      onChange={e => handleGuideInput(option.id, e.target.value)}
+                    />
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 

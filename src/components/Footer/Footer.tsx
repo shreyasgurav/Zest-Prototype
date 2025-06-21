@@ -19,14 +19,21 @@ function Footer() {
                     </svg>
                 </a>
             </div>
-            <div className={styles.row}>
-                <ul>
-                    <li><Link href="/about">About</Link></li>
-                    <li><Link href="/contact">Contact</Link></li>
-                </ul>
-            </div>
-            <div className={styles.row}>
-                Zest Copyright © 2025 Zest - All rights reserved
+            <div className={styles.linksContainer}>
+                <div className={styles.linksColumn}>
+                    <ul>
+                        <li><Link href="/termsandconditions">Terms & Conditions</Link></li>
+                        <li><Link href="/privacypolicy">Privacy Policy</Link></li>
+                        <li><Link href="/refundpolicy">Refund Policy</Link></li>
+                    </ul>
+                </div>
+                <div className={styles.linksColumn}>
+                    <ul>
+                        <li><Link href="/about">About</Link></li>
+                        <li><Link href="/contact">Contact</Link></li>
+                        <li><Link href="/listevents">List Events</Link></li>
+                    </ul>
+                </div>
             </div>
         </footer>
     );

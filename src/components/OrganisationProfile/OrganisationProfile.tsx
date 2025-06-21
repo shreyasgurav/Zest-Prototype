@@ -16,6 +16,7 @@ import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { toast } from "react-toastify";
 import OrganisationProfileSkeleton from "./OrganisationProfileSkeleton";
 import DashboardSection from '../Dashboard/DashboardSection/DashboardSection';
+import PhotoUpload from '../PhotoUpload/PhotoUpload';
 import styles from "./OrganisationProfile.module.css";
 
 interface OrganisationData {
@@ -207,7 +208,7 @@ const OrganisationProfile: React.FC = () => {
       const db = getFirestore();
       const orgDocRef = doc(db, "Organisations", user.uid);
   
-            const updates = {
+      const updates = {
         name: newName,
         username: newUsername.toLowerCase(),
         bio: newBio,
@@ -243,6 +244,14 @@ const OrganisationProfile: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePhotoChange = (imageUrl: string) => {
+    setNewPhotoURL(imageUrl);
+  };
+
+  const handleBannerChange = (imageUrl: string) => {
+    setNewBannerImage(imageUrl);
   };
 
   if (loading) {
@@ -308,6 +317,24 @@ const OrganisationProfile: React.FC = () => {
       {/* Edit Form */}
       {editMode && (
         <div className={styles.editProfileContainer}>
+          <div className={styles.photoUploadSection}>
+            <h3>Profile Photo</h3>
+            <PhotoUpload
+              currentImageUrl={newPhotoURL}
+              onImageChange={handlePhotoChange}
+              type="profile"
+            />
+          </div>
+
+          <div className={styles.photoUploadSection}>
+            <h3>Banner Image</h3>
+            <PhotoUpload
+              currentImageUrl={newBannerImage}
+              onImageChange={handleBannerChange}
+              type="banner"
+            />
+          </div>
+
           <div className={styles.inputGroup}>
             <label htmlFor="name">Organization Name :</label>
             <input
@@ -357,30 +384,6 @@ const OrganisationProfile: React.FC = () => {
               />
               <span className={styles.helperText}>Phone number cannot be changed</span>
             </div>
-
-          <div className={styles.inputGroup}>
-            <label htmlFor="photoURL">Profile Photo URL:</label>
-            <input
-              id="photoURL"
-              type="text"
-              value={newPhotoURL}
-              onChange={(e) => setNewPhotoURL(e.target.value)}
-              placeholder="Enter profile photo URL"
-              className={styles.profileInput}
-            />
-          </div>
-
-          <div className={styles.inputGroup}>
-            <label htmlFor="bannerImage">Banner Image URL:</label>
-            <input
-              id="bannerImage"
-              type="text"
-              value={newBannerImage}
-              onChange={(e) => setNewBannerImage(e.target.value)}
-              placeholder="Enter banner image URL"
-              className={styles.profileInput}
-            />
-          </div>
 
           <div className={styles.buttonGroup}>
             <button 
