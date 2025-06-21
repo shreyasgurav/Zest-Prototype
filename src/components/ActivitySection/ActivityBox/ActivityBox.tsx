@@ -21,19 +21,19 @@ interface WeeklySchedule {
 
 interface Activity {
   id: string;
-  name: string;
-  location: string;
+  name?: string;
+  location?: string;
   city?: string;
-  about_activity: string;
+  about_activity?: string;
   activity_image: string;
   organizationId: string;
-  hosting_organization: string;
-  activity_categories: string[];
+  hosting_organization?: string;
+  activity_categories?: string[];
   activity_languages?: string;
   activity_duration?: string;
   activity_age_limit?: string;
-  price_per_slot: number;
-  weekly_schedule: WeeklySchedule[];
+  price_per_slot?: number;
+  weekly_schedule?: WeeklySchedule[];
   closed_dates?: string[];
   createdAt: any;
   // Legacy field support
