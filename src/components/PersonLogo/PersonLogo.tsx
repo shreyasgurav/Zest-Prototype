@@ -4,6 +4,7 @@ import { signOut, User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter, usePathname } from 'next/navigation';
 import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt } from 'react-icons/fa';
+import { isOrganizationSession, clearOrganizationSession } from '../../utils/authHelpers';
 import styles from "./PersonLogo.module.css";
 import Link from 'next/link';
 
@@ -40,16 +41,19 @@ function PersonLogo() {
             setUser(currentUser);
             if (currentUser) {
                 try {
-                    // Only check organization profile if we're on organization routes
-                    if (isOrganizationRoute) {
-                        const orgDoc = await getDoc(doc(db, "Organisations", currentUser.uid));
-                        if (orgDoc.exists()) {
-                            setIsOrganization(true);
-                            const orgData = orgDoc.data() as UserData;
-                            console.log('👤 Loaded organization data from Firestore:', orgData);
-                            setUserData(orgData);
-                            return; // Exit early to avoid checking user profile
-                        }
+                    // Check if this is an organization session
+                    const isOrgSession = isOrganizationSession();
+                    
+                    // Check organization profile if we're on org routes OR if marked as org session
+                    const orgDoc = await getDoc(doc(db, "Organisations", currentUser.uid));
+                    
+                    if (orgDoc.exists() && (isOrganizationRoute || isOrgSession)) {
+                        // We're on organization route OR organization session AND organization profile exists
+                        setIsOrganization(true);
+                        const orgData = orgDoc.data() as UserData;
+                        console.log('👤 Loaded organization data from Firestore:', orgData);
+                        setUserData(orgData);
+                        return; // Exit early to avoid checking user profile
                     }
                     
                     // Always prioritize user profile for general authentication
@@ -105,6 +109,9 @@ function PersonLogo() {
 
     const handleLogout = async () => {
         try {
+            // Clear organization session markers before logout
+            clearOrganizationSession();
+            
             await signOut(auth);
             setShowDropdown(false);
             router.push('/');
@@ -116,7 +123,12 @@ function PersonLogo() {
 
     const handleProfileClick = () => {
         setShowDropdown(false);
-        router.push('/profile');
+        // Navigate to appropriate profile page based on login type
+        if (isOrganization) {
+            router.push('/organisation');
+        } else {
+            router.push('/profile');
+        }
     };
 
     const handleTicketsClick = () => {
@@ -233,6 +245,7 @@ function PersonLogo() {
                         <div className={styles.userInfoText}>
                             <div className={styles.userName}>
                                 {userData?.name || userData?.phone || 'User'}
+                                {isOrganization && <span style={{ color: '#8899a6', fontSize: '12px', marginLeft: '8px' }}>(Organization)</span>}
                             </div>
                             <div className={styles.userUsername}>
                                 @{userData?.username || userData?.phone?.replace(/\D/g, '') || 'user'}
@@ -244,7 +257,7 @@ function PersonLogo() {
                     <div className={styles.dropdownItems}>
                         <div className={styles.dropdownItem} onClick={handleProfileClick}>
                             <FaUser className={styles.dropdownIcon} />
-                            <span>View Profile</span>
+                            <span>{isOrganization ? 'Organization Profile' : 'View Profile'}</span>
                         </div>
 
                         {!isOrganization && (

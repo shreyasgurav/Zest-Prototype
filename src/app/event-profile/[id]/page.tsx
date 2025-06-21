@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
+import { isOrganizationSession } from '@/utils/authHelpers';
 import styles from './EventProfile.module.css';
 import { FaBookmark, FaCalendarAlt, FaMapMarkerAlt, FaLanguage, FaClock, FaUsers, FaInfo } from 'react-icons/fa';
 import EventProfileSkeleton from './EventProfileSkeleton';
@@ -65,11 +66,37 @@ function EventProfile() {
   const [error, setError] = useState<string | null>(null);
   const [showAllGuides, setShowAllGuides] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [isOrganization, setIsOrganization] = useState<boolean>(false);
+  const [profileLoading, setProfileLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
+      if (currentUser) {
+        // Check if this is an organization session
+        const orgSession = isOrganizationSession();
+        
+        if (orgSession) {
+          // Check if organization profile exists
+          try {
+            const orgRef = doc(db, "Organisations", currentUser.uid);
+            const orgSnap = await getDoc(orgRef);
+            setIsOrganization(orgSnap.exists());
+          } catch (error) {
+            console.error("Error checking organization profile:", error);
+            setIsOrganization(false);
+          }
+        } else {
+          // This is a user session
+          setIsOrganization(false);
+        }
+      } else {
+        setIsOrganization(false);
+      }
+      
+      setProfileLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -173,10 +200,7 @@ function EventProfile() {
     }
   };
 
-  // Check if current user is an organization (uses phone auth)
-  const isOrganization = user?.providerData[0]?.providerId === 'phone';
-
-  if (loading) {
+  if (loading || profileLoading) {
     return <EventProfileSkeleton />;
   }
 

@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { db, storage } from "@/lib/firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { isOrganizationSession } from "@/utils/authHelpers";
 import { useRouter } from "next/navigation";
 import styles from "./CreateActivity.module.css";
 // @ts-ignore
@@ -108,10 +109,33 @@ const CreateActivity = () => {
   const auth = getAuth();
 
   useEffect(() => {
-    const checkAuth = () => {
+    const checkAuth = async () => {
       const user = auth.currentUser;
-      setIsAuthorized(user?.providerData[0]?.providerId === 'phone');
+      
+      if (!user) {
+        setIsAuthorized(false);
+        return;
+      }
+
+      // Check if this is an organization session
+      const orgSession = isOrganizationSession();
+      
+      if (orgSession) {
+        // Check if organization profile exists
+        try {
+          const orgRef = doc(db, "Organisations", user.uid);
+          const orgSnap = await getDoc(orgRef);
+          setIsAuthorized(orgSnap.exists());
+        } catch (error) {
+          console.error("Error checking organization profile:", error);
+          setIsAuthorized(false);
+        }
+      } else {
+        // This is a user session - not authorized to create activities
+        setIsAuthorized(false);
+      }
     };
+    
     checkAuth();
     const unsubscribe = onAuthStateChanged(auth, checkAuth);
     return () => unsubscribe();

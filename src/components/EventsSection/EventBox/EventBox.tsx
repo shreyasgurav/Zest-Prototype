@@ -46,10 +46,10 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
   const firstDate = timeSlots.length > 0 ? timeSlots[0].date : "No Date Available";
   const firstTime = timeSlots.length > 0 ? timeSlots[0].start_time : "";
   
-  // Use first category from eventCategories array, fallback to eventType
+  // Use first category from eventCategories array, fallback to eventType, then to default
   const displayEventType = event.eventCategories && event.eventCategories.length > 0 
     ? event.eventCategories[0] 
-    : event.eventType;
+    : event.eventType || "event";
 
   const formatDate = (dateString: string) => {
     if (dateString === "No Date Available") return "TBA";
@@ -69,7 +69,9 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
     return text;
   };
 
-  const getEventTypeIcon = (eventType: string) => {
+  const getEventTypeIcon = (eventType: string | undefined) => {
+    if (!eventType) return <Calendar className={styles.eventTypeIcon} />;
+    
     switch (eventType.toLowerCase()) {
       case "concert":
       case "music":
@@ -86,7 +88,9 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
     }
   };
 
-  const getEventTypeColor = (eventType: string) => {
+  const getEventTypeColor = (eventType: string | undefined) => {
+    if (!eventType) return "default";
+    
     switch (eventType.toLowerCase()) {
       case "concert":
       case "music":

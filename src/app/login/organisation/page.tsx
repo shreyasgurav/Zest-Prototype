@@ -1,10 +1,78 @@
 'use client';
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../../../lib/firebase';
+import { isOrganizationSession } from '../../../utils/authHelpers';
+import OrganizationPhoneLogin from '@/components/PhoneLogin/OrganizationPhoneLogin';
 import styles from './OrganizationLogin.module.css';
 
 function OrganizationLogin() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isClient, setIsClient] = useState(false);
+  const router = useRouter();
+
+  // Client-side initialization
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    // Only run on client side when component is initialized
+    if (!isClient) return;
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          // Check if user has organization profile - redirect to organization page
+          const orgRef = doc(db, "Organisations", user.uid);
+          const orgSnap = await getDoc(orgRef);
+          if (orgSnap.exists()) {
+            console.log("🟠 Organization profile found, redirecting to organization page");
+            router.push('/organisation');
+            return;
+          }
+
+          // Check if user has user profile - redirect to user profile page
+          const userRef = doc(db, "Users", user.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            console.log("🔵 User profile found, redirecting to user profile page");
+            router.push('/profile');
+            return;
+          }
+
+          // User is authenticated but has no profile data - allow access to organization login
+          console.log("⚪ Authenticated user with no profile data - allowing organization login");
+          setIsLoading(false);
+        } catch (error) {
+          console.error("Error checking user profiles:", error);
+          setIsLoading(false);
+        }
+      } else {
+        // No user logged in, allow access to organization login
+        setIsLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router, isClient]);
+
+  if (isLoading) {
+    return (
+      <div className={styles.loginPageContainer}>
+        <div className={styles.loginCard}>
+          <div className={styles.loginHeader}>
+            <h1 className={styles.loginTitle}>Loading...</h1>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.loginPageContainer}>
       <div className={styles.loginCard}>
@@ -15,20 +83,8 @@ function OrganizationLogin() {
           <h1 className={styles.loginTitle}>Organization Login</h1>
         </div>
 
-        <div className={styles.messageContainer}>
-          <div className={styles.notAvailableMessage}>
-            <h2 className={styles.messageTitle}>Organization Profiles Not Available</h2>
-            <p className={styles.messageText}>
-              Creating organization profiles is not available right now. 
-              Please check again soon for updates.
-            </p>
-            <p className={styles.contactText}>
-              For more information, please contact us at:{' '}
-              <a href="mailto:contact@zestlive.in" className={styles.contactEmail}>
-                contact@zestlive.in
-              </a>
-            </p>
-          </div>
+        <div className={styles.loginFormContainer}>
+          <OrganizationPhoneLogin />
         </div>
 
         <div className={styles.loginFooter}>

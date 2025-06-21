@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where, deleteDoc, doc } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 import useEmblaCarousel from "embla-carousel-react";
 import EventBox from "./EventBox/EventBox";
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
@@ -245,8 +246,63 @@ const EventsSection = () => {
     return () => clearTimeout(backupTimer);
   }, [imagesLoaded]);
 
-  const handleEventDelete = (eventId: string) => {
-    setAllEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
+  const handleEventDelete = async (eventId: string) => {
+    const auth = getAuth();
+    
+    if (!auth.currentUser) {
+      alert("You must be logged in to delete events.");
+      return;
+    }
+
+    try {
+      console.log("Deleting event:", eventId);
+      
+      // First, check if the current user is authorized to delete this event
+      const event = allEvents.find(e => e.id === eventId);
+      if (!event || event.organizationId !== auth.currentUser.uid) {
+        alert("You are not authorized to delete this event.");
+        return;
+      }
+
+      // Delete all attendees first
+      const attendeesRef = collection(db, 'eventAttendees');
+      const attendeesQuery = query(attendeesRef, where('eventId', '==', eventId));
+      const attendeesSnapshot = await getDocs(attendeesQuery);
+      
+      const deletePromises = attendeesSnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      );
+      
+      await Promise.all(deletePromises);
+      console.log("Deleted event attendees for event:", eventId);
+
+      // Delete all tickets related to this event
+      const ticketsRef = collection(db, 'tickets');
+      const ticketsQuery = query(ticketsRef, where('eventId', '==', eventId));
+      const ticketsSnapshot = await getDocs(ticketsQuery);
+      
+      const deleteTicketPromises = ticketsSnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      );
+      
+      await Promise.all(deleteTicketPromises);
+      console.log("Deleted tickets for event:", eventId);
+
+      // Delete the event document
+      await deleteDoc(doc(db, 'events', eventId));
+      console.log("Event deleted successfully from database:", eventId);
+      
+      // Remove from local state
+      setAllEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
+      
+      // Clear cache to force refresh
+      sessionStorage.removeItem('cachedEvents');
+      sessionStorage.removeItem('eventsTimestamp');
+      
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      alert("Failed to delete event. Please try again.");
+    }
   };
 
   if (error) {
@@ -295,7 +351,11 @@ const EventsSection = () => {
             <div className={styles.embla__container}>
               {filteredEvents.map((event) => (
                 <div className={styles.embla__slide} key={event.id}>
-                  <EventBox event={event} onDelete={handleEventDelete} />
+                  <EventBox 
+                    event={event} 
+                    onDelete={handleEventDelete} 
+                    currentUserId={getAuth().currentUser?.uid}
+                  />
                 </div>
               ))}
             </div>

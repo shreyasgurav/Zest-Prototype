@@ -323,4 +323,167 @@ export async function getUserByPhone(phone: string): Promise<UserData | null> {
     console.error("Error getting user by phone:", error);
     return null;
   }
+}
+
+// Organization-specific types and interfaces
+export interface OrganizationData {
+  uid: string;
+  name?: string;
+  username?: string;
+  phoneNumber?: string;
+  bio?: string;
+  photoURL?: string;
+  bannerImage?: string;
+  isActive?: boolean;
+  role?: string;
+  createdAt: string;
+  updatedAt: string;
+  settings?: {
+    notifications?: boolean;
+    emailUpdates?: boolean;
+    privacy?: {
+      profileVisibility?: string;
+      contactVisibility?: string;
+    };
+  };
+}
+
+/**
+ * Creates a new organization document with the provided data
+ * @param user - Firebase Auth user
+ * @param additionalData - Any additional data to include
+ * @returns OrganizationData object
+ */
+export async function createOrganizationDocument(
+  user: User, 
+  additionalData: Partial<OrganizationData> = {}
+): Promise<OrganizationData> {
+  const organizationData: OrganizationData = {
+    uid: user.uid,
+    phoneNumber: user.phoneNumber || additionalData.phoneNumber || "",
+    name: additionalData.name || "",
+    username: additionalData.username || "",
+    bio: additionalData.bio || "",
+    photoURL: additionalData.photoURL || "",
+    bannerImage: additionalData.bannerImage || "",
+    isActive: true,
+    role: "Organisation",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    settings: {
+      notifications: true,
+      emailUpdates: false,
+      privacy: {
+        profileVisibility: "public",
+        contactVisibility: "followers"
+      }
+    }
+  };
+
+  await setDoc(doc(db, "Organisations", user.uid), organizationData);
+  return organizationData;
+}
+
+/**
+ * Gets organization data by phone number
+ * @param phone - Phone number to search for
+ * @returns OrganizationData if found, null if not found
+ */
+export async function getOrganizationByPhone(phone: string): Promise<OrganizationData | null> {
+  try {
+    const orgQuery = query(
+      collection(db, "Organisations"),
+      where("phoneNumber", "==", phone)
+    );
+    const orgSnap = await getDocs(orgQuery);
+
+    if (!orgSnap.empty) {
+      return orgSnap.docs[0].data() as OrganizationData;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error getting organization by phone:", error);
+    return null;
+  }
+}
+
+/**
+ * Handles the complete authentication flow for organization login
+ * @param user - Firebase Auth user
+ * @param additionalData - Any additional data (like phone number for phone auth)
+ * @returns OrganizationData and navigation path
+ */
+export async function handleOrganizationAuthenticationFlow(
+  user: User, 
+  additionalData: Partial<OrganizationData> = {}
+): Promise<{ organizationData: OrganizationData; navigationPath: string }> {
+  try {
+    console.log(`🟠 Starting organization authentication flow`, {
+      uid: user.uid,
+      phoneNumber: user.phoneNumber
+    });
+
+    // Mark this session as organization to prevent user post-login flows
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('authType', 'organization');
+      sessionStorage.setItem('organizationLogin', 'true');
+    }
+
+    // Check if organization document already exists for this user
+    const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
+
+    if (orgDoc.exists()) {
+      // Organization exists, return existing data
+      const organizationData = orgDoc.data() as OrganizationData;
+      console.log("🟢 Organization document exists, using existing data!");
+      
+      const navigationPath = organizationData.username ? '/organisation' : '/organisation';
+      return { organizationData, navigationPath };
+    } else {
+      // Create new organization document
+      console.log("🟠 Creating new organization document...");
+      const organizationData = await createOrganizationDocument(user, {
+        phoneNumber: user.phoneNumber || additionalData.phoneNumber
+      });
+      
+      console.log("🟢 New organization document created successfully!", {
+        uid: organizationData.uid,
+        phoneNumber: organizationData.phoneNumber,
+        role: organizationData.role
+      });
+      
+      return { organizationData, navigationPath: '/organisation' };
+    }
+  } catch (error) {
+    console.error("🔴 Error in organization authentication flow:", error);
+    console.error("🔴 Error details:", {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      user: {
+        uid: user.uid,
+        phoneNumber: user.phoneNumber
+      },
+      additionalData
+    });
+    throw error;
+  }
+}
+
+/**
+ * Checks if current session is an organization login
+ * @returns boolean indicating if this is an organization session
+ */
+export function isOrganizationSession(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem('organizationLogin') === 'true';
+}
+
+/**
+ * Clears organization session markers (used on logout)
+ */
+export function clearOrganizationSession(): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem('authType');
+  sessionStorage.removeItem('organizationLogin');
 } 

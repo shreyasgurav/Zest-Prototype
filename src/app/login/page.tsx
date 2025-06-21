@@ -17,6 +17,7 @@ import { toast } from "react-toastify"
 import PhoneInput from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import { handleAuthenticationFlow } from '../../utils/authHelpers'
+import { isOrganizationSession } from '../../utils/authHelpers'
 import styles from "./login.module.css"
 
 // Extend Window interface for reCAPTCHA
@@ -42,6 +43,7 @@ export default function LoginPage() {
   const [isChecking, setIsChecking] = useState(true)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
   const [errors, setErrors] = useState<Partial<FormData>>({})
+  const [isClient, setIsClient] = useState(false)
 
   // Phone/OTP login states
   const [currentStep, setCurrentStep] = useState<'input' | 'verification'>('input')
@@ -51,6 +53,11 @@ export default function LoginPage() {
   const [timeLeft, setTimeLeft] = useState(0)
   const [recaptchaReady, setRecaptchaReady] = useState(false)
   const [isInitializingRecaptcha, setIsInitializingRecaptcha] = useState(false)
+
+  // Client-side initialization
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -62,6 +69,9 @@ export default function LoginPage() {
 
   // Check authentication state
   useEffect(() => {
+    // Only run on client side when component is initialized
+    if (!isClient) return;
+    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         await checkUserProfileAndRedirect(user)
@@ -70,7 +80,7 @@ export default function LoginPage() {
       }
     })
     return () => unsubscribe()
-  }, [router])
+  }, [router, isClient])
 
   // Timer countdown
   useEffect(() => {
@@ -153,6 +163,16 @@ export default function LoginPage() {
 
   const checkUserProfileAndRedirect = async (user: User) => {
     try {
+      // Only run on client side
+      if (typeof window === 'undefined') {
+        setIsChecking(false);
+        return;
+      }
+
+      // This is USER LOGIN - only check and create USER profiles
+      console.log("🔵 User login page - checking USER profiles only");
+
+      // Check user profile for regular users
       const userRef = doc(db, "Users", user.uid)
       const userSnap = await getDoc(userRef)
       
@@ -183,8 +203,8 @@ export default function LoginPage() {
         }
       }
       
-      // User document doesn't exist, show form
-      console.log("📝 New user, needs to complete profile...")
+      // User document doesn't exist, show form to create USER profile
+      console.log("📝 New user, needs to complete USER profile...")
       setCurrentUser(user)
       setFormData({
         name: user.displayName || "",

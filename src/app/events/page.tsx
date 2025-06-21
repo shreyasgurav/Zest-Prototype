@@ -1,8 +1,9 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { collection, query, getDocs, orderBy, limit, where } from "firebase/firestore"
+import { collection, query, getDocs, orderBy, limit, where, deleteDoc, doc } from "firebase/firestore"
 import { db } from "../../lib/firebase"
+import { getAuth } from "firebase/auth"
 import { Music, Smile, Palette, PartyPopper, Mountain, Trophy, Calendar, MapPin, Users, Mic } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
@@ -96,6 +97,61 @@ export default function EventsPage() {
     setEvents(filtered);
     console.log(`Filtered ${filtered.length} events for ${selectedCity} and type ${selectedType}`);
   }, [allEvents, selectedCity, selectedType]);
+
+  const handleEventDelete = async (eventId: string) => {
+    const auth = getAuth();
+    
+    if (!auth.currentUser) {
+      alert("You must be logged in to delete events.");
+      return;
+    }
+
+    try {
+      console.log("Deleting event:", eventId);
+      
+      // First, check if the current user is authorized to delete this event
+      const event = allEvents.find(e => e.id === eventId);
+      if (!event || event.organizationId !== auth.currentUser.uid) {
+        alert("You are not authorized to delete this event.");
+        return;
+      }
+
+      // Delete all attendees first
+      const attendeesRef = collection(db, 'eventAttendees');
+      const attendeesQuery = query(attendeesRef, where('eventId', '==', eventId));
+      const attendeesSnapshot = await getDocs(attendeesQuery);
+      
+      const deletePromises = attendeesSnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      );
+      
+      await Promise.all(deletePromises);
+      console.log("Deleted event attendees for event:", eventId);
+
+      // Delete all tickets related to this event
+      const ticketsRef = collection(db, 'tickets');
+      const ticketsQuery = query(ticketsRef, where('eventId', '==', eventId));
+      const ticketsSnapshot = await getDocs(ticketsQuery);
+      
+      const deleteTicketPromises = ticketsSnapshot.docs.map(doc => 
+        deleteDoc(doc.ref)
+      );
+      
+      await Promise.all(deleteTicketPromises);
+      console.log("Deleted tickets for event:", eventId);
+
+      // Delete the event document
+      await deleteDoc(doc(db, 'events', eventId));
+      console.log("Event deleted successfully from database:", eventId);
+      
+      // Remove from local state
+      setAllEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
+      
+    } catch (error) {
+      console.error("Error deleting event:", error);
+      alert("Failed to delete event. Please try again.");
+    }
+  };
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -253,6 +309,8 @@ export default function EventsPage() {
                 <EventBox 
                   key={event.id} 
                   event={event}
+                  onDelete={handleEventDelete}
+                  currentUserId={getAuth().currentUser?.uid}
                 />
               ))}
             </div>

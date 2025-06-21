@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { toast } from "react-toastify";
+import { FaCamera, FaTimes } from 'react-icons/fa';
 import OrganisationProfileSkeleton from "./OrganisationProfileSkeleton";
 import DashboardSection from '../Dashboard/DashboardSection/DashboardSection';
 import PhotoUpload from '../PhotoUpload/PhotoUpload';
@@ -59,6 +60,11 @@ const OrganisationProfile: React.FC = () => {
   const [newBannerImage, setNewBannerImage] = useState<string>("");
   const [usernameError, setUsernameError] = useState<string>("");
   const [isCheckingUsername, setIsCheckingUsername] = useState<boolean>(false);
+
+  // Photo editing states
+  const [showPhotoModal, setShowPhotoModal] = useState<boolean>(false);
+  const [showPhotoUpload, setShowPhotoUpload] = useState<boolean>(false);
+  const [currentPhotoType, setCurrentPhotoType] = useState<'profile' | 'banner'>('profile');
 
   const fetchOrgData = async (uid: string) => {
     console.log("Fetching org data for:", uid);
@@ -246,12 +252,56 @@ const OrganisationProfile: React.FC = () => {
     }
   };
 
-  const handlePhotoChange = (imageUrl: string) => {
-    setNewPhotoURL(imageUrl);
+  // Photo editing handlers
+  const handleProfilePhotoClick = () => {
+    setCurrentPhotoType('profile');
+    setShowPhotoModal(true);
   };
 
-  const handleBannerChange = (imageUrl: string) => {
-    setNewBannerImage(imageUrl);
+  const handleBannerClick = () => {
+    setCurrentPhotoType('banner');
+    setShowPhotoModal(true);
+  };
+
+  const handleUploadPhotoClick = () => {
+    setShowPhotoModal(false);
+    setShowPhotoUpload(true);
+  };
+
+  const handlePhotoChange = async (imageUrl: string) => {
+    try {
+      if (currentPhotoType === 'profile') {
+        setNewPhotoURL(imageUrl);
+        setPhotoURL(imageUrl);
+      } else {
+        setNewBannerImage(imageUrl);
+        setBannerImage(imageUrl);
+      }
+
+      // Update Firestore immediately
+      const auth = getAuth();
+      const user = auth.currentUser;
+      if (user) {
+        const db = getFirestore();
+        const orgDocRef = doc(db, "Organisations", user.uid);
+        const updateField = currentPhotoType === 'profile' ? 'photoURL' : 'bannerImage';
+        await updateDoc(orgDocRef, {
+          [updateField]: imageUrl,
+          updatedAt: new Date().toISOString()
+        });
+      }
+
+      setShowPhotoUpload(false);
+      toast.success(`${currentPhotoType === 'profile' ? 'Profile photo' : 'Banner'} updated successfully!`);
+    } catch (error) {
+      console.error('Error updating photo:', error);
+      toast.error(`Failed to update ${currentPhotoType === 'profile' ? 'profile photo' : 'banner'}`);
+    }
+  };
+
+  const closePhotoModal = () => {
+    setShowPhotoModal(false);
+    setShowPhotoUpload(false);
   };
 
   if (loading) {
@@ -267,7 +317,7 @@ const OrganisationProfile: React.FC = () => {
       {/* Display Organisation Details */}
       <div className={styles.orgProfileContainer}>
         <div className={styles.orgBannerSection}>
-          <div className={styles.orgBanner}>
+          <div className={styles.orgBanner} onClick={handleBannerClick} style={{ cursor: 'pointer' }}>
             {bannerImage ? (
               <img
                 src={bannerImage}
@@ -277,8 +327,12 @@ const OrganisationProfile: React.FC = () => {
             ) : (
               <div className={styles.defaultBanner} />
             )}
+            <div className={styles.bannerOverlay}>
+              <FaCamera className={styles.cameraIcon} />
+              <span>Edit Banner</span>
+            </div>
           </div>
-          <div className={styles.orgProfileImageContainer}>
+          <div className={styles.orgProfileImageContainer} onClick={handleProfilePhotoClick} style={{ cursor: 'pointer' }}>
             {photoURL ? (
               <img 
                 src={photoURL} 
@@ -286,8 +340,14 @@ const OrganisationProfile: React.FC = () => {
                 className={styles.orgProfileImage}
               />
             ) : (
-              <div className={styles.noPhoto}>No profile photo</div>
+              <div className={styles.noPhoto}>
+                {name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ORG'}
+              </div>
             )}
+            <div className={styles.profileOverlay}>
+              <FaCamera className={styles.cameraIcon} />
+              <span>Edit Photo</span>
+            </div>
           </div>
         </div>
         
@@ -317,24 +377,6 @@ const OrganisationProfile: React.FC = () => {
       {/* Edit Form */}
       {editMode && (
         <div className={styles.editProfileContainer}>
-          <div className={styles.photoUploadSection}>
-            <h3>Profile Photo</h3>
-            <PhotoUpload
-              currentImageUrl={newPhotoURL}
-              onImageChange={handlePhotoChange}
-              type="profile"
-            />
-          </div>
-
-          <div className={styles.photoUploadSection}>
-            <h3>Banner Image</h3>
-            <PhotoUpload
-              currentImageUrl={newBannerImage}
-              onImageChange={handleBannerChange}
-              type="banner"
-            />
-          </div>
-
           <div className={styles.inputGroup}>
             <label htmlFor="name">Organization Name :</label>
             <input
@@ -402,6 +444,48 @@ const OrganisationProfile: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Photo Options Modal */}
+      {showPhotoModal && (
+        <div className={styles.modalOverlay} onClick={closePhotoModal}>
+          <div className={styles.photoModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h3>Edit {currentPhotoType === 'profile' ? 'Profile Photo' : 'Banner'}</h3>
+              <button className={styles.closeButton} onClick={closePhotoModal}>
+                <FaTimes />
+              </button>
+            </div>
+            <div className={styles.modalContent}>
+              <button className={styles.photoOption} onClick={handleUploadPhotoClick}>
+                <FaCamera className={styles.optionIcon} />
+                <span>Upload {currentPhotoType === 'profile' ? 'Photo' : 'Banner'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Photo Upload Modal */}
+      {showPhotoUpload && (
+        <div className={styles.modalOverlay} onClick={closePhotoModal}>
+          <div className={styles.uploadModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h3>Upload & Crop {currentPhotoType === 'profile' ? 'Profile Photo' : 'Banner'}</h3>
+              <button className={styles.closeButton} onClick={closePhotoModal}>
+                <FaTimes />
+              </button>
+            </div>
+            <div className={styles.modalContent}>
+              <PhotoUpload
+                currentImageUrl={currentPhotoType === 'profile' ? photoURL : bannerImage}
+                onImageChange={handlePhotoChange}
+                type={currentPhotoType}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={styles.orgDashboardSection}>
         <DashboardSection />
       </div>

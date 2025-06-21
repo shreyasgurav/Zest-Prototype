@@ -1,26 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 import { auth } from "../../lib/firebase";
+import { handleOrganizationAuthenticationFlow } from "../../utils/authHelpers";
 import { toast } from "react-toastify";
 import styles from "./Login.module.css";
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 import { useRouter } from 'next/navigation';
-import { handleAuthenticationFlow } from '../../utils/authHelpers';
 
 // Extend the Window interface to include our custom properties
 declare global {
   interface Window {
-    userRecaptchaVerifier: RecaptchaVerifier | null;
-    userConfirmationResult: ConfirmationResult | null;
+    orgRecaptchaVerifier: RecaptchaVerifier | null;
+    orgConfirmationResult: ConfirmationResult | null;
   }
 }
 
-interface UserPhoneLoginProps {
-  onSuccess?: () => void;
-}
-
-function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
+function OrganizationPhoneLogin() {
   const [phoneNumber, setPhoneNumber] = useState<string>("");
   const [otp, setOtp] = useState<string>("");
   const [showOtp, setShowOtp] = useState<boolean>(false);
@@ -32,17 +28,17 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
   const router = useRouter();
 
   const cleanupRecaptcha = () => {
-    if (window.userRecaptchaVerifier) {
+    if (window.orgRecaptchaVerifier) {
       try {
-        window.userRecaptchaVerifier.clear();
+        window.orgRecaptchaVerifier.clear();
       } catch (error) {
-        console.log("Error clearing reCAPTCHA:", error);
+        console.log("Error clearing organization reCAPTCHA:", error);
       }
-      window.userRecaptchaVerifier = null;
+      window.orgRecaptchaVerifier = null;
     }
     
     // Also clear the container
-    const container = document.getElementById('user-recaptcha-container');
+    const container = document.getElementById('organization-recaptcha-container');
     if (container) {
       container.innerHTML = '';
     }
@@ -65,45 +61,45 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
         // Wait a bit for cleanup to complete
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        const container = document.getElementById('user-recaptcha-container');
+        const container = document.getElementById('organization-recaptcha-container');
         if (!container) {
-          console.error("reCAPTCHA container not found");
+          console.error("Organization reCAPTCHA container not found");
           setInitializingRecaptcha(false);
           return;
         }
 
         // Check if reCAPTCHA is already rendered in this container
         if (container.hasChildNodes()) {
-          console.log("reCAPTCHA container already has content, clearing...");
+          console.log("Organization reCAPTCHA container already has content, clearing...");
           container.innerHTML = '';
           await new Promise(resolve => setTimeout(resolve, 500));
         }
 
-        console.log('Initializing fresh reCAPTCHA...');
+        console.log('Initializing fresh organization reCAPTCHA...');
         
         // Create new reCAPTCHA with error handling for already rendered case
         try {
-          window.userRecaptchaVerifier = new RecaptchaVerifier(
+          window.orgRecaptchaVerifier = new RecaptchaVerifier(
             auth,
-            'user-recaptcha-container',
+            'organization-recaptcha-container',
             {
               size: 'invisible',
               callback: () => {
-                console.log("reCAPTCHA verified for user");
+                console.log("reCAPTCHA verified for organization");
                 if (mounted) {
                   setRecaptchaReady(true);
                   setInitializingRecaptcha(false);
                 }
               },
               'expired-callback': () => {
-                console.log("reCAPTCHA expired");
+                console.log("Organization reCAPTCHA expired");
                 if (mounted) {
                   setRecaptchaReady(false);
                   toast.error("Security verification expired. Please try again.");
                 }
               },
               'error-callback': (error: any) => {
-                console.error("reCAPTCHA callback error:", error);
+                console.error("Organization reCAPTCHA callback error:", error);
                 if (mounted) {
                   setRecaptchaReady(false);
                   setInitializingRecaptcha(false);
@@ -112,17 +108,17 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
             }
           );
 
-          console.log('Rendering reCAPTCHA...');
-          await window.userRecaptchaVerifier.render();
+          console.log('Rendering organization reCAPTCHA...');
+          await window.orgRecaptchaVerifier.render();
           
           if (mounted) {
             setInitializingRecaptcha(false);
             setRecaptchaReady(true);
-            console.log('reCAPTCHA ready for phone authentication');
+            console.log('Organization reCAPTCHA ready for phone authentication');
           }
         } catch (renderError: any) {
           if (renderError.message && renderError.message.includes('already been rendered')) {
-            console.log('reCAPTCHA already rendered, clearing and retrying...');
+            console.log('Organization reCAPTCHA already rendered, clearing and retrying...');
             cleanupRecaptcha();
             await new Promise(resolve => setTimeout(resolve, 1000));
             
@@ -138,7 +134,7 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
           throw renderError;
         }
       } catch (error: any) {
-        console.error("reCAPTCHA initialization error:", error);
+        console.error("Organization reCAPTCHA initialization error:", error);
         if (mounted) {
           setInitializingRecaptcha(false);
           setRecaptchaReady(false);
@@ -154,7 +150,7 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
           
           if (retryCount < maxRetries) {
             retryCount++;
-            console.log(`Retrying reCAPTCHA initialization (${retryCount}/${maxRetries})`);
+            console.log(`Retrying organization reCAPTCHA initialization (${retryCount}/${maxRetries})`);
             setTimeout(() => {
               if (mounted) initRecaptcha();
             }, 2000);
@@ -177,7 +173,7 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
       
       // Extra cleanup for hot reloads
       setTimeout(() => {
-        const container = document.getElementById('user-recaptcha-container');
+        const container = document.getElementById('organization-recaptcha-container');
         if (container) {
           container.innerHTML = '';
         }
@@ -205,7 +201,7 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
       return;
     }
 
-    if (!recaptchaReady || !window.userRecaptchaVerifier) {
+    if (!recaptchaReady || !window.orgRecaptchaVerifier) {
       toast.error("Security verification not ready. Please wait or refresh the page.");
       return;
     }
@@ -246,27 +242,27 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
 
       console.log('Formatted phone for Firebase:', formattedPhone);
       
-             // Additional validation
-       if (formattedPhone.length < 10 || formattedPhone.length > 16) {
-         toast.error("Invalid phone number format");
-         setLoading(false);
-         return;
-       }
+      // Additional validation
+      if (formattedPhone.length < 10 || formattedPhone.length > 16) {
+        toast.error("Invalid phone number format");
+        setLoading(false);
+        return;
+      }
 
-       console.log('Sending OTP to:', formattedPhone);
-       
-       const confirmationResult = await signInWithPhoneNumber(
+      console.log('Sending OTP to organization:', formattedPhone);
+      
+      const confirmationResult = await signInWithPhoneNumber(
         auth,
         formattedPhone,
-        window.userRecaptchaVerifier
+        window.orgRecaptchaVerifier
       );
 
-      window.userConfirmationResult = confirmationResult;
+      window.orgConfirmationResult = confirmationResult;
       setShowOtp(true);
       setTimeLeft(30);
       toast.success("OTP sent successfully! Check your messages.");
       
-      console.log('OTP sent successfully');
+      console.log('OTP sent successfully for organization');
     } catch (error: any) {
       console.error("Error sending OTP:", error);
       console.error("Error code:", error.code);
@@ -297,7 +293,7 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
       
       // Reinitialize reCAPTCHA after a delay
       setTimeout(() => {
-        if (document.getElementById('user-recaptcha-container')) {
+        if (document.getElementById('organization-recaptcha-container')) {
           window.location.reload();
         }
       }, 2000);
@@ -314,7 +310,7 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
       return;
     }
 
-    if (!window.userConfirmationResult) {
+    if (!window.orgConfirmationResult) {
       toast.error("Session expired. Please request a new OTP.");
       setShowOtp(false);
       return;
@@ -322,40 +318,29 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
 
     setLoading(true);
     try {
-      const result = await window.userConfirmationResult.confirm(otp);
+      const result = await window.orgConfirmationResult.confirm(otp);
       
       if (result.user) {
-        console.log('OTP verified successfully for user:', result.user.uid);
+        console.log('OTP verified successfully for organization:', result.user.uid);
         
-        // Clear any organization session markers to ensure clean user session
+        // Clear any user session markers to ensure clean organization session
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('authType');
-          sessionStorage.removeItem('organizationLogin');
-          // Mark this as a user session
-          sessionStorage.setItem('authType', 'user');
-          sessionStorage.setItem('userLogin', 'true');
+          sessionStorage.removeItem('userLogin');
+          // Mark this as an organization session
+          sessionStorage.setItem('authType', 'organization');
+          sessionStorage.setItem('organizationLogin', 'true');
         }
         
-        // Use unified authentication flow for USERS
-        const { userData, navigationPath } = await handleAuthenticationFlow(
-          result.user, 
-          'phone', 
-          { phone: phoneNumber }
+        // Use organization authentication flow to create organization profile
+        const { organizationData, navigationPath } = await handleOrganizationAuthenticationFlow(
+          result.user,
+          { phoneNumber: phoneNumber }
         );
-        
-        if (userData.name && userData.username && userData.contactEmail) {
-          toast.success("Welcome back!");
-        } else if (userData.providers && Object.keys(userData.providers).length > 1) {
-          toast.success("Account linked successfully!");
-        } else {
-          toast.success("Phone verified! Complete your profile to continue.");
-        }
-        
+
+        toast.success("Organization login successful!");
+        console.log("Organization profile created/loaded:", organizationData);
         router.push(navigationPath);
-        
-        if (onSuccess) {
-          onSuccess();
-        }
       }
     } catch (error: any) {
       console.error("Error verifying OTP:", error);
@@ -375,6 +360,13 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
 
   return (
     <div className={styles.loginForm}>
+      <div className={styles.organizationLoginHeader}>
+        <h2 style={{ color: 'white', marginBottom: '10px' }}>Organization Login</h2>
+        <p style={{ color: '#8899a6', marginBottom: '20px' }}>
+          Login with your phone number to create or access your organization profile
+        </p>
+      </div>
+      
       {!showOtp ? (
         <form onSubmit={handleSendOtp}>
           <div className={styles.phoneLogin}>
@@ -389,7 +381,7 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
               placeholder="Enter your phone number"
             />
             
-            <div id="user-recaptcha-container" className={`${styles.mt3} ${styles.mb3}`}></div>
+            <div id="organization-recaptcha-container" className={`${styles.mt3} ${styles.mb3}`}></div>
             
             {initializingRecaptcha && (
               <div className={styles.initializingMessage}>
@@ -455,4 +447,4 @@ function UserPhoneLogin({ onSuccess }: UserPhoneLoginProps) {
   );
 }
 
-export default UserPhoneLogin; 
+export default OrganizationPhoneLogin; 

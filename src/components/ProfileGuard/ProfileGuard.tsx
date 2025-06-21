@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
+import { isOrganizationSession } from '../../utils/authHelpers';
 
 interface ProfileGuardProps {
   children: React.ReactNode;
@@ -33,7 +34,8 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
   const organizationPages = [
     '/organisation',
     '/organization',
-    '/listevents'
+    '/listevents',
+    '/create'
   ];
 
   useEffect(() => {
@@ -53,13 +55,33 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
         const isPublicPage = publicPages.includes(currentPath);
         const isOrganizationPage = organizationPages.some(orgPath => currentPath.startsWith(orgPath));
         
-        if (isPublicPage || isOrganizationPage) {
+        if (isPublicPage) {
           setIsLoading(false);
-          setIsProfileComplete(true); // Allow access
+          setIsProfileComplete(true); // Allow access to public pages
           return;
         }
 
-        // Check user profile completeness
+        if (isOrganizationPage) {
+          // For organization pages, check if user has organization profile or is in organization session
+          const isOrgSession = isOrganizationSession();
+          const orgRef = doc(db, "Organisations", currentUser.uid);
+          const orgSnap = await getDoc(orgRef);
+          
+          if (orgSnap.exists() || isOrgSession) {
+            console.log("✅ Organization profile found or organization session, allowing access");
+            setIsLoading(false);
+            setIsProfileComplete(true);
+            return;
+          } else {
+            console.log("❌ No organization profile found for organization page access");
+            setIsLoading(false);
+            setIsProfileComplete(false);
+            router.push('/login/organisation');
+            return;
+          }
+        }
+
+        // For regular user pages, check user profile completeness
         const userRef = doc(db, "Users", currentUser.uid);
         const userSnap = await getDoc(userRef);
         
