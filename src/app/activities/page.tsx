@@ -9,26 +9,40 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import ActivityBox from '@/components/ActivitySection/ActivityBox/ActivityBox';
 
-// Activity type definition
-interface Activity {
-  id: string;
-  activityName: string;
-  aboutActivity: string;
-  activity_image: string;
-  activityDateTime: string;
-  activityLocation: string;
-  activityType: string;
-  hostingClub: string;
-  maxParticipants: number;
-  currentParticipants: number;
-  organizationId: string;
-  createdAt: any;
-  time_slots?: Array<{
-    date: string;
+// Activity type definition - matching ActivityBox component interface
+interface WeeklySchedule {
+  day: string;
+  is_open: boolean;
+  time_slots: Array<{
     start_time: string;
     end_time: string;
-    available: boolean;
+    capacity: number;
+    available_capacity: number;
   }>;
+}
+
+interface Activity {
+  id: string;
+  name: string;
+  location: string;
+  city?: string;
+  about_activity: string;
+  activity_image: string;
+  organizationId: string;
+  hosting_organization: string;
+  activity_categories: string[];
+  activity_languages?: string;
+  activity_duration?: string;
+  activity_age_limit?: string;
+  price_per_slot: number;
+  weekly_schedule: WeeklySchedule[];
+  closed_dates?: string[];
+  createdAt: any;
+  // Legacy field support
+  activityName?: string;
+  activityLocation?: string;
+  aboutActivity?: string;
+  activity_category?: string;
 }
 
 // Filter type definition
@@ -80,7 +94,7 @@ export default function ActivitiesPage() {
     if (!city || city === 'All Cities') return activities;
     
     return activities.filter(activity => {
-      const location = activity.activityLocation || '';
+      const location = activity.location || activity.activityLocation || '';
       // Check if location contains the city name (case insensitive)
       return location.toLowerCase().includes(city.toLowerCase());
     });
@@ -92,16 +106,18 @@ export default function ActivitiesPage() {
     
     if (activeFilter !== 'all') {
       filtered = filtered.filter(activity => {
-        const activityType = activity.activityType.toLowerCase();
+        const categories = activity.activity_categories || [];
+        const categoryString = categories.join(' ').toLowerCase();
+        
         // Handle special cases for indoor/outdoor
-        if (activeFilter === 'indoor' && activityType.includes('indoor')) return true;
-        if (activeFilter === 'outdoor' && activityType.includes('outdoor')) return true;
+        if (activeFilter === 'indoor' && categoryString.includes('indoor')) return true;
+        if (activeFilter === 'outdoor' && categoryString.includes('outdoor')) return true;
         // Handle special cases for participation type
-        if (activeFilter === 'solo' && activityType.includes('solo')) return true;
-        if (activeFilter === 'couple' && activityType.includes('couple')) return true;
-        if (activeFilter === 'group' && activityType.includes('group')) return true;
-        // Handle other categories
-        return activityType === activeFilter;
+        if (activeFilter === 'solo' && categoryString.includes('solo')) return true;
+        if (activeFilter === 'couple' && categoryString.includes('couple')) return true;
+        if (activeFilter === 'group' && categoryString.includes('group')) return true;
+        // Handle other categories - check if any category matches the filter
+        return categories.some(category => category.toLowerCase() === activeFilter);
       });
     }
     
