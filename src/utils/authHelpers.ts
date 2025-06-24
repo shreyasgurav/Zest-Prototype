@@ -278,6 +278,74 @@ export async function handleAuthenticationFlow(
 }
 
 /**
+ * Checks if a username is available across ALL user types (global uniqueness)
+ * @param username - Username to check
+ * @param excludeUserId - User ID to exclude from the check (for current user updates)
+ * @param excludePageId - Page ID to exclude from the check (for current page updates)
+ * @param excludePageType - Page type to exclude ('artist' | 'organisation' | 'venue')
+ * @returns boolean - true if username is available, false if taken
+ */
+export async function checkGlobalUsernameAvailability(
+  username: string,
+  excludeUserId?: string,
+  excludePageId?: string,
+  excludePageType?: 'artist' | 'organisation' | 'venue'
+): Promise<{ available: boolean; takenBy?: string }> {
+  if (!username || username.length < 3) {
+    return { available: false, takenBy: 'invalid' };
+  }
+
+  const normalizedUsername = username.toLowerCase().trim();
+
+  try {
+    // Check all collections in parallel
+    const [usersQuery, artistsQuery, organisationsQuery, venuesQuery] = await Promise.all([
+      getDocs(query(collection(db, "Users"), where("username", "==", normalizedUsername))),
+      getDocs(query(collection(db, "Artists"), where("username", "==", normalizedUsername))),
+      getDocs(query(collection(db, "Organisations"), where("username", "==", normalizedUsername))),
+      getDocs(query(collection(db, "Venues"), where("username", "==", normalizedUsername)))
+    ]);
+
+    // Check Users collection
+    if (!usersQuery.empty) {
+      const userDoc = usersQuery.docs[0];
+      if (!excludeUserId || userDoc.id !== excludeUserId) {
+        return { available: false, takenBy: 'user' };
+      }
+    }
+
+    // Check Artists collection
+    if (!artistsQuery.empty) {
+      const artistDoc = artistsQuery.docs[0];
+      if (!excludePageId || artistDoc.id !== excludePageId || excludePageType !== 'artist') {
+        return { available: false, takenBy: 'artist' };
+      }
+    }
+
+    // Check Organisations collection
+    if (!organisationsQuery.empty) {
+      const orgDoc = organisationsQuery.docs[0];
+      if (!excludePageId || orgDoc.id !== excludePageId || excludePageType !== 'organisation') {
+        return { available: false, takenBy: 'organisation' };
+      }
+    }
+
+    // Check Venues collection
+    if (!venuesQuery.empty) {
+      const venueDoc = venuesQuery.docs[0];
+      if (!excludePageId || venueDoc.id !== excludePageId || excludePageType !== 'venue') {
+        return { available: false, takenBy: 'venue' };
+      }
+    }
+
+    return { available: true };
+  } catch (error) {
+    console.error("Error checking global username availability:", error);
+    return { available: false, takenBy: 'error' };
+  }
+}
+
+/**
  * Gets user data by email for account linking
  * @param email - Email address to search for
  * @returns UserData if found, null if not found

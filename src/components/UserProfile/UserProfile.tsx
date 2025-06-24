@@ -165,12 +165,23 @@ function UserProfile() {
       setUsernameError("Username must be at least 3 characters");
       return false;
     }
-    const q = query(
-      collection(db, "Users"),
-      where("username", "==", username.toLowerCase())
+    
+    const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
+    const currentUser = auth.currentUser;
+    const result = await checkGlobalUsernameAvailability(
+      username, 
+      currentUser?.uid
     );
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.empty;
+    
+    if (!result.available) {
+      const takenByMessage = result.takenBy === 'user' ? 'another user' :
+                           result.takenBy === 'artist' ? 'an artist' :
+                           result.takenBy === 'organisation' ? 'an organization' :
+                           result.takenBy === 'venue' ? 'a venue' : 'someone else';
+      setUsernameError(`Username is already taken by ${takenByMessage}`);
+    }
+    
+    return result.available;
   };
 
   const handleUsernameChange = async (e: React.ChangeEvent<HTMLInputElement>) => {

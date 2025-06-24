@@ -384,12 +384,9 @@ export default function LoginPage() {
 
   const checkUsernameAvailability = async (username: string): Promise<boolean> => {
     try {
-      const usersQuery = query(
-        collection(db, "Users"),
-        where("username", "==", username.toLowerCase())
-      )
-      const querySnapshot = await getDocs(usersQuery)
-      return querySnapshot.empty
+      const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
+      const result = await checkGlobalUsernameAvailability(username);
+      return result.available;
     } catch (error) {
       console.error("Error checking username:", error)
       return false

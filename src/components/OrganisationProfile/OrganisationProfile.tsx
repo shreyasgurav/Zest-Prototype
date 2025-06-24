@@ -171,24 +171,27 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
     }
 
     try {
-      const db = getFirestore();
-      const usernameQuery = query(
-        collection(db, "Organisations"),
-        where("username", "==", username.toLowerCase())
+      const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
+      const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId') || undefined;
+      
+      const result = await checkGlobalUsernameAvailability(
+        username,
+        undefined, // Don't exclude user ID since this is for organization page
+        selectedOrgPageId,
+        'organisation'
       );
       
-      const querySnapshot = await getDocs(usernameQuery);
-      
-      // Get the current organization page ID
-      const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
-      
-      const isAvailable = querySnapshot.empty || 
-        (querySnapshot.docs[0].id === selectedOrgPageId);
-      
-      if (!isAvailable) {
-        setUsernameError("Username is already taken");
+      if (!result.available) {
+        const takenByMessage = result.takenBy === 'user' ? 'a user' :
+                             result.takenBy === 'artist' ? 'an artist' :
+                             result.takenBy === 'organisation' ? 'another organization' :
+                             result.takenBy === 'venue' ? 'a venue' : 'someone else';
+        setUsernameError(`Username is already taken by ${takenByMessage}`);
+      } else {
+        setUsernameError("");
       }
-      return isAvailable;
+      
+      return result.available;
     } catch (err) {
       console.error("Error checking username:", err);
       setUsernameError("Error checking username availability");

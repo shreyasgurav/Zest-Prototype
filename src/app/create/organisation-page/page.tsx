@@ -97,6 +97,20 @@ const CreateOrganizationPage: React.FC = () => {
     setLoading(true);
 
     try {
+      // Check username availability globally before creating
+      const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
+      const usernameCheck = await checkGlobalUsernameAvailability(formData.username);
+      
+      if (!usernameCheck.available) {
+        const takenByMessage = usernameCheck.takenBy === 'user' ? 'a user' :
+                             usernameCheck.takenBy === 'artist' ? 'an artist' :
+                             usernameCheck.takenBy === 'organisation' ? 'another organization' :
+                             usernameCheck.takenBy === 'venue' ? 'a venue' : 'someone else';
+        setErrors({ username: `Username is already taken by ${takenByMessage}` });
+        setLoading(false);
+        return;
+      }
+
       // Create organization page
       const organizationData = await createOrganizationDocument(user, {
         name: formData.name.trim(),

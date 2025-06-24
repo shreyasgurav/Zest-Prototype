@@ -109,6 +109,20 @@ const CreateArtistPage: React.FC = () => {
     setLoading(true);
 
     try {
+      // Check username availability globally before creating
+      const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
+      const usernameCheck = await checkGlobalUsernameAvailability(formData.username);
+      
+      if (!usernameCheck.available) {
+        const takenByMessage = usernameCheck.takenBy === 'user' ? 'a user' :
+                             usernameCheck.takenBy === 'artist' ? 'another artist' :
+                             usernameCheck.takenBy === 'organisation' ? 'an organization' :
+                             usernameCheck.takenBy === 'venue' ? 'a venue' : 'someone else';
+        setErrors({ username: `Username is already taken by ${takenByMessage}` });
+        setLoading(false);
+        return;
+      }
+
       // Create artist page
       const artistData = await createArtistDocument(user, {
         name: formData.name.trim(),

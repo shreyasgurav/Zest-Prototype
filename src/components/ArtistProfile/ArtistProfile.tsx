@@ -159,41 +159,35 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
     }
 
     try {
-      const db = getFirestore();
-      const usernameQuery = query(
-        collection(db, "Artists"),
-        where("username", "==", username.toLowerCase())
-      );
-      
-      const querySnapshot = await getDocs(usernameQuery);
-      
-      // If no documents found, username is available
-      if (querySnapshot.empty) {
-        setUsernameError("");
-        return true;
-      }
-      
-      // If documents found, check if any of them belong to the current user
+      const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
       const currentUser = getAuth().currentUser;
+      
       if (!currentUser) {
         setUsernameError("Please log in to check username availability");
         return false;
       }
+
+      // Get current artist page ID
+      const currentPageId = sessionStorage.getItem('selectedArtistPageId') || undefined;
       
-      // Check if any of the found documents belong to the current user (check ownerId field)
-      const isOwnUsername = querySnapshot.docs.some(doc => {
-        const data = doc.data();
-        return data.ownerId === currentUser.uid;
-      });
+      const result = await checkGlobalUsernameAvailability(
+        username,
+        undefined, // Don't exclude user ID since this is for artist page
+        currentPageId,
+        'artist'
+      );
       
-      if (!isOwnUsername) {
-        setUsernameError("Username is already taken");
-        return false;
+      if (!result.available) {
+        const takenByMessage = result.takenBy === 'user' ? 'a user' :
+                             result.takenBy === 'artist' ? 'another artist' :
+                             result.takenBy === 'organisation' ? 'an organization' :
+                             result.takenBy === 'venue' ? 'a venue' : 'someone else';
+        setUsernameError(`Username is already taken by ${takenByMessage}`);
+      } else {
+        setUsernameError("");
       }
       
-      // Username belongs to current user, so it's available for them to use
-      setUsernameError("");
-      return true;
+      return result.available;
     } catch (err) {
       console.error("Error checking username:", err);
       setUsernameError("Error checking username availability");
