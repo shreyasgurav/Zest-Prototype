@@ -6,7 +6,6 @@
     position: relative;
 }
 
-/* Events Section Heading */
 .eventsSectionHeading {
     display: flex;
     justify-content: space-between;
@@ -92,7 +91,6 @@
     padding-left: 20px;
 }
 
-/* Navigation Buttons */
 .emblaButton {
     position: absolute;
     top: 50%;

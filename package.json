@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "security-test": "node scripts/test-security.js",
+    "security-audit": "npm run security-test --report-only"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",

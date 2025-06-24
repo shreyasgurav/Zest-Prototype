@@ -327,7 +327,7 @@ export async function getUserByPhone(phone: string): Promise<UserData | null> {
 
 // Organization-specific types and interfaces
 export interface OrganizationData {
-  uid: string;
+  uid: string; // This will be a unique page ID, not user ID
   name?: string;
   username?: string;
   phoneNumber?: string;
@@ -336,6 +336,7 @@ export interface OrganizationData {
   bannerImage?: string;
   isActive?: boolean;
   role?: string;
+  ownerId: string; // User ID of the person who created/owns this page
   createdAt: string;
   updatedAt: string;
   settings?: {
@@ -358,8 +359,12 @@ export async function createOrganizationDocument(
   user: User, 
   additionalData: Partial<OrganizationData> = {}
 ): Promise<OrganizationData> {
+  // Generate unique page ID or use provided one
+  const pageId = additionalData.uid || `org_${user.uid}_${Date.now()}`;
+  
   const organizationData: OrganizationData = {
-    uid: user.uid,
+    uid: pageId,
+    ownerId: user.uid, // The user who creates this page becomes the owner
     phoneNumber: user.phoneNumber || additionalData.phoneNumber || "",
     name: additionalData.name || "",
     username: additionalData.username || "",
@@ -380,7 +385,7 @@ export async function createOrganizationDocument(
     }
   };
 
-  await setDoc(doc(db, "Organisations", user.uid), organizationData);
+  await setDoc(doc(db, "Organisations", pageId), organizationData);
   return organizationData;
 }
 
@@ -429,6 +434,9 @@ export async function handleOrganizationAuthenticationFlow(
       sessionStorage.setItem('authType', 'organization');
       sessionStorage.setItem('organizationLogin', 'true');
     }
+
+    // Wait for auth token to be ready
+    await user.getIdToken();
 
     // Check if organization document already exists for this user
     const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
@@ -486,4 +494,369 @@ export function clearOrganizationSession(): void {
   if (typeof window === 'undefined') return;
   sessionStorage.removeItem('authType');
   sessionStorage.removeItem('organizationLogin');
+}
+
+// Artist-specific types and interfaces
+export interface ArtistData {
+  uid: string; // This will be a unique page ID, not user ID
+  name?: string;
+  username?: string;
+  phoneNumber?: string;
+  bio?: string;
+  photoURL?: string;
+  bannerImage?: string;
+  isActive?: boolean;
+  role?: string;
+  genre?: string;
+  location?: string;
+  ownerId: string; // User ID of the person who created/owns this page
+  createdAt: string;
+  updatedAt: string;
+  settings?: {
+    notifications?: boolean;
+    emailUpdates?: boolean;
+    privacy?: {
+      profileVisibility?: string;
+      contactVisibility?: string;
+    };
+  };
+}
+
+/**
+ * Creates a new artist document with the provided data
+ * @param user - Firebase Auth user
+ * @param additionalData - Any additional data to include
+ * @returns ArtistData object
+ */
+export async function createArtistDocument(
+  user: User, 
+  additionalData: Partial<ArtistData> = {}
+): Promise<ArtistData> {
+  // Generate unique page ID or use provided one
+  const pageId = additionalData.uid || `artist_${user.uid}_${Date.now()}`;
+  
+  const artistData: ArtistData = {
+    uid: pageId,
+    ownerId: user.uid, // The user who creates this page becomes the owner
+    phoneNumber: user.phoneNumber || additionalData.phoneNumber || "",
+    name: additionalData.name || "",
+    username: additionalData.username || "",
+    bio: additionalData.bio || "",
+    photoURL: additionalData.photoURL || "",
+    bannerImage: additionalData.bannerImage || "",
+    genre: additionalData.genre || "",
+    location: additionalData.location || "",
+    isActive: true,
+    role: "Artist",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    settings: {
+      notifications: true,
+      emailUpdates: false,
+      privacy: {
+        profileVisibility: "public",
+        contactVisibility: "followers"
+      }
+    }
+  };
+
+  await setDoc(doc(db, "Artists", pageId), artistData);
+  return artistData;
+}
+
+/**
+ * Handles the complete authentication flow for artist login (DEPRECATED - Use getUserOwnedPages instead)
+ * @param user - Firebase Auth user
+ * @param additionalData - Any additional data (like phone number for phone auth)
+ * @returns ArtistData and navigation path
+ */
+export async function handleArtistAuthenticationFlow(
+  user: User, 
+  additionalData: Partial<ArtistData> = {}
+): Promise<{ artistData: ArtistData; navigationPath: string }> {
+  try {
+    console.log(`🎵 Starting artist authentication flow (DEPRECATED)`, {
+      uid: user.uid,
+      phoneNumber: user.phoneNumber
+    });
+
+    // This function is deprecated in favor of the new ownership model
+    // Check if user has any artist pages
+    const ownedPages = await getUserOwnedPages(user.uid);
+    
+    if (ownedPages.artists.length > 0) {
+      // Return the first artist page
+      const artistData = ownedPages.artists[0];
+      console.log("🟢 Found existing artist page!", artistData);
+      return { artistData, navigationPath: '/artist' };
+    } else {
+      // No artist pages found, this should not happen in the new flow
+      console.log("🎵 No artist pages found. User should create one through /business");
+      throw new Error("No artist pages found. Please create an artist page first.");
+    }
+  } catch (error) {
+    console.error("🔴 Error in artist authentication flow:", error);
+    throw error;
+  }
+}
+
+/**
+ * Checks if current session is an artist login
+ * @returns boolean indicating if this is an artist session
+ */
+export function isArtistSession(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem('artistLogin') === 'true';
+}
+
+/**
+ * Clears artist session markers (used on logout)
+ */
+export function clearArtistSession(): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem('authType');
+  sessionStorage.removeItem('artistLogin');
+}
+
+// Venue-specific types and interfaces
+export interface VenueData {
+  uid: string; // This will be a unique page ID, not user ID
+  name?: string;
+  username?: string;
+  phoneNumber?: string;
+  bio?: string;
+  photoURL?: string;
+  bannerImage?: string;
+  isActive?: boolean;
+  role?: string;
+  address?: string;
+  city?: string;
+  capacity?: number;
+  venueType?: string;
+  ownerId: string; // User ID of the person who created/owns this page
+  createdAt: string;
+  updatedAt: string;
+  settings?: {
+    notifications?: boolean;
+    emailUpdates?: boolean;
+    privacy?: {
+      profileVisibility?: string;
+      contactVisibility?: string;
+    };
+  };
+}
+
+/**
+ * Creates a new venue document with the provided data
+ * @param user - Firebase Auth user
+ * @param additionalData - Any additional data to include
+ * @returns VenueData object
+ */
+export async function createVenueDocument(
+  user: User, 
+  additionalData: Partial<VenueData> = {}
+): Promise<VenueData> {
+  // Generate unique page ID or use provided one
+  const pageId = additionalData.uid || `venue_${user.uid}_${Date.now()}`;
+  
+  const venueData: VenueData = {
+    uid: pageId,
+    ownerId: user.uid, // The user who creates this page becomes the owner
+    phoneNumber: user.phoneNumber || additionalData.phoneNumber || "",
+    name: additionalData.name || "",
+    username: additionalData.username || "",
+    bio: additionalData.bio || "",
+    photoURL: additionalData.photoURL || "",
+    bannerImage: additionalData.bannerImage || "",
+    address: additionalData.address || "",
+    city: additionalData.city || "",
+    capacity: additionalData.capacity || 0,
+    venueType: additionalData.venueType || "",
+    isActive: true,
+    role: "Venue",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    settings: {
+      notifications: true,
+      emailUpdates: false,
+      privacy: {
+        profileVisibility: "public",
+        contactVisibility: "followers"
+      }
+    }
+  };
+
+  await setDoc(doc(db, "Venues", pageId), venueData);
+  return venueData;
+}
+
+/**
+ * Handles the complete authentication flow for venue login
+ * @param user - Firebase Auth user
+ * @param additionalData - Any additional data (like phone number for phone auth)
+ * @returns VenueData and navigation path
+ */
+export async function handleVenueAuthenticationFlow(
+  user: User, 
+  additionalData: Partial<VenueData> = {}
+): Promise<{ venueData: VenueData; navigationPath: string }> {
+  try {
+    console.log(`🏢 Starting venue authentication flow`, {
+      uid: user.uid,
+      phoneNumber: user.phoneNumber
+    });
+
+    // Mark this session as venue to prevent user post-login flows
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('authType', 'venue');
+      sessionStorage.setItem('venueLogin', 'true');
+    }
+
+    // Wait for auth token to be ready
+    await user.getIdToken();
+
+    // Check if venue document already exists for this user
+    const venueDoc = await getDoc(doc(db, "Venues", user.uid));
+
+    if (venueDoc.exists()) {
+      // Venue exists, return existing data
+      const venueData = venueDoc.data() as VenueData;
+      console.log("🟢 Venue document exists, using existing data!");
+      
+      const navigationPath = venueData.username ? '/venue' : '/venue';
+      return { venueData, navigationPath };
+    } else {
+      // Create new venue document
+      console.log("🏢 Creating new venue document...");
+      const venueData = await createVenueDocument(user, {
+        phoneNumber: user.phoneNumber || additionalData.phoneNumber
+      });
+      
+      console.log("🟢 New venue document created successfully!", {
+        uid: venueData.uid,
+        phoneNumber: venueData.phoneNumber,
+        role: venueData.role
+      });
+      
+      return { venueData, navigationPath: '/venue' };
+    }
+  } catch (error) {
+    console.error("🔴 Error in venue authentication flow:", error);
+    console.error("🔴 Error details:", {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      user: {
+        uid: user.uid,
+        phoneNumber: user.phoneNumber
+      },
+      additionalData
+    });
+    throw error;
+  }
+}
+
+/**
+ * Checks if current session is a venue login
+ * @returns boolean indicating if this is a venue session
+ */
+export function isVenueSession(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem('venueLogin') === 'true';
+}
+
+/**
+ * Clears venue session markers (used on logout)
+ */
+export function clearVenueSession(): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem('authType');
+  sessionStorage.removeItem('venueLogin');
+}
+
+/**
+ * Clears ALL session markers (used on logout or role conflicts)
+ */
+export function clearAllSessions(): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem('authType');
+  sessionStorage.removeItem('userLogin');
+  sessionStorage.removeItem('organizationLogin');
+  sessionStorage.removeItem('artistLogin');
+  sessionStorage.removeItem('venueLogin');
+  sessionStorage.removeItem('roleSelectionCompleted');
+}
+
+/**
+ * Gets the current active role from session storage
+ */
+export function getCurrentRole(): string | null {
+  if (typeof window === 'undefined') return null;
+  
+  if (isOrganizationSession()) return 'organization';
+  if (isArtistSession()) return 'artist';
+  if (isVenueSession()) return 'venue';
+  
+  // If no specific role session is set, assume user
+  const authType = sessionStorage.getItem('authType');
+  if (authType === 'user' || (!authType && sessionStorage.getItem('userLogin'))) {
+    return 'user';
+  }
+  
+  return null;
+}
+
+/**
+ * Gets all pages owned by a user
+ */
+export async function getUserOwnedPages(userId: string): Promise<{
+  artists: ArtistData[];
+  organizations: OrganizationData[];
+  venues: VenueData[];
+}> {
+  try {
+    const [artistsQuery, orgsQuery, venuesQuery] = await Promise.all([
+      getDocs(query(collection(db, "Artists"), where("ownerId", "==", userId))),
+      getDocs(query(collection(db, "Organisations"), where("ownerId", "==", userId))),
+      getDocs(query(collection(db, "Venues"), where("ownerId", "==", userId)))
+    ]);
+
+    const artists = artistsQuery.docs.map(doc => doc.data() as ArtistData);
+    const organizations = orgsQuery.docs.map(doc => doc.data() as OrganizationData);
+    const venues = venuesQuery.docs.map(doc => doc.data() as VenueData);
+
+    return { artists, organizations, venues };
+  } catch (error) {
+    console.error("Error fetching user owned pages:", error);
+    return { artists: [], organizations: [], venues: [] };
+  }
+}
+
+/**
+ * Checks if user owns a specific page
+ */
+export async function checkPageOwnership(userId: string, pageType: 'artist' | 'organization' | 'venue', pageId: string): Promise<boolean> {
+  try {
+    let collection_name = "";
+    switch (pageType) {
+      case 'artist':
+        collection_name = "Artists";
+        break;
+      case 'organization':
+        collection_name = "Organisations";
+        break;
+      case 'venue':
+        collection_name = "Venues";
+        break;
+    }
+
+    const pageDoc = await getDoc(doc(db, collection_name, pageId));
+    if (pageDoc.exists()) {
+      const pageData = pageDoc.data();
+      return pageData.ownerId === userId;
+    }
+    return false;
+  } catch (error) {
+    console.error("Error checking page ownership:", error);
+    return false;
+  }
 } 

@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy, where, deleteDoc, doc } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import useEmblaCarousel from "embla-carousel-react";
 import EventBox from "./EventBox/EventBox";
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
@@ -11,44 +10,11 @@ import styles from "./EventsSection.module.css";
 import Link from 'next/link';
 import EventsSectionSkeleton from './EventsSectionSkeleton';
 
-interface Event {
-  id: string;
-  eventTitle: string;
-  eventType: string;
-  hostingClub: string;
-  eventDateTime?: any;
-  eventVenue: string;
-  eventRegistrationLink?: string;
-  aboutEvent: string;
-  event_image: string;
-  organizationId: string;
-  title?: string;
-  hosting_club?: string;
-  event_venue?: string;
-  about_event?: string;
-  time_slots?: Array<{
-    date: string;
-    start_time: string;
-    end_time: string;
-    available: boolean;
-  }>;
-  tickets?: Array<{
-    name: string;
-    capacity: number;
-    price: number;
-    available_capacity: number;
-  }>;
-  createdAt: any;
-}
-
 const EventsSection = () => {
-  const [allEvents, setAllEvents] = useState<Event[]>([]);
-  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
+  const [eventIds, setEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [imagesLoaded, setImagesLoaded] = useState(false);
   const [selectedCity, setSelectedCity] = useState('Mumbai');
-  const [forceShow, setForceShow] = useState(false);
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: 'start',
@@ -101,91 +67,11 @@ const EventsSection = () => {
     };
   }, []);
 
-  // Filter events based on selected city
-  const filterEventsByLocation = useCallback((events: Event[], city: string) => {
-    if (!city || city === 'All Cities') return events;
-    
-    return events.filter(event => {
-      const venue = event.event_venue || event.eventVenue || '';
-      // Check if venue contains the city name (case insensitive)
-      return venue.toLowerCase().includes(city.toLowerCase());
-    });
-  }, []);
-
-  // Update filtered events when city or all events change
   useEffect(() => {
-    const filtered = filterEventsByLocation(allEvents, selectedCity);
-    setFilteredEvents(filtered);
-    console.log(`Filtered ${filtered.length} events for ${selectedCity}`);
-  }, [allEvents, selectedCity, filterEventsByLocation]);
-
-  // Preload images with timeout and fallback
-  const preloadImages = async (eventsData: Event[]) => {
-    try {
-      const imagePromises = eventsData
-        .filter(event => event.event_image)
-        .slice(0, 6) // Only preload first 6 images for performance
-        .map(event => {
-          return new Promise((resolve) => {
-            const img = new window.Image();
-            
-            // Set a timeout for each image
-            const timeout = setTimeout(() => {
-              resolve('timeout');
-            }, 1000); // 1 second timeout per image
-            
-            img.onload = () => {
-              clearTimeout(timeout);
-              resolve('loaded');
-            };
-            img.onerror = () => {
-              clearTimeout(timeout);
-              resolve('error');
-            };
-            img.src = event.event_image;
-          });
-        });
-
-      // If no images to preload, set as loaded immediately
-      if (imagePromises.length === 0) {
-        setImagesLoaded(true);
-        return;
-      }
-
-      // Wait for images with a global timeout
-      const globalTimeout = new Promise(resolve => 
-        setTimeout(() => resolve('global_timeout'), 2000) // 2 second global timeout
-      );
-      
-      await Promise.race([
-        Promise.all(imagePromises),
-        globalTimeout
-      ]);
-      
-      setImagesLoaded(true);
-    } catch (err) {
-      console.error('Error preloading images:', err);
-      setImagesLoaded(true); // Always continue even if preloading fails
-    }
-  };
-
-  useEffect(() => {
-    const fetchEvents = async () => {
+    const fetchEventIds = async () => {
       try {
-        // Check cache first
-        const cachedEvents = sessionStorage.getItem('cachedEvents');
-        const cacheTimestamp = sessionStorage.getItem('eventsTimestamp');
-        const now = Date.now();
-        
-        // Use cache if it's less than 5 minutes old
-        if (cachedEvents && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 300000) {
-          console.log('Using cached events data');
-          const eventsData = JSON.parse(cachedEvents);
-          setAllEvents(eventsData);
-          setImagesLoaded(true);
-          setLoading(false);
-          return;
-        }
+        setLoading(true);
+        setError(null);
 
         if (!db) throw new Error('Firebase is not initialized');
 
@@ -193,117 +79,24 @@ const EventsSection = () => {
         const q = query(eventsCollectionRef, orderBy("createdAt", "desc"));
         const querySnapshot = await getDocs(q);
         
-        const eventsData = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            eventTitle: data.title || data.eventTitle || '',
-            eventType: data.event_type || data.eventType || 'event',
-            hostingClub: data.hosting_club || data.hostingClub || '',
-            eventDateTime: data.event_date_time || data.eventDateTime,
-            eventVenue: data.event_venue || data.eventVenue || '',
-            eventRegistrationLink: data.event_registration_link || data.eventRegistrationLink,
-            aboutEvent: data.about_event || data.aboutEvent || '',
-            event_image: data.event_image || '',
-            organizationId: data.organizationId || '',
-            time_slots: data.time_slots || [],
-            tickets: data.tickets || [],
-            createdAt: data.createdAt
-          };
-        }) as Event[];
+        // Just get the IDs, let EventBox fetch its own data
+        const ids = querySnapshot.docs.map(doc => doc.id);
         
-        console.log("Fetched events with org IDs:", eventsData);
+        // Limit to first 10 for carousel
+        setEventIds(ids.slice(0, 10));
         
-        // Cache the data
-        sessionStorage.setItem('cachedEvents', JSON.stringify(eventsData));
-        sessionStorage.setItem('eventsTimestamp', Date.now().toString());
+        console.log(`Fetched ${ids.length} event IDs`);
         
-        setAllEvents(eventsData);
-        preloadImages(eventsData);
-        setError(null);
       } catch (error) {
-        console.error('Error fetching events:', error);
+        console.error('Error fetching event IDs:', error);
         setError(error instanceof Error ? error.message : 'Failed to fetch events');
-        setImagesLoaded(true); // Set images as loaded even on error
       } finally {
         setLoading(false);
       }
     };
 
-    fetchEvents();
+    fetchEventIds();
   }, []);
-
-  // Backup timer to force show content after 8 seconds
-  useEffect(() => {
-    const backupTimer = setTimeout(() => {
-      if (!imagesLoaded) {
-        console.log('Backup timer: Force showing content');
-        setForceShow(true);
-        setImagesLoaded(true);
-      }
-    }, 3000); // 3 second backup timer
-
-    return () => clearTimeout(backupTimer);
-  }, [imagesLoaded]);
-
-  const handleEventDelete = async (eventId: string) => {
-    const auth = getAuth();
-    
-    if (!auth.currentUser) {
-      alert("You must be logged in to delete events.");
-      return;
-    }
-
-    try {
-      console.log("Deleting event:", eventId);
-      
-      // First, check if the current user is authorized to delete this event
-      const event = allEvents.find(e => e.id === eventId);
-      if (!event || event.organizationId !== auth.currentUser.uid) {
-        alert("You are not authorized to delete this event.");
-        return;
-      }
-
-      // Delete all attendees first
-      const attendeesRef = collection(db, 'eventAttendees');
-      const attendeesQuery = query(attendeesRef, where('eventId', '==', eventId));
-      const attendeesSnapshot = await getDocs(attendeesQuery);
-      
-      const deletePromises = attendeesSnapshot.docs.map(doc => 
-        deleteDoc(doc.ref)
-      );
-      
-      await Promise.all(deletePromises);
-      console.log("Deleted event attendees for event:", eventId);
-
-      // Delete all tickets related to this event
-      const ticketsRef = collection(db, 'tickets');
-      const ticketsQuery = query(ticketsRef, where('eventId', '==', eventId));
-      const ticketsSnapshot = await getDocs(ticketsQuery);
-      
-      const deleteTicketPromises = ticketsSnapshot.docs.map(doc => 
-        deleteDoc(doc.ref)
-      );
-      
-      await Promise.all(deleteTicketPromises);
-      console.log("Deleted tickets for event:", eventId);
-
-      // Delete the event document
-      await deleteDoc(doc(db, 'events', eventId));
-      console.log("Event deleted successfully from database:", eventId);
-      
-      // Remove from local state
-      setAllEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
-      
-      // Clear cache to force refresh
-      sessionStorage.removeItem('cachedEvents');
-      sessionStorage.removeItem('eventsTimestamp');
-      
-    } catch (error) {
-      console.error("Error deleting event:", error);
-      alert("Failed to delete event. Please try again.");
-    }
-  };
 
   if (error) {
     return (
@@ -313,12 +106,12 @@ const EventsSection = () => {
     );
   }
 
-  // Show content immediately, even while loading
-  if (loading && allEvents.length === 0) {
+  // Show loading state
+  if (loading) {
     return <EventsSectionSkeleton />;
   }
 
-  if (!filteredEvents.length) {
+  if (!eventIds.length) {
     return (
       <div className={styles.eventsSection}>
         <div className={styles.eventsSectionHeading}>
@@ -349,13 +142,9 @@ const EventsSection = () => {
         <div className={styles.embla}>
           <div className={styles.embla__viewport} ref={emblaRef}>
             <div className={styles.embla__container}>
-              {filteredEvents.map((event) => (
-                <div className={styles.embla__slide} key={event.id}>
-                  <EventBox 
-                    event={event} 
-                    onDelete={handleEventDelete} 
-                    currentUserId={getAuth().currentUser?.uid}
-                  />
+              {eventIds.map((eventId) => (
+                <div className={styles.embla__slide} key={eventId}>
+                  <EventBox eventId={eventId} />
                 </div>
               ))}
             </div>

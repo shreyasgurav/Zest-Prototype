@@ -1,17 +1,24 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
-import { isOrganizationSession } from "../../utils/authHelpers";
+import { isOrganizationSession, getUserOwnedPages } from "../../utils/authHelpers";
 import styles from "./create.module.css";
 
 const CreateType = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [creatorInfo, setCreatorInfo] = useState<{
+    type: string;
+    pageId: string;
+    name: string;
+    username: string;
+  } | null>(null);
   const auth = getAuth();
 
   useEffect(() => {
@@ -23,32 +30,37 @@ const CreateType = () => {
       }
 
       try {
-        // Check if this is an organization session
-        const isOrgSession = isOrganizationSession();
-        
-        if (isOrgSession) {
-          // Check if organization profile exists
-          const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
-          if (orgDoc.exists()) {
-            console.log("✅ Organization profile found, allowing access to create page");
-            setIsAuthorized(true);
-          } else {
-            console.log("❌ Organization session but no organization profile found");
-            setIsAuthorized(false);
-          }
+        // Get URL parameters
+        const from = searchParams?.get('from');
+        const pageId = searchParams?.get('pageId');
+        const name = searchParams?.get('name');
+        const username = searchParams?.get('username');
+
+        // Set creator info if available
+        if (from && pageId && name && username) {
+          setCreatorInfo({
+            type: from,
+            pageId: decodeURIComponent(pageId),
+            name: decodeURIComponent(name),
+            username: decodeURIComponent(username)
+          });
+        }
+
+        // Check if user has any pages to create from
+        const ownedPages = await getUserOwnedPages(user.uid);
+        const hasAnyPages = ownedPages.artists.length > 0 || 
+                           ownedPages.organizations.length > 0 || 
+                           ownedPages.venues.length > 0;
+
+        if (hasAnyPages) {
+          console.log("✅ User has pages, allowing access to create page");
+          setIsAuthorized(true);
         } else {
-          // Not an organization session, check if they have organization profile anyway
-          const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
-          if (orgDoc.exists()) {
-            console.log("✅ Organization profile found, allowing access to create page");
-            setIsAuthorized(true);
-          } else {
-            console.log("❌ Not an organization, denying access to create page");
-            setIsAuthorized(false);
-          }
+          console.log("❌ User has no pages, denying access to create page");
+          setIsAuthorized(false);
         }
       } catch (error) {
-        console.error("Error checking organization authorization:", error);
+        console.error("Error checking authorization:", error);
         setIsAuthorized(false);
       } finally {
         setIsLoading(false);
@@ -65,7 +77,7 @@ const CreateType = () => {
 
     const unsubscribe = onAuthStateChanged(auth, checkAuth);
     return () => unsubscribe();
-  }, [auth]);
+  }, [auth, searchParams]);
 
   if (isLoading) {
     return (
@@ -82,24 +94,49 @@ const CreateType = () => {
   }
 
   if (!isAuthorized) {
-    // Redirect to organization landing page instead of showing unauthorized message
-    router.push("/listevents");
-    return null;
+    return (
+      <div className={styles["unauthorized-message-container"]}>
+        <div className={styles["unauthorized-message"]}>
+          <h1>No Pages Found</h1>
+          <p>You need to create at least one page (Artist, Organization, or Venue) before you can create content.</p>
+          <button 
+            onClick={() => router.push("/business")}
+            className={styles["back-button"]}
+          >
+            Create Your First Page
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const handleTypeSelection = (type: string) => {
+    // Build URL with creator context if available
+    const buildUrl = (basePath: string) => {
+      if (creatorInfo) {
+        const params = new URLSearchParams({
+          from: creatorInfo.type,
+          pageId: creatorInfo.pageId,
+          name: creatorInfo.name,
+          username: creatorInfo.username
+        });
+        return `${basePath}?${params.toString()}`;
+      }
+      return basePath;
+    };
+
     switch (type) {
       case "event":
-        router.push("/create/event");
+        router.push(buildUrl("/create/event"));
         break;
       case "workshop":
-        router.push("/create/guide");
+        router.push(buildUrl("/create/guide"));
         break;
       case "experience":
-        router.push("/create-experience");
+        router.push(buildUrl("/create-experience"));
         break;
       case "service":
-        router.push("/create/activity");
+        router.push(buildUrl("/create/activity"));
         break;
       default:
         break;
@@ -109,7 +146,14 @@ const CreateType = () => {
   return (
     <div className={styles["type-selection-page"]}>
       <div className={styles["type-selection-container"]}>
-        <h1 className={styles["page-title"]}>What would you like to create?</h1>
+        <h1 className={styles["page-title"]}>
+          What would you like to create?
+          {creatorInfo && (
+            <span className={styles["creator-context"]}>
+              as {creatorInfo.name} ({creatorInfo.type})
+            </span>
+          )}
+        </h1>
         <div className={styles["type-grid"]}>
           <div
             className={styles["type-card"]}

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getAuth } from 'firebase/auth';
 import { db } from '@/lib/firebase';
 import { deleteDoc, doc } from 'firebase/firestore';
-import { MapPin, Calendar, Trash2, Users, Clock, Tag } from 'lucide-react';
+import { MapPin, Calendar, Trash2, Users, Clock, Tag, Dumbbell, Palette, Music, Trophy, Heart, ChefHat, Code, BookOpen, Camera } from 'lucide-react';
 import styles from './ActivityBox.module.css';
 
 interface WeeklySchedule {
@@ -107,6 +107,69 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
 
   const nextSlot = getNextAvailableSlot();
 
+  // Get the first category from categories array for display
+  const displayActivityType = categories.length > 0 ? categories[0] : 'activity';
+
+  const getActivityTypeIcon = (activityType: string | undefined) => {
+    if (!activityType) return <Calendar className={styles.activityTypeIcon} />;
+    
+    switch (activityType.toLowerCase()) {
+      case "fitness":
+        return <Dumbbell className={styles.activityTypeIcon} />;
+      case "art":
+      case "crafts":
+        return <Palette className={styles.activityTypeIcon} />;
+      case "music":
+        return <Music className={styles.activityTypeIcon} />;
+      case "sports":
+        return <Trophy className={styles.activityTypeIcon} />;
+      case "dance":
+        return <Users className={styles.activityTypeIcon} />;
+      case "cooking":
+        return <ChefHat className={styles.activityTypeIcon} />;
+      case "technology":
+        return <Code className={styles.activityTypeIcon} />;
+      case "education":
+        return <BookOpen className={styles.activityTypeIcon} />;
+      case "wellness":
+        return <Heart className={styles.activityTypeIcon} />;
+      case "photography":
+        return <Camera className={styles.activityTypeIcon} />;
+      default:
+        return <Calendar className={styles.activityTypeIcon} />;
+    }
+  };
+
+  const getActivityTypeColor = (activityType: string | undefined) => {
+    if (!activityType) return "default";
+    
+    switch (activityType.toLowerCase()) {
+      case "fitness":
+        return "fitness";
+      case "art":
+      case "crafts":
+        return "art";
+      case "music":
+        return "music";
+      case "sports":
+        return "sports";
+      case "dance":
+        return "dance";
+      case "cooking":
+        return "cooking";
+      case "technology":
+        return "technology";
+      case "education":
+        return "education";
+      case "wellness":
+        return "wellness";
+      case "photography":
+        return "photography";
+      default:
+        return "default";
+    }
+  };
+
   const truncateText = (text: string, wordLimit: number): string => {
     if (!text) return "";
     const words = text.trim().split(/\s+/);
@@ -187,9 +250,15 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
             </>
           ) : (
             <div className={styles.noImagePlaceholder}>
-              <Calendar className={styles.placeholderIcon} />
+              {getActivityTypeIcon(displayActivityType)}
             </div>
           )}
+
+          {/* Activity Type Badge */}
+          <div className={`${styles.activityTypeBadge} ${styles[getActivityTypeColor(displayActivityType)]}`}>
+            {getActivityTypeIcon(displayActivityType)}
+            <span>{displayActivityType}</span>
+          </div>
 
           {/* Price Badge */}
           {activity.price_per_slot && (
@@ -204,35 +273,16 @@ export default function ActivityBox({ activity, onDelete }: ActivityBoxProps) {
           {/* Title */}
           <h3>{truncateText(activityName, 20)}</h3>
 
-          {/* Categories */}
-          {categories.length > 0 && (
-            <div className={styles.infoRow}>
-              <Tag className={styles.categoryIcon} />
-              <span className={styles.categoryText}>{formatCategories(categories)}</span>
-            </div>
-          )}
-
-          {/* Location */}
-          <div className={styles.infoRow}>
-            <MapPin className={styles.locationIcon} />
-            <span>{formatLocation(activityLocation, activity.city)}</span>
-          </div>
-
           {/* Next Available Slot */}
           <div className={styles.infoRow}>
             <Clock className={styles.timeIcon} />
             <span>{nextSlot.displayText}</span>
           </div>
 
-          {/* About/Duration */}
+          {/* Location */}
           <div className={styles.infoRow}>
-            <Users className={styles.aboutIcon} />
-            <span>
-              {activity.activity_duration 
-                ? `${activity.activity_duration} sessions`
-                : truncateText(aboutActivity, 15)
-              }
-            </span>
+            <MapPin className={styles.locationIcon} />
+            <span>{formatLocation(activityLocation, activity.city)}</span>
           </div>
         </div>
       </div>

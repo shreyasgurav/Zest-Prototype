@@ -138,21 +138,31 @@ export default function ActivitiesPage() {
     if (isHeaderLoaded) {
       const loadActivities = async () => {
         try {
-          // Remove the limit to fetch all activities
-          const activitiesQuery = query(
-            collection(db, "activities"),
-            orderBy("createdAt", "desc")
-          );
-          const querySnapshot = await getDocs(activitiesQuery);
-          const activitiesData = querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as Activity[];
+          console.log('Activities page: Starting to fetch activities...');
           
-          // Sort activities by date (most recent first)
-          const sortedActivities = activitiesData.sort((a, b) => 
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
+          // Try without orderBy first to see if that's the issue
+          const activitiesCollectionRef = collection(db, "activities");
+          const querySnapshot = await getDocs(activitiesCollectionRef);
+          
+          console.log(`Activities page: Found ${querySnapshot.docs.length} activity documents in Firestore`);
+          
+          const activitiesData = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            console.log('Activities page: Processing activity document:', doc.id, data);
+            return {
+              id: doc.id,
+              ...data
+            };
+          }) as Activity[];
+          
+          console.log('Activities page: Mapped activities data:', activitiesData);
+          
+          // Sort activities by date (most recent first) - handle both timestamp and date objects
+          const sortedActivities = activitiesData.sort((a, b) => {
+            const aDate = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const bDate = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return bDate.getTime() - aDate.getTime();
+          });
           
           setAllActivities(sortedActivities);
           setActivities(sortedActivities);

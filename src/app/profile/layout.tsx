@@ -13,7 +13,7 @@ export default function ProfileLayout({
   return (
     <div style={{ 
       minHeight: '100vh',
-      background: 'rgba(17, 17, 17, 0.95)',
+      background: 'none',
       paddingTop: '44px' // Account for header height
     }}>
       {children}

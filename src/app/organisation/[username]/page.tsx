@@ -15,41 +15,11 @@ interface OrganisationData {
   bannerImage?: string;
 }
 
-interface Event {
-  id: string;
-  eventTitle: string;
-  eventType: string;
-  hostingClub: string;
-  eventDateTime?: any;
-  eventVenue: string;
-  eventRegistrationLink?: string;
-  aboutEvent: string;
-  event_image: string;
-  organizationId: string;
-  title?: string;
-  hosting_club?: string;
-  event_venue?: string;
-  about_event?: string;
-  time_slots?: Array<{
-    date: string;
-    start_time: string;
-    end_time: string;
-    available: boolean;
-  }>;
-  tickets?: Array<{
-    name: string;
-    capacity: number;
-    price: number;
-    available_capacity: number;
-  }>;
-  createdAt: any;
-}
-
 const PublicOrganisationProfile = () => {
   const params = useParams();
   const username = params?.username as string | undefined;
   const [orgDetails, setOrgDetails] = useState<OrganisationData | null>(null);
-  const [events, setEvents] = useState<Event[]>([]);
+  const [eventIds, setEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,19 +52,29 @@ const PublicOrganisationProfile = () => {
         orgData.uid = orgDoc.id;
         setOrgDetails(orgData);
 
-        // Then fetch their events
-        const eventsQuery = query(
-          collection(db, "events"),
-          where("organizationId", "==", orgDoc.id)
-        );
-        const eventsSnapshot = await getDocs(eventsQuery);
+        // Fetch event IDs created by this organization page
+        // Try both new creator.pageId and legacy organizationId for backward compatibility
+        const [newEventsSnapshot, legacyEventsSnapshot] = await Promise.all([
+          getDocs(query(
+            collection(db, "events"),
+            where("creator.pageId", "==", orgDoc.id)
+          )),
+          getDocs(query(
+            collection(db, "events"),
+            where("organizationId", "==", orgDoc.id)
+          ))
+        ]);
         
-        const eventsData = eventsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Event[];
+        // Combine and deduplicate events
+        const allEventDocs = [...newEventsSnapshot.docs, ...legacyEventsSnapshot.docs];
+        const uniqueEventDocs = allEventDocs.filter((doc, index, self) => 
+          index === self.findIndex(d => d.id === doc.id)
+        );
+        
+        // Just get the IDs, let EventBox fetch its own data
+        const eventIds = uniqueEventDocs.map(doc => doc.id);
+        setEventIds(eventIds);
 
-        setEvents(eventsData);
         setError(null);
       } catch (err) {
         console.error("Error fetching organization data:", err);
@@ -183,14 +163,14 @@ const PublicOrganisationProfile = () => {
       {/* Events Section */}
       <div className={styles.eventsSection}>
         <h2 className={styles.eventsHeading}>Upcoming Events</h2>
-        {events.length === 0 ? (
+        {eventIds.length === 0 ? (
           <div className={styles.noEventsMessage}>
             No upcoming events at the moment.
           </div>
         ) : (
           <div className={styles.eventsGrid}>
-            {events.map((event) => (
-              <EventBox key={event.id} event={event} />
+            {eventIds.map((eventId) => (
+              <EventBox key={eventId} eventId={eventId} />
             ))}
           </div>
         )}

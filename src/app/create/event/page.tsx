@@ -4,8 +4,10 @@ import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { db, storage } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { getAuth } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { useRouter, useSearchParams } from "next/navigation";
+import RoleGuard from "@/components/RoleGuard/RoleGuard";
+import { getUserOwnedPages } from "@/utils/authHelpers";
 import styles from "./CreateEvent.module.css";
 // @ts-ignore
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
@@ -66,6 +68,14 @@ const GUIDE_OPTIONS = [
 
 const CreateEvent = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Authorization states
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [authError, setAuthError] = useState<string>("");
+  
+  // Form states
   const [eventTitle, setEventTitle] = useState<string>("");
   const [eventVenue, setEventVenue] = useState<string>("");
   const [aboutEvent, setAboutEvent] = useState<string>("");
@@ -73,6 +83,12 @@ const CreateEvent = () => {
   const [message, setMessage] = useState<string>("");
   const [orgName, setOrgName] = useState<string>("");
   const [orgUsername, setOrgUsername] = useState<string>("");
+  const [creatorInfo, setCreatorInfo] = useState<{
+    type: string;
+    pageId: string;
+    name: string;
+    username: string;
+  } | null>(null);
   const [eventImage, setEventImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -86,31 +102,155 @@ const CreateEvent = () => {
   const [address, setAddress] = useState('');
   const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
   const [isLocationFocused, setIsLocationFocused] = useState(false);
+  const [mapsScriptError, setMapsScriptError] = useState(false);
   const [guides, setGuides] = useState<{ [key: string]: string }>({});
   const [selectedCity, setSelectedCity] = useState('Mumbai');
   
   const auth = getAuth();
 
+  // Google Maps script loading
   useEffect(() => {
-    const fetchOrgDetails = async () => {
-      if (!auth.currentUser) return;
+    // Check if Google Maps is already loaded globally
+    if (typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.places) {
+      console.log('Google Maps already loaded globally');
+      setIsMapsScriptLoaded(true);
+      return;
+    }
+
+    // Check if script was previously loaded but failed
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+    if (existingScript) {
+      console.log('Google Maps script already exists in DOM');
+      // Wait a bit and check again
+      const checkInterval = setInterval(() => {
+        if (window.google && window.google.maps && window.google.maps.places) {
+          setIsMapsScriptLoaded(true);
+          clearInterval(checkInterval);
+        }
+      }, 100);
+
+      // Clear interval after 10 seconds to prevent infinite checking
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!isMapsScriptLoaded) {
+          console.error('Google Maps failed to load after timeout');
+          setMapsScriptError(true);
+        }
+      }, 10000);
+    }
+  }, []);
+
+  // Authorization check
+  useEffect(() => {
+    const checkAuthorization = async (user: any) => {
+      if (!user) {
+        setAuthError("Please sign in to create events");
+        setIsAuthorized(false);
+        setIsLoading(false);
+        return;
+      }
 
       try {
-        const orgDoc = await getDoc(doc(db, "Organisations", auth.currentUser.uid));
-        if (orgDoc.exists()) {
-          const data = orgDoc.data();
-          setOrgName(data.name || "");
-          setOrgUsername(data.username || "");
-          localStorage.setItem('orgName', data.name || "");
-          localStorage.setItem('orgUsername', data.username || "");
+        // Get URL parameters for creator context
+        const creatorType = searchParams?.get('from');
+        const creatorPageId = searchParams?.get('pageId');
+        const creatorName = searchParams?.get('name');
+        const creatorUsername = searchParams?.get('username');
+
+        // Verify user owns pages and has authorization to create events
+        const ownedPages = await getUserOwnedPages(user.uid);
+        
+        if (creatorType && creatorPageId) {
+          // Verify user owns the specific page they're creating from
+          let hasSpecificPageAccess = false;
+          
+          if (creatorType === 'organisation' || creatorType === 'organization') {
+            hasSpecificPageAccess = ownedPages.organizations.some(org => org.uid === creatorPageId);
+          } else if (creatorType === 'artist') {
+            hasSpecificPageAccess = ownedPages.artists.some(artist => artist.uid === creatorPageId);
+          } else if (creatorType === 'venue') {
+            hasSpecificPageAccess = ownedPages.venues.some(venue => venue.uid === creatorPageId);
+          }
+
+          if (!hasSpecificPageAccess) {
+            setAuthError(`You don't have permission to create events as ${creatorName}. Please ensure you own this ${creatorType} page.`);
+            setIsAuthorized(false);
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          // No specific creator context - check if user has any pages at all
+          const hasAnyPages = ownedPages.artists.length > 0 || 
+                             ownedPages.organizations.length > 0 || 
+                             ownedPages.venues.length > 0;
+
+          if (!hasAnyPages) {
+            setAuthError("You need to create at least one page (Artist, Organization, or Venue) before you can create events.");
+            setIsAuthorized(false);
+            setIsLoading(false);
+            return;
+          }
         }
+
+        setIsAuthorized(true);
+        setIsLoading(false);
       } catch (error) {
-        console.error("Error fetching organization details:", error);
+        console.error("Error checking authorization:", error);
+        setAuthError("Error verifying your permissions. Please try again.");
+        setIsAuthorized(false);
+        setIsLoading(false);
       }
     };
 
-    fetchOrgDetails();
-  }, []);
+    const unsubscribe = onAuthStateChanged(auth, checkAuthorization);
+    return () => unsubscribe();
+  }, [searchParams]);
+
+  useEffect(() => {
+    const fetchCreatorDetails = async () => {
+      if (!auth.currentUser) return;
+
+      try {
+        // Check if we have creator info from URL parameters
+        const creatorType = searchParams?.get('from');
+        const creatorPageId = searchParams?.get('pageId');
+        const creatorName = searchParams?.get('name');
+        const creatorUsername = searchParams?.get('username');
+
+        if (creatorType && creatorPageId && creatorName && creatorUsername) {
+          // Use creator info from URL parameters
+          setCreatorInfo({
+            type: creatorType,
+            pageId: creatorPageId,
+            name: decodeURIComponent(creatorName),
+            username: decodeURIComponent(creatorUsername)
+          });
+          setOrgName(decodeURIComponent(creatorName));
+          setOrgUsername(decodeURIComponent(creatorUsername));
+        } else {
+          // Fallback to organization lookup (legacy behavior)
+          const orgDoc = await getDoc(doc(db, "Organisations", auth.currentUser.uid));
+          if (orgDoc.exists()) {
+            const data = orgDoc.data();
+            setOrgName(data.name || "");
+            setOrgUsername(data.username || "");
+            setCreatorInfo({
+              type: 'organisation',
+              pageId: auth.currentUser.uid,
+              name: data.name || "",
+              username: data.username || ""
+            });
+            localStorage.setItem('orgName', data.name || "");
+            localStorage.setItem('orgUsername', data.username || "");
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching creator details:", error);
+      }
+    };
+
+    fetchCreatorDetails();
+  }, [searchParams]);
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -168,10 +308,35 @@ const CreateEvent = () => {
   };
 
   const validateSlots = (): boolean => {
-    return eventSlots.every(slot => 
-      slot.date && slot.startTime && slot.endTime && 
-      new Date(`${slot.date} ${slot.endTime}`) > new Date(`${slot.date} ${slot.startTime}`)
-    );
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    return eventSlots.every(slot => {
+      if (!slot.date || !slot.startTime || !slot.endTime) {
+        return false;
+      }
+      
+      const slotDate = new Date(slot.date);
+      const startDateTime = new Date(`${slot.date} ${slot.startTime}`);
+      const endDateTime = new Date(`${slot.date} ${slot.endTime}`);
+      
+      // Check if date is not in the past
+      if (slotDate < today) {
+        return false;
+      }
+      
+      // Check if end time is after start time
+      if (endDateTime <= startDateTime) {
+        return false;
+      }
+      
+      // Check if start time is not in the past (for today's events)
+      if (slotDate.getTime() === today.getTime() && startDateTime < now) {
+        return false;
+      }
+      
+      return true;
+    });
   };
 
   const uploadImage = async (file: File): Promise<string | null> => {
@@ -303,8 +468,34 @@ const CreateEvent = () => {
       return;
     }
 
-    if (!eventTitle.trim() || !eventVenue.trim() || !validateSlots() || !validateTickets() || selectedCategories.length === 0) {
-      setMessage("Please fill in all required fields and ensure valid time slots, tickets, and at least one category");
+    // Comprehensive validation with specific error messages
+    if (!eventTitle.trim()) {
+      setMessage("Please enter an event name");
+      return;
+    }
+    
+    if (!eventVenue.trim()) {
+      setMessage("Please enter a venue location");
+      return;
+    }
+    
+    if (selectedCategories.length === 0) {
+      setMessage("Please select at least one event category");
+      return;
+    }
+    
+    if (!validateTickets()) {
+      setMessage("Please ensure all ticket types have valid names, capacities (greater than 0), and prices (0 or greater)");
+      return;
+    }
+    
+    if (!validateSlots()) {
+      setMessage("Please ensure all time slots have valid dates (not in the past), start times, and end times (end time must be after start time)");
+      return;
+    }
+    
+    if (!aboutEvent.trim()) {
+      setMessage("Please provide a description for your event");
       return;
     }
 
@@ -325,11 +516,7 @@ const CreateEvent = () => {
         } catch (uploadError: any) {
           console.error('Image upload failed:', uploadError);
           imageUploadError = true;
-          imageUploadErrorMessage = uploadError.message;
-          
-          if (uploadError.message.includes('CORS') || uploadError.message.includes('network')) {
-            imageUploadErrorMessage = 'Image upload failed due to network restrictions. The event will be created without an image.';
-          }
+          imageUploadErrorMessage = 'Image upload failed. The event will be created without an image. You can add an image later by editing the event.';
         }
       }
 
@@ -358,6 +545,20 @@ const CreateEvent = () => {
         event_categories: selectedCategories,
         event_languages: eventLanguages.trim(),
         event_guides: guides,
+        // Creator information
+        creator: creatorInfo ? {
+          type: creatorInfo.type, // 'artist', 'organisation', or 'venue'
+          pageId: creatorInfo.pageId,
+          name: creatorInfo.name,
+          username: creatorInfo.username,
+          userId: auth.currentUser.uid
+        } : {
+          type: 'organisation',
+          pageId: auth.currentUser.uid,
+          name: orgName,
+          username: orgUsername,
+          userId: auth.currentUser.uid
+        },
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         status: 'active',
@@ -395,10 +596,56 @@ const CreateEvent = () => {
     }
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className={styles.createEventPage}>
+        <div className={styles.createEventContainer}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            minHeight: '200px',
+            color: '#aeadad'
+          }}>
+            Verifying permissions...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Unauthorized state
+  if (!isAuthorized) {
+    return (
+      <div className={styles.createEventPage}>
+        <div className={styles.unauthorizedMessageContainer}>
+          <div className={styles.unauthorizedMessage}>
+            <h1>Access Denied</h1>
+            <p>{authError}</p>
+            <button 
+              onClick={() => router.push("/business")}
+              className={styles.backButton}
+            >
+              Create Your First Page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.createEventPage}>
       <div className={styles.createEventContainer}>
-        <h1 className={styles.pageTitle}>Create Event</h1>
+        <h1 className={styles.pageTitle}>
+          Create Event
+          {creatorInfo && (
+            <span className={styles.creatorInfo}>
+              as {creatorInfo.name} ({creatorInfo.type})
+            </span>
+          )}
+        </h1>
         <form onSubmit={handleSubmit} className={styles.createEventForm}>
           {/* Image Upload Section */}
           <div className={styles.formSection}>
@@ -616,11 +863,22 @@ const CreateEvent = () => {
             </div>
             <div className={styles.formGroup}>
               <label>Venue</label>
-              <Script
-                src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjDazO71t0Deh_h6fMe_VHoKmVNEKygSM&libraries=places"
-                strategy="afterInteractive"
-                onLoad={() => setIsMapsScriptLoaded(true)}
-              />
+              {!isMapsScriptLoaded && !mapsScriptError && (
+                <Script
+                  src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
+                  strategy="afterInteractive"
+                  onLoad={() => {
+                    console.log('Google Maps script loaded successfully');
+                    setIsMapsScriptLoaded(true);
+                    setMapsScriptError(false);
+                  }}
+                  onError={(e) => {
+                    console.error('Google Maps script failed to load:', e);
+                    setMapsScriptError(true);
+                    setIsMapsScriptLoaded(false);
+                  }}
+                />
+              )}
               {isMapsScriptLoaded ? (
                 <PlacesAutocomplete
                   value={address}
@@ -675,6 +933,47 @@ const CreateEvent = () => {
                     );
                   }}
                 </PlacesAutocomplete>
+              ) : mapsScriptError ? (
+                <div>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => {
+                      setAddress(e.target.value);
+                      setEventVenue(e.target.value);
+                    }}
+                    placeholder="Enter venue address manually"
+                    className={styles.locationInput}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      console.log('Retrying Google Maps load...');
+                      setMapsScriptError(false);
+                      setIsMapsScriptLoaded(false);
+                      // Remove existing script if any
+                      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+                      if (existingScript) {
+                        existingScript.remove();
+                      }
+                    }}
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 16px',
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Retry Maps Loading
+                  </button>
+                  <p style={{ color: '#888', fontSize: '14px', marginTop: '8px' }}>
+                    Google Maps failed to load. You can enter the address manually or try reloading.
+                  </p>
+                </div>
               ) : (
                 <input
                   type="text"

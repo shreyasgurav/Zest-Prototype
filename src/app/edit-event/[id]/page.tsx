@@ -569,11 +569,11 @@ const EditEvent = ({ params }: { params: { id: string } }) => {
             </div>
             <div className={styles.formGroup}>
               <label>Venue</label>
-              <Script
-                src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjDazO71t0Deh_h6fMe_VHoKmVNEKygSM&libraries=places"
-                strategy="afterInteractive"
-                onLoad={() => setIsMapsScriptLoaded(true)}
-              />
+                        <Script
+            src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
+            strategy="afterInteractive"
+            onLoad={() => setIsMapsScriptLoaded(true)}
+          />
               {isMapsScriptLoaded ? (
                 <PlacesAutocomplete
                   value={address}

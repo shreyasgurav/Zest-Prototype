@@ -164,27 +164,30 @@
 /* Activities Grid */
 .activitiesGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
   padding: 1rem 0;
+  justify-items: center;
 }
 
 @media (min-width: 640px) {
   .activitiesGrid {
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 2rem;
   }
 }
 
 @media (min-width: 1024px) {
   .activitiesGrid {
-    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2.5rem;
   }
 }
 
 .activityCardWrapper {
-  animation: fadeInUp 0.6s ease-out forwards;
   opacity: 0;
   transform: translateY(20px);
+  animation: fadeInUp 0.6s ease-out forwards;
 }
 
 /* Activity Card */
@@ -406,6 +409,17 @@
 
 /* Animations */
 @keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInUp {
   from {
     opacity: 0;
     transform: translateY(20px);

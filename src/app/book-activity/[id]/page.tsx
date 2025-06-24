@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaUsers, FaLanguage, FaChevronLeft, FaChevronRight, FaCreditCard } from 'react-icons/fa';
+import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaUsers, FaLanguage, FaChevronLeft, FaChevronRight, FaCreditCard, FaSync, FaExclamationTriangle } from 'react-icons/fa';
 import styles from './ActivityBookingFlow.module.css';
 import { initiateRazorpayPayment, BookingData } from '@/utils/razorpay';
 import dynamic from 'next/dynamic';
@@ -17,7 +17,7 @@ interface TimeSlot {
   start_time: string;
   end_time: string;
   capacity: number;
-  available_capacity: number;
+  available_capacity: number; // Will be calculated dynamically
 }
 
 interface DaySchedule {
@@ -44,10 +44,27 @@ interface ActivityData {
   closed_dates: string[];
 }
 
+interface ActivityBooking {
+  id: string;
+  activityId: string;
+  userId: string;
+  name: string;
+  email: string;
+  phone: string;
+  selectedDate: string;
+  selectedTimeSlot: TimeSlot;
+  tickets: number;
+  totalAmount: number;
+  createdAt: string;
+  status?: string;
+  paymentStatus?: string;
+}
+
 function ActivityBookingFlow() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [activity, setActivity] = useState<ActivityData | null>(null);
+  const [activityBookings, setActivityBookings] = useState<ActivityBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -56,33 +73,144 @@ function ActivityBookingFlow() {
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [availableTimeSlots, setAvailableTimeSlots] = useState<TimeSlot[]>([]);
   const [calendarDate, setCalendarDate] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Calculate real-time availability for activity time slots
+  const calculateRealTimeAvailability = (activityData: ActivityData, bookingsList: ActivityBooking[], targetDate: string): DaySchedule[] => {
+    const dayOfWeek = new Date(targetDate).toLocaleDateString('en-US', { weekday: 'long' });
+    
+    return activityData.weekly_schedule.map(daySchedule => {
+      if (daySchedule.day !== dayOfWeek) {
+        return daySchedule;
+      }
+
+      const updatedTimeSlots = daySchedule.time_slots.map(slot => {
+        // Count actual booked spots for this specific date and time slot
+        const bookedSpots = bookingsList.reduce((count, booking) => {
+          if (booking.selectedDate === targetDate &&
+              booking.selectedTimeSlot.start_time === slot.start_time &&
+              booking.selectedTimeSlot.end_time === slot.end_time) {
+            return count + booking.tickets;
+          }
+          return count;
+        }, 0);
+
+        return {
+          ...slot,
+          available_capacity: Math.max(0, slot.capacity - bookedSpots)
+        };
+      });
+
+      return {
+        ...daySchedule,
+        time_slots: updatedTimeSlots
+      };
+    });
+  };
+
+  // Fetch activity bookings for real-time availability calculation
+  const fetchActivityBookings = async () => {
+    if (!params?.id) return [];
+
+    try {
+      const bookingsRef = collection(db, 'activity_bookings');
+      const bookingsQuery = query(
+        bookingsRef,
+        where('activityId', '==', params.id)
+      );
+
+      const snapshot = await getDocs(bookingsQuery);
+      const bookingsList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ActivityBooking[];
+      
+      return bookingsList;
+    } catch (err) {
+      console.error("Error fetching activity bookings:", err);
+      return [];
+    }
+  };
+
+  // Fetch activity details with real-time updates
+  const fetchActivity = async (showRefreshIndicator = false) => {
+    if (!params?.id) return;
+
+    try {
+      if (showRefreshIndicator) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
+      // Fetch activity data and bookings in parallel
+      const [activityDoc, bookingsList] = await Promise.all([
+        getDoc(doc(db, "activities", params.id)),
+        fetchActivityBookings()
+      ]);
+      
+      if (activityDoc.exists()) {
+        const data = activityDoc.data();
+        const baseActivityData = {
+          id: activityDoc.id,
+          ...data
+        } as ActivityData;
+
+        setActivity(baseActivityData);
+        setActivityBookings(bookingsList);
+        setLastRefresh(new Date());
+
+        console.log('Real-time activity availability calculated:', {
+          totalBookings: bookingsList.length,
+          totalSpots: bookingsList.reduce((sum, booking) => sum + booking.tickets, 0)
+        });
+      } else {
+        setError("Activity not found");
+      }
+    } catch (err) {
+      console.error("Error fetching activity:", err);
+      setError("Error loading activity");
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  // Set up automatic refresh interval when time slots are visible
+  useEffect(() => {
+    if (calendarDate && availableTimeSlots.length > 0) {
+      refreshIntervalRef.current = setInterval(() => {
+        fetchActivity(true);
+      }, 15000); // Refresh every 15 seconds for critical booking data
+
+      return () => {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+        }
+      };
+    }
+  }, [calendarDate, availableTimeSlots.length]);
 
   useEffect(() => {
-    const fetchActivity = async () => {
-      if (!params?.id) return;
-
-      try {
-        const activityDoc = doc(db, "activities", params.id);
-        const activitySnapshot = await getDoc(activityDoc);
-        
-        if (activitySnapshot.exists()) {
-          const data = activitySnapshot.data();
-          setActivity({
-            id: activitySnapshot.id,
-            ...data
-          } as ActivityData);
-        } else {
-          setError("Activity not found");
-        }
-      } catch (err) {
-        console.error("Error fetching activity:", err);
-        setError("Error loading activity");
-      } finally {
-        setLoading(false);
+    fetchActivity();
+    
+    // Refresh data when user returns to the tab
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchActivity(true);
       }
     };
-
-    fetchActivity();
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
   }, [params?.id]);
 
   useEffect(() => {
@@ -111,16 +239,18 @@ function ActivityBookingFlow() {
 
   useEffect(() => {
     if (activity && selectedDate) {
+      // Calculate real-time availability for the selected date
+      const updatedSchedule = calculateRealTimeAvailability(activity, activityBookings, selectedDate);
       const dayOfWeek = new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long' });
-      const daySchedule = activity.weekly_schedule.find(schedule => schedule.day === dayOfWeek);
+      const daySchedule = updatedSchedule.find(schedule => schedule.day === dayOfWeek);
       
       if (daySchedule?.is_open) {
-        setAvailableTimeSlots(daySchedule.time_slots.filter(slot => slot.available_capacity > 0));
+        setAvailableTimeSlots(daySchedule.time_slots);
       } else {
         setAvailableTimeSlots([]);
       }
     }
-  }, [activity, selectedDate]);
+  }, [activity, activityBookings, selectedDate]);
 
   // Map availableDates to Date objects for calendar
   const availableDateObjects = availableDates.map(dateStr => new Date(dateStr));
@@ -147,9 +277,16 @@ function ActivityBookingFlow() {
 
   const getAvailabilityBadge = (slot: TimeSlot) => {
     const percentage = (slot.available_capacity / slot.capacity) * 100;
-    if (percentage > 50) return { text: 'Available', class: 'available' };
-    if (percentage > 0) return { text: 'Limited', class: 'limited' };
-    return { text: 'Full', class: 'full' };
+    if (slot.available_capacity === 0) return { text: 'SOLD OUT', class: 'soldOut', color: '#ef4444' };
+    if (percentage <= 10) return { text: 'Critical', class: 'critical', color: '#f59e0b' };
+    if (percentage <= 25) return { text: 'Limited', class: 'limited', color: '#f59e0b' };
+    if (percentage > 50) return { text: 'Available', class: 'available', color: '#10b981' };
+    return { text: 'Few Left', class: 'few', color: '#f59e0b' };
+  };
+
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    await fetchActivity(true);
   };
 
   const handleBooking = async () => {
@@ -168,13 +305,13 @@ function ActivityBookingFlow() {
 
       // Get user profile data
       const userDoc = await getDoc(doc(db, "Users", user.uid));
-      const userData = userDoc.data();
+      const userData = userDoc.exists() ? userDoc.data() : null;
 
       const bookingData: BookingData = {
         activityId: activity.id,
         userId: user.uid,
-        name: userData?.name || user.displayName || 'Anonymous',
-        email: userData?.email || user.email || '',
+        name: userData?.name || user.displayName || '',
+        email: userData?.email || userData?.contactEmail || user.email || '',
         phone: userData?.phone || '',
         selectedDate,
         selectedTimeSlot,
@@ -289,29 +426,68 @@ function ActivityBookingFlow() {
           <div className={styles.slotsContainer}>
             {availableTimeSlots.length > 0 ? (
               <>
+                <div className={styles.slotsHeader}>
+                  <h3>Available Time Slots</h3>
+                  <div className={styles.refreshSection}>
+                    <button 
+                      onClick={handleManualRefresh}
+                      className={styles.refreshButton}
+                      disabled={isRefreshing}
+                    >
+                      <FaSync className={isRefreshing ? styles.spinning : ''} />
+                      {isRefreshing ? 'Updating...' : 'Refresh'}
+                    </button>
+                    <span className={styles.lastUpdate}>
+                      Last updated: {lastRefresh.toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+                
                 <div className={styles.slotsGrid}>
                   {availableTimeSlots.map((slot, idx) => {
                     const badge = getAvailabilityBadge(slot);
+                    const isSoldOut = slot.available_capacity === 0;
                     return (
                       <div
                         key={idx}
-                        className={`${styles.timeSlot} ${selectedTimeSlot === slot ? styles.selected : ''}`}
-                        onClick={() => setSelectedTimeSlot(slot)}
+                        className={`${styles.timeSlot} ${selectedTimeSlot === slot ? styles.selected : ''} ${isSoldOut ? styles.soldOut : ''}`}
+                        onClick={() => !isSoldOut && setSelectedTimeSlot(slot)}
+                        style={{ cursor: isSoldOut ? 'not-allowed' : 'pointer' }}
                       >
                         <div className={styles.timeSlotHeader}>
                           <div className={styles.timeRange}>
                             <FaClock className={styles.timeIcon} />
                             {slot.start_time} - {slot.end_time}
                           </div>
-                          <div className={`${styles.availabilityBadge} ${styles[badge.class]}`}>
+                          <div 
+                            className={`${styles.availabilityBadge} ${styles[badge.class]}`}
+                            style={{ backgroundColor: badge.color }}
+                          >
                             {badge.text}
                           </div>
                         </div>
                         <div className={styles.timeSlotDetails}>
                           <div className={styles.capacity}>
                             <FaUsers className={styles.capacityIcon} />
-                            {slot.available_capacity}/{slot.capacity} spots available
+                            {isSoldOut ? (
+                              <span className={styles.soldOutText}>
+                                <FaExclamationTriangle /> Sold Out
+                              </span>
+                            ) : (
+                              <span>{slot.available_capacity} of {slot.capacity} spots available</span>
+                            )}
                           </div>
+                          {!isSoldOut && (
+                            <div className={styles.progressBar}>
+                              <div 
+                                className={styles.progressFill}
+                                style={{ 
+                                  width: `${((slot.capacity - slot.available_capacity) / slot.capacity) * 100}%`,
+                                  backgroundColor: badge.color
+                                }}
+                              />
+                            </div>
+                          )}
                           <div className={styles.duration}>
                             Duration: {activity.activity_duration}
                           </div>
@@ -323,8 +499,15 @@ function ActivityBookingFlow() {
 
                 {selectedTimeSlot && (
                   <div className={styles.ticketSection}>
+                    <div className={styles.sectionTitle}>
+                      <h4>Book Your Spots</h4>
+                      <div className={styles.slotInfo}>
+                        Selected: {selectedTimeSlot.start_time} - {selectedTimeSlot.end_time}
+                      </div>
+                    </div>
+                    
                     <div className={styles.ticketQuantity}>
-                      <label>Number of Tickets:</label>
+                      <label>Number of Spots:</label>
                       <div className={styles.quantityControls}>
                         <button
                           className={styles.quantityButton}
@@ -344,8 +527,14 @@ function ActivityBookingFlow() {
                       </div>
                     </div>
                     
-                    <div className={styles.totalAmount}>
-                      Total: ₹{(activity.price_per_slot * ticketQuantity).toLocaleString()}
+                    <div className={styles.bookingSummary}>
+                      <div className={styles.summaryItem}>
+                        <span>Spots: {ticketQuantity}</span>
+                        <span>₹{activity.price_per_slot.toLocaleString()} each</span>
+                      </div>
+                      <div className={styles.totalAmount}>
+                        Total: ₹{(activity.price_per_slot * ticketQuantity).toLocaleString()}
+                      </div>
                     </div>
 
                     <button 

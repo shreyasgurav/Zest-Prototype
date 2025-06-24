@@ -1,40 +1,13 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { collection, query, getDocs, orderBy, limit, where, deleteDoc, doc } from "firebase/firestore"
+import { collection, query, getDocs, orderBy } from "firebase/firestore"
 import { db } from "../../lib/firebase"
-import { getAuth } from "firebase/auth"
 import { Music, Smile, Palette, PartyPopper, Mountain, Trophy, Calendar, MapPin, Users, Mic } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import styles from "./events.module.css"
 import EventBox from "@/components/EventsSection/EventBox/EventBox"
-
-interface Event {
-  id: string
-  eventTitle: string
-  aboutEvent: string
-  event_image: string
-  eventVenue: string
-  eventDateTime: string
-  eventType: string
-  eventCategories: string[]
-  hostingClub: string
-  isEventBox: boolean
-  eventRegistrationLink?: string
-  organizationId: string
-  title?: string
-  hosting_club?: string
-  event_venue?: string
-  about_event?: string
-  time_slots?: Array<{
-    date: string
-    start_time: string
-    end_time: string
-    available: boolean
-  }>
-  createdAt: any
-}
 
 const EVENT_TYPES = [
   { id: "music", label: "Music", icon: Music, color: "from-purple-500 to-pink-500" },
@@ -45,9 +18,17 @@ const EVENT_TYPES = [
   { id: "sports", label: "Sports", icon: Trophy, color: "from-amber-500 to-yellow-500" },
 ]
 
+interface EventFilterData {
+  id: string;
+  event_categories?: string[];
+  eventCategories?: string[];
+  event_venue?: string;
+  eventVenue?: string;
+}
+
 export default function EventsPage() {
-  const [allEvents, setAllEvents] = useState<Event[]>([])
-  const [events, setEvents] = useState<Event[]>([])
+  const [allEvents, setAllEvents] = useState<EventFilterData[]>([])
+  const [filteredEventIds, setFilteredEventIds] = useState<string[]>([])
   const [selectedType, setSelectedType] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("Mumbai")
   const [isLoading, setIsLoading] = useState(true)
@@ -73,88 +54,33 @@ export default function EventsPage() {
     };
   }, []);
 
-  // Filter events based on selected city
-  const filterEventsByLocation = (events: Event[], city: string) => {
-    if (!city || city === 'All Cities') return events;
-    
-    return events.filter(event => {
-      const venue = event.event_venue || event.eventVenue || '';
-      // Check if venue contains the city name (case insensitive)
-      return venue.toLowerCase().includes(city.toLowerCase());
-    });
-  };
-
-  // Apply both location and type filters
+  // Filter events based on selected city and type
   useEffect(() => {
-    let filtered = filterEventsByLocation(allEvents, selectedCity);
-    
-    if (selectedType !== "all") {
-      filtered = filtered.filter((event) => 
-        event.eventCategories && event.eventCategories.includes(selectedType)
-      );
+    let filtered = [...allEvents];
+
+    // Filter by city
+    if (selectedCity && selectedCity !== 'All Cities') {
+      filtered = filtered.filter(event => {
+        const venue = event.event_venue || event.eventVenue || '';
+        return venue.toLowerCase().includes(selectedCity.toLowerCase());
+      });
     }
-    
-    setEvents(filtered);
-    console.log(`Filtered ${filtered.length} events for ${selectedCity} and type ${selectedType}`);
+
+    // Filter by category
+    if (selectedType && selectedType !== 'all') {
+      filtered = filtered.filter(event => {
+        const categories = event.event_categories || event.eventCategories || [];
+        return categories.some(category => 
+          category.toLowerCase() === selectedType.toLowerCase()
+        );
+      });
+    }
+
+    setFilteredEventIds(filtered.map(event => event.id));
   }, [allEvents, selectedCity, selectedType]);
 
-  const handleEventDelete = async (eventId: string) => {
-    const auth = getAuth();
-    
-    if (!auth.currentUser) {
-      alert("You must be logged in to delete events.");
-      return;
-    }
-
-    try {
-      console.log("Deleting event:", eventId);
-      
-      // First, check if the current user is authorized to delete this event
-      const event = allEvents.find(e => e.id === eventId);
-      if (!event || event.organizationId !== auth.currentUser.uid) {
-        alert("You are not authorized to delete this event.");
-        return;
-      }
-
-      // Delete all attendees first
-      const attendeesRef = collection(db, 'eventAttendees');
-      const attendeesQuery = query(attendeesRef, where('eventId', '==', eventId));
-      const attendeesSnapshot = await getDocs(attendeesQuery);
-      
-      const deletePromises = attendeesSnapshot.docs.map(doc => 
-        deleteDoc(doc.ref)
-      );
-      
-      await Promise.all(deletePromises);
-      console.log("Deleted event attendees for event:", eventId);
-
-      // Delete all tickets related to this event
-      const ticketsRef = collection(db, 'tickets');
-      const ticketsQuery = query(ticketsRef, where('eventId', '==', eventId));
-      const ticketsSnapshot = await getDocs(ticketsQuery);
-      
-      const deleteTicketPromises = ticketsSnapshot.docs.map(doc => 
-        deleteDoc(doc.ref)
-      );
-      
-      await Promise.all(deleteTicketPromises);
-      console.log("Deleted tickets for event:", eventId);
-
-      // Delete the event document
-      await deleteDoc(doc(db, 'events', eventId));
-      console.log("Event deleted successfully from database:", eventId);
-      
-      // Remove from local state
-      setAllEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
-      
-    } catch (error) {
-      console.error("Error deleting event:", error);
-      alert("Failed to delete event. Please try again.");
-    }
-  };
-
   useEffect(() => {
-    const fetchEvents = async () => {
+    const fetchEventsData = async () => {
       try {
         if (!db) throw new Error("Firebase is not initialized")
 
@@ -162,61 +88,30 @@ export default function EventsPage() {
         const q = query(eventsCollectionRef, orderBy("createdAt", "desc"))
         const querySnapshot = await getDocs(q)
         
+        // Fetch minimal data needed for filtering
         const eventsData = querySnapshot.docs.map(doc => {
-          const data = doc.data()
+          const data = doc.data();
           return {
             id: doc.id,
-            eventTitle: data.title || data.eventTitle || "",
-            eventType: data.event_type || data.eventType || "event",
-            eventCategories: data.event_categories || [],
-            hostingClub: data.hosting_club || data.hostingClub || "",
-            eventDateTime: data.event_date_time || data.eventDateTime,
-            eventVenue: data.event_venue || data.eventVenue || "",
-            eventRegistrationLink: data.event_registration_link || data.eventRegistrationLink,
-            aboutEvent: data.about_event || data.aboutEvent || "",
-            event_image: data.event_image || "",
-            organizationId: data.organizationId || "",
-            time_slots: data.time_slots || [],
-            isEventBox: true,
-            createdAt: data.createdAt
-          }
-        }) as Event[]
+            event_categories: data.event_categories || [],
+            eventCategories: data.eventCategories || [],
+            event_venue: data.event_venue || '',
+            eventVenue: data.eventVenue || ''
+          } as EventFilterData;
+        });
         
         setAllEvents(eventsData)
         setError(null)
       } catch (error) {
-        console.error("Error fetching events:", error)
+        console.error("Error fetching events data:", error)
         setError(error instanceof Error ? error.message : "Failed to fetch events")
       } finally {
         setIsLoading(false)
       }
     }
 
-    fetchEvents()
+    fetchEventsData()
   }, [])
-
-  const filteredEvents = events
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })
-  }
-
-  const getEventTypeInfo = (eventType: string) => {
-    return (
-      EVENT_TYPES.find((type) => type.id === eventType.toLowerCase()) || {
-        id: eventType.toLowerCase(),
-        label: eventType,
-        icon: Calendar,
-        color: "from-gray-500 to-gray-600",
-      }
-    )
-  }
 
   const getEventTypeIcon = (type: string) => {
     switch (type.toLowerCase()) {
@@ -298,19 +193,18 @@ export default function EventsPage() {
             <h2 className={styles.noEventsTitle}>Error Loading Events</h2>
             <p className={styles.noEventsText}>{error}</p>
           </div>
-        ) : filteredEvents.length > 0 ? (
+        ) : filteredEventIds.length > 0 ? (
           <>
             <div className={styles.eventsCount}>
-              Showing {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+              Showing {filteredEventIds.length} {filteredEventIds.length === 1 ? 'event' : 'events'}
               {selectedCity !== 'All Cities' && ` in ${selectedCity}`}
+              {selectedType !== 'all' && ` in ${selectedType}`}
             </div>
             <div className={styles.eventsGrid}>
-              {filteredEvents.map((event) => (
+              {filteredEventIds.map((eventId) => (
                 <EventBox 
-                  key={event.id} 
-                  event={event}
-                  onDelete={handleEventDelete}
-                  currentUserId={getAuth().currentUser?.uid}
+                  key={eventId} 
+                  eventId={eventId}
                 />
               ))}
             </div>
@@ -328,6 +222,15 @@ export default function EventsPage() {
                   ? "There are no events available at the moment. Check back later!"
                   : `No ${selectedType} events found. Try a different category or check back later.`}
             </p>
+            <button 
+              onClick={() => {
+                setSelectedCity('All Cities');
+                setSelectedType('all');
+              }}
+              className={styles.resetFiltersButton}
+            >
+              Reset Filters
+            </button>
           </div>
         )}
       </div>

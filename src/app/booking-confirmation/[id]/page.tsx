@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { CheckCircle, Calendar, Clock, MapPin, Ticket, CreditCard, User, Home, Copy } from 'lucide-react';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -35,6 +36,9 @@ interface ActivityBookingData {
   id: string;
   activityId: string;
   userId: string;
+  name: string;
+  email: string;
+  phone: string;
   selectedDate: string;
   selectedTimeSlot: TimeSlot;
   tickets: number;
@@ -68,6 +72,20 @@ const BookingConfirmation = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bookingType, setBookingType] = useState<'event' | 'activity' | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyBookingId = async () => {
+    const bookingId = eventBooking?.id || activityBooking?.id;
+    if (!bookingId) return;
+
+    try {
+      await navigator.clipboard.writeText(bookingId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy booking ID");
+    }
+  };
 
   useEffect(() => {
     const fetchBookingData = async () => {
@@ -143,43 +161,6 @@ const BookingConfirmation = () => {
     fetchBookingData();
   }, [params?.id, auth.currentUser]);
 
-  if (loading) {
-    return (
-      <div className={styles.bookingConfirmation}>
-        <div className={styles.loadingState}>
-          <div className={styles.loadingSpinner}></div>
-          <p>Loading your booking details...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={styles.bookingConfirmation}>
-        <div className={styles.errorState}>
-          <div className={styles.errorIcon}>✕</div>
-          <h2 className={styles.errorTitle}>Booking Error</h2>
-          <p className={styles.errorMessage}>{error}</p>
-          <Link href="/" className={`${styles.actionButton} ${styles.primary}`}>Return Home</Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (!eventBooking && !activityBooking) {
-    return (
-      <div className={styles.bookingConfirmation}>
-        <div className={styles.errorState}>
-          <div className={styles.errorIcon}>✕</div>
-          <h2 className={styles.errorTitle}>Booking Not Found</h2>
-          <p className={styles.errorMessage}>We couldn't find your booking. Please try again or contact support.</p>
-          <Link href="/" className={`${styles.actionButton} ${styles.primary}`}>Return Home</Link>
-        </div>
-      </div>
-    );
-  }
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       weekday: 'long',
@@ -196,197 +177,236 @@ const BookingConfirmation = () => {
     });
   };
 
-  // Event booking confirmation
-  if (bookingType === 'event' && eventBooking && event) {
+  if (loading) {
     return (
-      <div className={styles.bookingConfirmation}>
-        <div className={styles.confirmationCard}>
+      <div className={styles.container}>
+        <div className={styles.wrapper}>
           <div className={styles.successHeader}>
-            <div className={styles.successIcon}>✓</div>
-            <h1 className={styles.successTitle}>Event Booking Confirmed!</h1>
-            <p>Thank you for your booking. Your booking ID is: <span className={styles.bookingId}>{eventBooking.id}</span></p>
-          </div>
-
-          <div className={styles.bookingDetails}>
-            <h2 className={styles.detailsTitle}>Event Details</h2>
-            
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>🎪</span>
-              <span className={styles.detailLabel}>Event</span>
-              <span className={styles.detailValue}>{event.title}</span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>📅</span>
-              <span className={styles.detailLabel}>Date</span>
-              <span className={styles.detailValue}>{formatDate(eventBooking.selectedDate)}</span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>🕒</span>
-              <span className={styles.detailLabel}>Time</span>
-              <span className={styles.detailValue}>
-                {formatTime(eventBooking.selectedTimeSlot.start_time)} - {formatTime(eventBooking.selectedTimeSlot.end_time)}
-              </span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>📍</span>
-              <span className={styles.detailLabel}>Venue</span>
-              <span className={styles.detailValue}>{event.event_venue}</span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>🎟</span>
-              <span className={styles.detailLabel}>Tickets</span>
-              <div className={`${styles.ticketsList} ${styles.detailValue}`}>
-                {Object.entries(eventBooking.tickets).map(([type, quantity]) => (
-                  <div key={type}>{type}: {quantity}</div>
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>💰</span>
-              <span className={styles.detailLabel}>Total Amount</span>
-              <span className={styles.detailValue}>₹{eventBooking.totalAmount}</span>
-            </div>
-
-            {eventBooking.paymentId && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailIcon}>💳</span>
-                <span className={styles.detailLabel}>Payment ID</span>
-                <span className={styles.detailValue}>{eventBooking.paymentId}</span>
-              </div>
-            )}
-
-            {eventBooking.paymentStatus && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailIcon}>✅</span>
-                <span className={styles.detailLabel}>Payment Status</span>
-                <span className={styles.detailValue} style={{ 
-                  color: eventBooking.paymentStatus === 'completed' ? '#10b981' : '#ef4444' 
-                }}>
-                  {eventBooking.paymentStatus === 'completed' ? 'Paid' : 'Failed'}
-                </span>
-              </div>
-            )}
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>👤</span>
-              <span className={styles.detailLabel}>Attendee</span>
-              <div className={styles.detailValue}>
-                <div>{eventBooking.name}</div>
-                <div>{eventBooking.email}</div>
-                <div>{eventBooking.phone}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className={styles.confirmationActions}>
-            <Link href="/" className={`${styles.actionButton} ${styles.primary}`}>
-              <span className={styles.buttonIcon}>🏠</span>
-              Back to Home
-            </Link>
-            <Link href={`/event-profile/${eventBooking.eventId}`} className={`${styles.actionButton} ${styles.secondary}`}>
-              <span className={styles.buttonIcon}>📋</span>
-              View Event Details
-            </Link>
+            <div className={styles.loadingSpinner}></div>
+            <p>Loading your booking details...</p>
           </div>
         </div>
       </div>
     );
   }
 
-  // Activity booking confirmation
-  if (bookingType === 'activity' && activityBooking && activity) {
+  if (error) {
     return (
-      <div className={styles.bookingConfirmation}>
-        <div className={styles.confirmationCard}>
-          <div className={styles.successHeader}>
-            <div className={styles.successIcon}>✓</div>
-            <h1 className={styles.successTitle}>Activity Booking Confirmed!</h1>
-            <p>Thank you for your booking. Your booking ID is: <span className={styles.bookingId}>{activityBooking.id}</span></p>
-          </div>
-
-          <div className={styles.bookingDetails}>
-            <h2 className={styles.detailsTitle}>Activity Details</h2>
-            
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>🎯</span>
-              <span className={styles.detailLabel}>Activity</span>
-              <span className={styles.detailValue}>{activity.name}</span>
+      <div className={styles.container}>
+        <div className={styles.wrapper}>
+          <div className={styles.detailsCard}>
+            <div className={styles.cardTitle}>Booking Error</div>
+            <p style={{ color: '#ef4444', textAlign: 'center', marginBottom: '2rem' }}>{error}</p>
+            <div className={styles.actions}>
+              <Link href="/tickets" className={styles.homeButton}>
+                <Ticket className={styles.homeIcon} />
+                View My Tickets
+              </Link>
             </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>📅</span>
-              <span className={styles.detailLabel}>Date</span>
-              <span className={styles.detailValue}>{formatDate(activityBooking.selectedDate)}</span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>🕒</span>
-              <span className={styles.detailLabel}>Time</span>
-              <span className={styles.detailValue}>
-                {formatTime(activityBooking.selectedTimeSlot.start_time)} - {formatTime(activityBooking.selectedTimeSlot.end_time)}
-              </span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>📍</span>
-              <span className={styles.detailLabel}>Location</span>
-              <span className={styles.detailValue}>{activity.location}</span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>🎟</span>
-              <span className={styles.detailLabel}>Tickets</span>
-              <span className={styles.detailValue}>{activityBooking.tickets}</span>
-            </div>
-
-            <div className={styles.detailRow}>
-              <span className={styles.detailIcon}>💰</span>
-              <span className={styles.detailLabel}>Total Amount</span>
-              <span className={styles.detailValue}>₹{activityBooking.totalAmount}</span>
-            </div>
-
-            {activityBooking.paymentId && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailIcon}>💳</span>
-                <span className={styles.detailLabel}>Payment ID</span>
-                <span className={styles.detailValue}>{activityBooking.paymentId}</span>
-              </div>
-            )}
-
-            {activityBooking.paymentStatus && (
-              <div className={styles.detailRow}>
-                <span className={styles.detailIcon}>✅</span>
-                <span className={styles.detailLabel}>Payment Status</span>
-                <span className={styles.detailValue} style={{ 
-                  color: activityBooking.paymentStatus === 'completed' ? '#10b981' : '#ef4444' 
-                }}>
-                  {activityBooking.paymentStatus === 'completed' ? 'Paid' : 'Failed'}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className={styles.confirmationActions}>
-            <Link href="/" className={`${styles.actionButton} ${styles.primary}`}>
-              <span className={styles.buttonIcon}>🏠</span>
-              Back to Home
-            </Link>
-            <Link href={`/activity-profile/${activityBooking.activityId}`} className={`${styles.actionButton} ${styles.secondary}`}>
-              <span className={styles.buttonIcon}>📋</span>
-              View Activity Details
-            </Link>
           </div>
         </div>
       </div>
     );
   }
 
-  return null;
+  if (!eventBooking && !activityBooking) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.wrapper}>
+          <div className={styles.detailsCard}>
+            <div className={styles.cardTitle}>Booking Not Found</div>
+            <p style={{ color: '#ef4444', textAlign: 'center', marginBottom: '2rem' }}>
+              We couldn't find your booking. Please try again or contact support.
+            </p>
+            <div className={styles.actions}>
+              <Link href="/tickets" className={styles.homeButton}>
+                <Ticket className={styles.homeIcon} />
+                View My Tickets
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentBooking = eventBooking || activityBooking;
+  const currentDetails = event || activity;
+  const isEvent = bookingType === 'event';
+
+  if (!currentBooking || !currentDetails) return null;
+
+  // Format tickets display
+  const formatTickets = () => {
+    if (isEvent && eventBooking) {
+      return Object.entries(eventBooking.tickets)
+        .map(([type, quantity]) => `${type}: ${quantity}`)
+        .join(', ');
+    }
+    return activityBooking?.tickets.toString() || '0';
+  };
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.wrapper}>
+        {/* Success Header */}
+        <div className={styles.successHeader}>
+          <div className={styles.successIcon}>
+            <CheckCircle className={styles.checkIcon} />
+          </div>
+          <h1 className={styles.title}>
+            {isEvent ? 'Event' : 'Activity'} Booking Confirmed!
+          </h1>
+          <p className={styles.subtitle}>Thank you for your booking. Your booking ID is:</p>
+          <div className={styles.bookingIdContainer}>
+            <span className={styles.bookingId}>{currentBooking.id}</span>
+            <button onClick={copyBookingId} className={styles.copyButton} title="Copy booking ID">
+              <Copy className={styles.copyIcon} />
+            </button>
+          </div>
+          {copied && <span className={styles.copiedText}>Copied!</span>}
+        </div>
+
+        {/* Details Card */}
+        <div className={styles.detailsCard}>
+          <h2 className={styles.cardTitle}>
+            {isEvent ? 'Event' : 'Activity'} Details
+          </h2>
+
+          <div className={styles.detailsGrid}>
+            {/* Name */}
+            <div className={styles.detailItem}>
+              <div className={styles.detailIcon}>
+                <span className={styles.emoji}>{isEvent ? '🎪' : '🎯'}</span>
+              </div>
+              <div className={styles.detailContent}>
+                <span className={styles.detailLabel}>{isEvent ? 'Event' : 'Activity'}</span>
+                <span className={styles.detailValue}>
+                  {isEvent ? (event as EventData).title : (activity as ActivityData).name}
+                </span>
+              </div>
+            </div>
+
+            {/* Date */}
+            <div className={styles.detailItem}>
+              <div className={styles.detailIcon}>
+                <Calendar className={styles.iconSvg} />
+              </div>
+              <div className={styles.detailContent}>
+                <span className={styles.detailLabel}>Date</span>
+                <span className={styles.detailValue}>{formatDate(currentBooking.selectedDate)}</span>
+              </div>
+            </div>
+
+            {/* Time */}
+            <div className={styles.detailItem}>
+              <div className={styles.detailIcon}>
+                <Clock className={styles.iconSvg} />
+              </div>
+              <div className={styles.detailContent}>
+                <span className={styles.detailLabel}>Time</span>
+                <span className={styles.detailValue}>
+                  {formatTime(currentBooking.selectedTimeSlot.start_time)} - {formatTime(currentBooking.selectedTimeSlot.end_time)}
+                </span>
+              </div>
+            </div>
+
+            {/* Venue/Location */}
+            <div className={styles.detailItem}>
+              <div className={styles.detailIcon}>
+                <MapPin className={styles.iconSvg} />
+              </div>
+              <div className={styles.detailContent}>
+                <span className={styles.detailLabel}>{isEvent ? 'Venue' : 'Location'}</span>
+                <span className={styles.detailValue}>
+                  {isEvent ? (event as EventData).event_venue : (activity as ActivityData).location}
+                </span>
+              </div>
+            </div>
+
+            {/* Tickets */}
+            <div className={styles.detailItem}>
+              <div className={styles.detailIcon}>
+                <Ticket className={styles.iconSvg} />
+              </div>
+              <div className={styles.detailContent}>
+                <span className={styles.detailLabel}>Tickets</span>
+                <span className={styles.detailValue}>{formatTickets()}</span>
+              </div>
+            </div>
+
+            {/* Total Amount */}
+            <div className={styles.detailItem}>
+              <div className={styles.detailIcon}>
+                <span className={styles.emoji}>💰</span>
+              </div>
+              <div className={styles.detailContent}>
+                <span className={styles.detailLabel}>Total Amount</span>
+                <span className={`${styles.detailValue} ${styles.amount}`}>
+                  ₹{currentBooking.totalAmount.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Payment ID */}
+            {currentBooking.paymentId && (
+              <div className={styles.detailItem}>
+                <div className={styles.detailIcon}>
+                  <CreditCard className={styles.iconSvg} />
+                </div>
+                <div className={styles.detailContent}>
+                  <span className={styles.detailLabel}>Payment ID</span>
+                  <span className={styles.detailValue}>{currentBooking.paymentId}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Payment Status */}
+            {currentBooking.paymentStatus && (
+              <div className={styles.detailItem}>
+                <div className={styles.detailIcon}>
+                  <CheckCircle className={styles.iconSvg} />
+                </div>
+                <div className={styles.detailContent}>
+                  <span className={styles.detailLabel}>Payment Status</span>
+                  <span className={`${styles.detailValue} ${styles.paidStatus}`}>
+                    {currentBooking.paymentStatus === 'completed' ? 'Paid' : 'Failed'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Attendee */}
+            <div className={styles.detailItem}>
+              <div className={styles.detailIcon}>
+                <User className={styles.iconSvg} />
+              </div>
+              <div className={styles.detailContent}>
+                <span className={styles.detailLabel}>Attendee</span>
+                <div className={styles.attendeeInfo}>
+                  <span className={styles.detailValue}>{currentBooking.name}</span>
+                  <span className={styles.phoneNumber}>{currentBooking.phone}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className={styles.actions}>
+          <Link href="/tickets" className={styles.homeButton}>
+            <Ticket className={styles.homeIcon} />
+            View My Tickets
+          </Link>
+        </div>
+
+        {/* Footer Note */}
+        <div className={styles.footerNote}>
+          <p>Please save this confirmation for your records. You may need to show this at the venue.</p>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default BookingConfirmation; 

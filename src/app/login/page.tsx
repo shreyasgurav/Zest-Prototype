@@ -16,8 +16,7 @@ import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } fro
 import { toast } from "react-toastify"
 import PhoneInput from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
-import { handleAuthenticationFlow } from '../../utils/authHelpers'
-import { isOrganizationSession } from '../../utils/authHelpers'
+import { handleAuthenticationFlow, clearAllSessions } from '../../utils/authHelpers'
 import styles from "./login.module.css"
 
 // Extend Window interface for reCAPTCHA
@@ -314,6 +313,9 @@ export default function LoginPage() {
 
   const handleSuccessfulAuth = async (user: any, provider: 'phone') => {
     try {
+      // Clear any existing organization/artist/venue session markers for clean user login
+      clearAllSessions();
+      
       const additionalData = { phone: phoneNumber }
       
       const { userData, navigationPath } = await handleAuthenticationFlow(user, provider, additionalData)
@@ -415,6 +417,8 @@ export default function LoginPage() {
         name: formData.name.trim(),
         username: formData.username.toLowerCase().trim(),
         contactEmail: formData.contactEmail.trim(),
+        email: formData.contactEmail.trim(), // Also save as email for booking compatibility
+        phone: currentUser.phoneNumber || "", // Ensure phone is always saved
         updatedAt: new Date().toISOString(),
       }
 
@@ -424,7 +428,6 @@ export default function LoginPage() {
       } else {
         await setDoc(userRef, {
           uid: currentUser.uid,
-          email: currentUser.email || "",
           photoURL: currentUser.photoURL || "",
           createdAt: new Date().toISOString(),
           ...updateData
@@ -478,7 +481,7 @@ export default function LoginPage() {
           <div className={styles.card}>
             <button onClick={handleBackToHome} className={styles.backToHome}>
               <ArrowLeft size={16} />
-              Back to Home
+              Back
             </button>
 
             <div className={styles.cardContent}>
@@ -607,14 +610,6 @@ export default function LoginPage() {
                      timeLeft > 0 ? `Wait ${timeLeft}s` : 
                      "Send OTP"}
                   </button>
-                </div>
-
-                {/* Organization Login Link */}
-                <div className={styles.organizationLink}>
-                  <p className={styles.organizationText}>Are you an organizer?</p>
-                  <a href="/login/organisation" className={styles.organizationLinkBtn}>
-                    Organization Login
-                  </a>
                 </div>
               </>
             ) : (

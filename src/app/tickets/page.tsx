@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { FaTicketAlt, FaFilter, FaSort, FaSearch, FaCalendarAlt } from 'react-icons/fa';
+import { FaTicketAlt, FaQrcode, FaTimes, FaCalendarAlt, FaMapMarkerAlt, FaClock, FaUser, FaRupeeSign } from 'react-icons/fa';
 import TicketCard from '@/components/TicketCard/TicketCard';
 import styles from './Tickets.module.css';
 
@@ -33,19 +33,14 @@ const TicketsPage = () => {
   const router = useRouter();
   const auth = getAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [filteredTickets, setFilteredTickets] = useState<Ticket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'used' | 'cancelled'>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'event' | 'activity'>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'title' | 'status'>('date');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        router.push('/');
+        router.push('/login');
         return;
       }
       fetchTickets(user.uid);
@@ -61,8 +56,25 @@ const TicketsPage = () => {
       const data = await response.json();
 
       if (data.success) {
-        setTickets(data.tickets);
-        setFilteredTickets(data.tickets);
+        // Sort tickets: upcoming active tickets first, then by date
+        const sortedTickets = data.tickets.sort((a: Ticket, b: Ticket) => {
+          const now = new Date();
+          const dateA = new Date(a.selectedDate);
+          const dateB = new Date(b.selectedDate);
+          
+          // Active upcoming tickets first
+          if (a.status === 'active' && dateA >= now && (b.status !== 'active' || dateB < now)) {
+            return -1;
+          }
+          if (b.status === 'active' && dateB >= now && (a.status !== 'active' || dateA < now)) {
+            return 1;
+          }
+          
+          // Then sort by date descending
+          return dateB.getTime() - dateA.getTime();
+        });
+        
+        setTickets(sortedTickets);
       } else {
         setError(data.error || 'Failed to fetch tickets');
       }
@@ -74,60 +86,37 @@ const TicketsPage = () => {
     }
   };
 
-  useEffect(() => {
-    let filtered = [...tickets];
-
-    // Apply search filter
-    if (searchQuery) {
-      filtered = filtered.filter(ticket =>
-        ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.venue.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.ticketNumber.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(ticket => ticket.status === statusFilter);
-    }
-
-    // Apply type filter
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(ticket => ticket.type === typeFilter);
-    }
-
-    // Apply sorting
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case 'date':
-          comparison = new Date(a.selectedDate).getTime() - new Date(b.selectedDate).getTime();
-          break;
-        case 'title':
-          comparison = a.title.localeCompare(b.title);
-          break;
-        case 'status':
-          comparison = a.status.localeCompare(b.status);
-          break;
-      }
-      return sortOrder === 'asc' ? comparison : -comparison;
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short'
     });
-
-    setFilteredTickets(filtered);
-  }, [tickets, searchQuery, statusFilter, typeFilter, sortBy, sortOrder]);
-
-  const getTicketCounts = () => {
-    return {
-      total: tickets.length,
-      active: tickets.filter(t => t.status === 'active').length,
-      used: tickets.filter(t => t.status === 'used').length,
-      cancelled: tickets.filter(t => t.status === 'cancelled').length,
-      events: tickets.filter(t => t.type === 'event').length,
-      activities: tickets.filter(t => t.type === 'activity').length,
-    };
   };
 
-  const counts = getTicketCounts();
+  const formatTime = (timeString: string) => {
+    const [hours, minutes] = timeString.split(':');
+    const time = new Date();
+    time.setHours(parseInt(hours), parseInt(minutes));
+    return time.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return '#10B981';
+      case 'used': return '#6B7280';
+      case 'cancelled': return '#EF4444';
+      default: return '#6B7280';
+    }
+  };
+
+  const isUpcoming = (dateString: string) => {
+    return new Date(dateString) > new Date();
+  };
 
   if (loading) {
     return (
@@ -160,133 +149,167 @@ const TicketsPage = () => {
 
   return (
     <div className={styles.ticketsPage}>
+      {/* Simple Header */}
       <div className={styles.header}>
         <div className={styles.headerContent}>
-          <div className={styles.titleSection}>
-            <FaTicketAlt className={styles.titleIcon} />
+          <FaTicketAlt className={styles.titleIcon} />
+          <div>
             <h1>My Tickets</h1>
-          </div>
-          <div className={styles.statsSection}>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{counts.total}</span>
-              <span className={styles.statLabel}>Total</span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{counts.active}</span>
-              <span className={styles.statLabel}>Active</span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statValue}>{counts.used}</span>
-              <span className={styles.statLabel}>Used</span>
-            </div>
+            <p className={styles.subtitle}>
+              {tickets.length} {tickets.length === 1 ? 'ticket' : 'tickets'}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className={styles.controls}>
-        <div className={styles.searchSection}>
-          <div className={styles.searchBox}>
-            <FaSearch className={styles.searchIcon} />
-            <input
-              type="text"
-              placeholder="Search tickets..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={styles.searchInput}
-            />
-          </div>
-        </div>
-
-        <div className={styles.filtersSection}>
-          <div className={styles.filterGroup}>
-            <label>Status:</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className={styles.filterSelect}
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="used">Used</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          <div className={styles.filterGroup}>
-            <label>Type:</label>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
-              className={styles.filterSelect}
-            >
-              <option value="all">All Types</option>
-              <option value="event">Events</option>
-              <option value="activity">Activities</option>
-            </select>
-          </div>
-
-          <div className={styles.filterGroup}>
-            <label>Sort by:</label>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className={styles.filterSelect}
-            >
-              <option value="date">Date</option>
-              <option value="title">Title</option>
-              <option value="status">Status</option>
-            </select>
-          </div>
-
-          <button
-            className={styles.sortOrderButton}
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-          >
-            <FaSort />
-            {sortOrder === 'asc' ? '↑' : '↓'}
-          </button>
-        </div>
-      </div>
-
+      {/* Tickets Display */}
       <div className={styles.ticketsContainer}>
-        {filteredTickets.length === 0 ? (
+        {tickets.length === 0 ? (
           <div className={styles.emptyState}>
             <FaTicketAlt className={styles.emptyIcon} />
-            <h3>No tickets found</h3>
-            <p>
-              {tickets.length === 0 
-                ? "You haven't booked any events or activities yet."
-                : "No tickets match your current filters."
-              }
-            </p>
-            {tickets.length === 0 && (
+            <h3>No Tickets Yet</h3>
+            <p>You haven't booked any events or activities yet.</p>
+            <div className={styles.emptyActions}>
               <button 
                 className={styles.browseButton}
                 onClick={() => router.push('/events')}
               >
                 Browse Events
               </button>
-            )}
+              <button 
+                className={styles.browseButton}
+                onClick={() => router.push('/activities')}
+              >
+                Browse Activities
+              </button>
+            </div>
           </div>
         ) : (
           <div className={styles.ticketsList}>
-            {filteredTickets.map((ticket) => (
+            {tickets.map((ticket) => (
               <TicketCard
                 key={ticket.id}
                 ticket={ticket}
-                onClick={() => {
-                  // Optional: Navigate to ticket details or event/activity page
-                  if (ticket.type === 'event') {
-                    router.push(`/event-profile/${ticket.eventId || ''}`);
-                  } else {
-                    router.push(`/activity-profile/${ticket.activityId || ''}`);
-                  }
-                }}
+                onClick={() => setSelectedTicket(ticket)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Full Ticket Modal */}
+      {selectedTicket && (
+        <div className={styles.modalOverlay} onClick={() => setSelectedTicket(null)}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button 
+              className={styles.closeButton}
+              onClick={() => setSelectedTicket(null)}
+            >
+              <FaTimes />
+            </button>
+
+            <div className={styles.fullTicket}>
+              {/* Ticket Header */}
+              <div className={styles.fullTicketHeader}>
+                <div className={styles.fullTicketTitle}>
+                  <h2>{selectedTicket.title}</h2>
+                  <span className={styles.fullTicketType}>
+                    {selectedTicket.type.toUpperCase()}
+                  </span>
+                </div>
+                <div 
+                  className={styles.fullTicketStatus}
+                  style={{ backgroundColor: getStatusColor(selectedTicket.status) }}
+                >
+                  {selectedTicket.status.toUpperCase()}
+                </div>
+              </div>
+
+              {/* QR Code Section */}
+              <div className={styles.qrSection}>
+                <div className={styles.qrCodeContainer}>
+                  <img 
+                    src={selectedTicket.qrCode} 
+                    alt="QR Code" 
+                    className={styles.qrCode}
+                  />
+                </div>
+                <p className={styles.qrInstructions}>
+                  Show this QR code at the venue entrance
+                </p>
+              </div>
+
+              {/* Ticket Details */}
+              <div className={styles.ticketDetails}>
+                <div className={styles.detailRow}>
+                  <FaUser className={styles.detailIcon} />
+                  <div>
+                    <span className={styles.detailLabel}>Name</span>
+                    <span className={styles.detailValue}>{selectedTicket.userName}</span>
+                  </div>
+                </div>
+
+                <div className={styles.detailRow}>
+                  <FaCalendarAlt className={styles.detailIcon} />
+                  <div>
+                    <span className={styles.detailLabel}>Date</span>
+                    <span className={styles.detailValue}>{formatDate(selectedTicket.selectedDate)}</span>
+                  </div>
+                </div>
+
+                <div className={styles.detailRow}>
+                  <FaClock className={styles.detailIcon} />
+                  <div>
+                    <span className={styles.detailLabel}>Time</span>
+                    <span className={styles.detailValue}>
+                      {formatTime(selectedTicket.selectedTimeSlot.start_time)} - {formatTime(selectedTicket.selectedTimeSlot.end_time)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={styles.detailRow}>
+                  <FaMapMarkerAlt className={styles.detailIcon} />
+                  <div>
+                    <span className={styles.detailLabel}>Venue</span>
+                    <span className={styles.detailValue}>{selectedTicket.venue}</span>
+                  </div>
+                </div>
+
+                <div className={styles.detailRow}>
+                  <FaRupeeSign className={styles.detailIcon} />
+                  <div>
+                    <span className={styles.detailLabel}>Amount Paid</span>
+                    <span className={styles.detailValue}>₹{selectedTicket.amount}</span>
+                  </div>
+                </div>
+
+                <div className={styles.detailRow}>
+                  <FaTicketAlt className={styles.detailIcon} />
+                  <div>
+                    <span className={styles.detailLabel}>Ticket Number</span>
+                    <span className={styles.detailValue}>{selectedTicket.ticketNumber}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <button
+                className={styles.viewEventButton}
+                onClick={() => {
+                  setSelectedTicket(null);
+                  if (selectedTicket.type === 'event') {
+                    router.push(`/event-profile/${selectedTicket.eventId}`);
+                  } else {
+                    router.push(`/activity-profile/${selectedTicket.activityId}`);
+                  }
+                }}
+              >
+                View {selectedTicket.type === 'event' ? 'Event' : 'Activity'} Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

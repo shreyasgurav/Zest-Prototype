@@ -167,29 +167,35 @@ const ActivitySection = () => {
   useEffect(() => {
     const fetchActivities = async () => {
       try {
-        // Check cache first
-        const cachedActivities = sessionStorage.getItem('cachedActivities');
-        const cacheTimestamp = sessionStorage.getItem('activitiesTimestamp');
-        const now = Date.now();
+        console.log('Starting to fetch activities...');
+        
+        // Disable cache temporarily for debugging
+        // const cachedActivities = sessionStorage.getItem('cachedActivities');
+        // const cacheTimestamp = sessionStorage.getItem('activitiesTimestamp');
+        // const now = Date.now();
         
         // Use cache if it's less than 5 minutes old
-        if (cachedActivities && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 300000) {
-          console.log('Using cached activities data');
-          const activitiesData = JSON.parse(cachedActivities);
-          setAllActivities(activitiesData);
-          setImagesLoaded(true);
-          setLoading(false);
-          return;
-        }
+        // if (cachedActivities && cacheTimestamp && (now - parseInt(cacheTimestamp)) < 300000) {
+        //   console.log('Using cached activities data');
+        //   const activitiesData = JSON.parse(cachedActivities);
+        //   setAllActivities(activitiesData);
+        //   setImagesLoaded(true);
+        //   setLoading(false);
+        //   return;
+        // }
 
         if (!db) throw new Error('Firebase is not initialized');
 
+        console.log('Fetching activities from Firestore...');
         const activitiesCollectionRef = collection(db, "activities");
-        const q = query(activitiesCollectionRef, orderBy("createdAt", "desc"));
-        const querySnapshot = await getDocs(q);
+        // Try without orderBy first to see if that's the issue
+        const querySnapshot = await getDocs(activitiesCollectionRef);
+        
+        console.log(`Found ${querySnapshot.docs.length} activity documents in Firestore`);
         
         const activitiesData = querySnapshot.docs.map(doc => {
           const data = doc.data();
+          console.log('Processing activity document:', doc.id, data);
           return {
             id: doc.id,
             name: data.name || data.activityName || '',
@@ -215,6 +221,8 @@ const ActivitySection = () => {
           };
         }) as Activity[];
         
+        console.log('Mapped activities data:', activitiesData);
+        
         // Cache the data
         sessionStorage.setItem('cachedActivities', JSON.stringify(activitiesData));
         sessionStorage.setItem('activitiesTimestamp', Date.now().toString());
@@ -223,7 +231,9 @@ const ActivitySection = () => {
         preloadImages(activitiesData);
         setError(null);
       } catch (error) {
-        console.error('Error fetching activities:', error);
+        console.error('Error fetching activities - Full error object:', error);
+        console.error('Error fetching activities - Error message:', error instanceof Error ? error.message : 'Unknown error');
+        console.error('Error fetching activities - Error stack:', error instanceof Error ? error.stack : 'No stack trace');
         setError(error instanceof Error ? error.message : 'Failed to fetch activities');
         setImagesLoaded(true); // Set images as loaded even on error
       } finally {

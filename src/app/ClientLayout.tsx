@@ -1,12 +1,17 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { HelmetProvider } from 'react-helmet-async';
 import Header from '../components/Header/header';
 import Footer from '../components/Footer/Footer';
 import ProfileGuard from '../components/ProfileGuard/ProfileGuard';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
+// Import debug utility in development
+if (process.env.NODE_ENV === 'development') {
+  import('../utils/authDebugger');
+}
 
 interface ClientLayoutProps {
   children: React.ReactNode;

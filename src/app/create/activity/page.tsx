@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, doc, getDoc } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { isOrganizationSession } from "@/utils/authHelpers";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { getUserOwnedPages } from "@/utils/authHelpers";
 import styles from "./CreateActivity.module.css";
 // @ts-ignore
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
@@ -67,13 +67,27 @@ interface DaySchedule {
 
 const CreateActivity = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Authorization states
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [authError, setAuthError] = useState<string>("");
+  
+  // Form states
   const [activityName, setActivityName] = useState<string>("");
   const [activityLocation, setActivityLocation] = useState<string>("");
   const [aboutActivity, setAboutActivity] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
   const [orgName, setOrgName] = useState<string>("");
+  const [orgUsername, setOrgUsername] = useState<string>("");
+  const [creatorInfo, setCreatorInfo] = useState<{
+    type: string;
+    pageId: string;
+    name: string;
+    username: string;
+  } | null>(null);
   const [activityImage, setActivityImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
@@ -101,6 +115,7 @@ const CreateActivity = () => {
   const [address, setAddress] = useState('');
   const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
   const [isLocationFocused, setIsLocationFocused] = useState(false);
+  const [mapsScriptError, setMapsScriptError] = useState(false);
   const [selectedCity, setSelectedCity] = useState('Mumbai');
   
   // Activity guides
@@ -108,59 +123,149 @@ const CreateActivity = () => {
   
   const auth = getAuth();
 
+  // Google Maps script loading
   useEffect(() => {
-    const checkAuth = async () => {
-      const user = auth.currentUser;
-      
-      if (!user) {
-        setIsAuthorized(false);
-        return;
-      }
+    // Check if Google Maps is already loaded globally
+    if (typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.places) {
+      console.log('Google Maps already loaded globally');
+      setIsMapsScriptLoaded(true);
+      return;
+    }
 
-      // Check if this is an organization session
-      const orgSession = isOrganizationSession();
-      
-      if (orgSession) {
-        // Check if organization profile exists
-        try {
-          const orgRef = doc(db, "Organisations", user.uid);
-          const orgSnap = await getDoc(orgRef);
-          setIsAuthorized(orgSnap.exists());
-        } catch (error) {
-          console.error("Error checking organization profile:", error);
-          setIsAuthorized(false);
+    // Check if script was previously loaded but failed
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+    if (existingScript) {
+      console.log('Google Maps script already exists in DOM');
+      // Wait a bit and check again
+      const checkInterval = setInterval(() => {
+        if (window.google && window.google.maps && window.google.maps.places) {
+          setIsMapsScriptLoaded(true);
+          clearInterval(checkInterval);
         }
-      } else {
-        // This is a user session - not authorized to create activities
-        setIsAuthorized(false);
-      }
-    };
-    
-    checkAuth();
-    const unsubscribe = onAuthStateChanged(auth, checkAuth);
-    return () => unsubscribe();
-  }, [auth]);
+      }, 100);
 
-  useEffect(() => {
-    const storedOrgName = localStorage.getItem('orgName');
-    if (storedOrgName) {
-      setOrgName(storedOrgName);
+      // Clear interval after 10 seconds to prevent infinite checking
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!isMapsScriptLoaded) {
+          console.error('Google Maps failed to load after timeout');
+          setMapsScriptError(true);
+        }
+      }, 10000);
     }
   }, []);
 
-  if (!isAuthorized) {
-    return (
-      <div className={styles.unauthorizedMessageContainer}>
-        <div className={styles.unauthorizedMessage}>
-          <h1>Unauthorized Access</h1>
-          <p>Only organizations can create activities. Please login as an organization to continue.</p>
-          <button onClick={() => router.push("/")} className={styles.backButton}>
-            Back to Home
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Authorization check
+  useEffect(() => {
+    const checkAuthorization = async (user: any) => {
+      if (!user) {
+        setAuthError("Please sign in to create activities");
+        setIsAuthorized(false);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        // Get URL parameters for creator context
+        const creatorType = searchParams?.get('from');
+        const creatorPageId = searchParams?.get('pageId');
+        const creatorName = searchParams?.get('name');
+        const creatorUsername = searchParams?.get('username');
+
+        // Verify user owns pages and has authorization to create activities
+        const ownedPages = await getUserOwnedPages(user.uid);
+        
+        if (creatorType && creatorPageId) {
+          // Verify user owns the specific page they're creating from
+          let hasSpecificPageAccess = false;
+          
+          if (creatorType === 'organisation' || creatorType === 'organization') {
+            hasSpecificPageAccess = ownedPages.organizations.some(org => org.uid === creatorPageId);
+          } else if (creatorType === 'artist') {
+            hasSpecificPageAccess = ownedPages.artists.some(artist => artist.uid === creatorPageId);
+          } else if (creatorType === 'venue') {
+            hasSpecificPageAccess = ownedPages.venues.some(venue => venue.uid === creatorPageId);
+          }
+
+          if (!hasSpecificPageAccess) {
+            setAuthError(`You don't have permission to create activities as ${creatorName}. Please ensure you own this ${creatorType} page.`);
+            setIsAuthorized(false);
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          // No specific creator context - check if user has any pages at all
+          const hasAnyPages = ownedPages.artists.length > 0 || 
+                             ownedPages.organizations.length > 0 || 
+                             ownedPages.venues.length > 0;
+
+          if (!hasAnyPages) {
+            setAuthError("You need to create at least one page (Artist, Organization, or Venue) before you can create activities.");
+            setIsAuthorized(false);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        setIsAuthorized(true);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error checking authorization:", error);
+        setAuthError("Error verifying your permissions. Please try again.");
+        setIsAuthorized(false);
+        setIsLoading(false);
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, checkAuthorization);
+    return () => unsubscribe();
+  }, [searchParams]);
+
+  useEffect(() => {
+    const fetchCreatorDetails = async () => {
+      if (!auth.currentUser) return;
+
+      try {
+        // Check if we have creator info from URL parameters
+        const creatorType = searchParams?.get('from');
+        const creatorPageId = searchParams?.get('pageId');
+        const creatorName = searchParams?.get('name');
+        const creatorUsername = searchParams?.get('username');
+
+        if (creatorType && creatorPageId && creatorName && creatorUsername) {
+          // Use creator info from URL parameters
+          setCreatorInfo({
+            type: creatorType,
+            pageId: creatorPageId,
+            name: decodeURIComponent(creatorName),
+            username: decodeURIComponent(creatorUsername)
+          });
+          setOrgName(decodeURIComponent(creatorName));
+          setOrgUsername(decodeURIComponent(creatorUsername));
+        } else {
+          // Fallback to organization lookup (legacy behavior)
+          const orgDoc = await getDoc(doc(db, "Organisations", auth.currentUser.uid));
+          if (orgDoc.exists()) {
+            const data = orgDoc.data();
+            setOrgName(data.name || "");
+            setOrgUsername(data.username || "");
+            setCreatorInfo({
+              type: 'organisation',
+              pageId: auth.currentUser.uid,
+              name: data.name || "",
+              username: data.username || ""
+            });
+            localStorage.setItem('orgName', data.name || "");
+            localStorage.setItem('orgUsername', data.username || "");
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching creator details:", error);
+      }
+    };
+
+    fetchCreatorDetails();
+  }, [searchParams]);
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -390,11 +495,7 @@ const CreateActivity = () => {
         } catch (uploadError: any) {
           console.error('Image upload failed:', uploadError);
           imageUploadError = true;
-          imageUploadErrorMessage = uploadError.message;
-          
-          if (uploadError.message.includes('CORS') || uploadError.message.includes('network')) {
-            imageUploadErrorMessage = 'Image upload failed due to network restrictions. The activity will be created without an image.';
-          }
+          imageUploadErrorMessage = 'Image upload failed. The activity will be created without an image. You can add an image later by editing the activity.';
         }
       }
 
@@ -420,12 +521,29 @@ const CreateActivity = () => {
         activity_image: imageUrl,
         organizationId: auth.currentUser?.uid,
         hosting_organization: orgName,
+        organization_username: orgUsername,
         activity_categories: selectedCategories,
         activity_languages: activityLanguages.trim(),
         activity_duration: activityDuration.trim(),
         activity_age_limit: activityAgeLimit.trim(),
         activity_guides: guides,
-        createdAt: new Date().toISOString(),
+        // Creator information
+        creator: creatorInfo ? {
+          type: creatorInfo.type, // 'artist', 'organisation', or 'venue'
+          pageId: creatorInfo.pageId,
+          name: creatorInfo.name,
+          username: creatorInfo.username,
+          userId: auth.currentUser!.uid
+        } : {
+          type: 'organisation',
+          pageId: auth.currentUser!.uid,
+          name: orgName,
+          username: orgUsername,
+          userId: auth.currentUser!.uid
+        },
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        status: 'active',
         image_upload_status: imageUploadError ? 'failed' : (imageUrl ? 'success' : 'none')
       };
 
@@ -453,10 +571,56 @@ const CreateActivity = () => {
     }
   };
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className={styles.createActivityPage}>
+        <div className={styles.createActivityContainer}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            minHeight: '200px',
+            color: '#aeadad'
+          }}>
+            Verifying permissions...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Unauthorized state
+  if (!isAuthorized) {
+    return (
+      <div className={styles.createActivityPage}>
+        <div className={styles.unauthorizedMessageContainer}>
+          <div className={styles.unauthorizedMessage}>
+            <h1>Access Denied</h1>
+            <p>{authError}</p>
+            <button 
+              onClick={() => router.push("/business")}
+              className={styles.backButton}
+            >
+              Create Your First Page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.createActivityPage}>
       <div className={styles.createActivityContainer}>
-        <h1 className={styles.pageTitle}>Create Activity</h1>
+        <h1 className={styles.pageTitle}>
+          Create Activity
+          {creatorInfo && (
+            <span className={styles.creatorInfo}>
+              as {creatorInfo.name} ({creatorInfo.type})
+            </span>
+          )}
+        </h1>
         <form onSubmit={handleSubmit} className={styles.createActivityForm}>
           {/* Image Upload Section */}
           <div className={styles.formSection}>
@@ -556,11 +720,22 @@ const CreateActivity = () => {
             </div>
             <div className={styles.formGroup}>
               <label>Activity Location</label>
-              <Script
-                src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDjDazO71t0Deh_h6fMe_VHoKmVNEKygSM&libraries=places"
-                strategy="afterInteractive"
-                onLoad={() => setIsMapsScriptLoaded(true)}
-              />
+              {!isMapsScriptLoaded && !mapsScriptError && (
+                <Script
+                  src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
+                  strategy="afterInteractive"
+                  onLoad={() => {
+                    console.log('Google Maps script loaded successfully');
+                    setIsMapsScriptLoaded(true);
+                    setMapsScriptError(false);
+                  }}
+                  onError={(e) => {
+                    console.error('Google Maps script failed to load:', e);
+                    setMapsScriptError(true);
+                    setIsMapsScriptLoaded(false);
+                  }}
+                />
+              )}
               {isMapsScriptLoaded ? (
                 <PlacesAutocomplete
                   value={address}
@@ -615,6 +790,47 @@ const CreateActivity = () => {
                     );
                   }}
                 </PlacesAutocomplete>
+              ) : mapsScriptError ? (
+                <div>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={(e) => {
+                      setAddress(e.target.value);
+                      setActivityLocation(e.target.value);
+                    }}
+                    placeholder="Enter activity location manually"
+                    className={styles.locationInput}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      console.log('Retrying Google Maps load...');
+                      setMapsScriptError(false);
+                      setIsMapsScriptLoaded(false);
+                      // Remove existing script if any
+                      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+                      if (existingScript) {
+                        existingScript.remove();
+                      }
+                    }}
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 16px',
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Retry Maps Loading
+                  </button>
+                  <p style={{ color: '#888', fontSize: '14px', marginTop: '8px' }}>
+                    Google Maps failed to load. You can enter the address manually or try reloading.
+                  </p>
+                </div>
               ) : (
                 <input
                   type="text"

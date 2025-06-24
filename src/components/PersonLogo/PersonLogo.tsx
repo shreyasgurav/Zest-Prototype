@@ -2,11 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { auth, db } from '../../lib/firebase';
 import { signOut, User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from 'firebase/firestore';
-import { useRouter, usePathname } from 'next/navigation';
-import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt } from 'react-icons/fa';
-import { isOrganizationSession, clearOrganizationSession } from '../../utils/authHelpers';
+import { useRouter } from 'next/navigation';
+import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt, FaBuilding, FaMicrophone, FaMapMarkerAlt, FaPlus } from 'react-icons/fa';
+import { getUserOwnedPages, ArtistData, OrganizationData, VenueData, clearAllSessions } from '../../utils/authHelpers';
 import styles from "./PersonLogo.module.css";
-import Link from 'next/link';
 
 interface UserData {
   name?: string;
@@ -23,76 +22,64 @@ function PersonLogo() {
     const [showDropdown, setShowDropdown] = useState(false);
     const [user, setUser] = useState<User | null>(null);
     const [userData, setUserData] = useState<UserData | null>(null);
-    const [isOrganization, setIsOrganization] = useState(false);
+    const [ownedPages, setOwnedPages] = useState<{
+        artists: ArtistData[];
+        organizations: OrganizationData[];
+        venues: VenueData[];
+    }>({ artists: [], organizations: [], venues: [] });
     const dropdownRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
-    const pathname = usePathname();
 
-    // Check if we're on organization-specific routes
-    const isOrganizationRoute = pathname?.startsWith('/organisation') || 
-                               pathname?.startsWith('/organization') || 
-                               pathname?.startsWith('/login/organisation') ||
-                               pathname?.startsWith('/create/') ||
-                               pathname?.startsWith('/edit-') ||
-                               pathname?.includes('dashboard');
+
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             setUser(currentUser);
             if (currentUser) {
                 try {
-                    // Check if this is an organization session
-                    const isOrgSession = isOrganizationSession();
-                    
-                    // Check organization profile if we're on org routes OR if marked as org session
-                    const orgDoc = await getDoc(doc(db, "Organisations", currentUser.uid));
-                    
-                    if (orgDoc.exists() && (isOrganizationRoute || isOrgSession)) {
-                        // We're on organization route OR organization session AND organization profile exists
-                        setIsOrganization(true);
-                        const orgData = orgDoc.data() as UserData;
-                        console.log('👤 Loaded organization data from Firestore:', orgData);
-                        setUserData(orgData);
-                        return; // Exit early to avoid checking user profile
-                    }
-                    
-                    // Always prioritize user profile for general authentication
-                    setIsOrganization(false);
+                    // Load the user's personal profile data
                     const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
                     if (userDoc.exists()) {
-                        const firestoreData = userDoc.data() as UserData;
-                        console.log('👤 Loaded user data from Firestore:', firestoreData);
-                        setUserData(firestoreData);
+                        const personalData = userDoc.data() as UserData;
+                        console.log('👤 Loaded personal user data:', personalData);
+                        setUserData(personalData);
                     } else {
-                        // Fallback to Firebase Auth data
-                        setUserData({
+                        // Fallback to Firebase Auth data for personal profile
+                        const personalData = {
                             name: currentUser.displayName || currentUser.phoneNumber || 'User',
                             username: currentUser.email?.split('@')[0] || currentUser.phoneNumber?.replace(/\D/g, '') || 'user',
                             photoURL: currentUser.photoURL || undefined,
                             photo: currentUser.photoURL || undefined,
                             phone: currentUser.phoneNumber || undefined,
                             email: currentUser.email || undefined
-                        });
+                        };
+                        setUserData(personalData);
                     }
+                    
+                    // Load all pages the user owns (for pages section)
+                    const pages = await getUserOwnedPages(currentUser.uid);
+                    setOwnedPages(pages);
+                    console.log('👤 Loaded owned pages:', pages);
                 } catch (error) {
                     console.error("Error fetching user data:", error);
                     // Fallback to Firebase Auth data
-                    setUserData({
+                    const fallbackData = {
                         name: currentUser.displayName || currentUser.phoneNumber || 'User',
                         username: currentUser.email?.split('@')[0] || currentUser.phoneNumber?.replace(/\D/g, '') || 'user',
                         photoURL: currentUser.photoURL || undefined,
                         photo: currentUser.photoURL || undefined,
                         phone: currentUser.phoneNumber || undefined,
                         email: currentUser.email || undefined
-                    });
+                    };
+                    setUserData(fallbackData);
                 }
             } else {
                 setUserData(null);
-                setIsOrganization(false);
+                setOwnedPages({ artists: [], organizations: [], venues: [] });
             }
         });
         return () => unsubscribe();
-    }, [isOrganizationRoute]);
+    }, []);
 
     useEffect(() => {
         document.addEventListener('mousedown', handleClickOutside);
@@ -109,8 +96,8 @@ function PersonLogo() {
 
     const handleLogout = async () => {
         try {
-            // Clear organization session markers before logout
-            clearOrganizationSession();
+            // Clear all session markers before logout
+            clearAllSessions();
             
             await signOut(auth);
             setShowDropdown(false);
@@ -121,15 +108,7 @@ function PersonLogo() {
         }
     };
 
-    const handleProfileClick = () => {
-        setShowDropdown(false);
-        // Navigate to appropriate profile page based on login type
-        if (isOrganization) {
-            router.push('/organisation');
-        } else {
-            router.push('/profile');
-        }
-    };
+
 
     const handleTicketsClick = () => {
         setShowDropdown(false);
@@ -146,46 +125,48 @@ function PersonLogo() {
         router.push('/login');
     };
 
+    const handleCreateNewPage = () => {
+        setShowDropdown(false);
+        router.push('/business');
+    };
+
     const toggleDropdown = () => {
         setShowDropdown(!showDropdown);
     };
 
-    // Get profile picture URL
+    // Get profile picture URL for user
     const getProfilePictureUrl = () => {
+        if (!userData) return null;
+        
         // Check all possible field names for profile image
-        if (userData?.profilePicture) {
-            console.log('👤 Using profilePicture:', userData.profilePicture);
+        if (userData.profilePicture) {
             return userData.profilePicture;
         }
-        if (userData?.photo) {
-            console.log('👤 Using photo:', userData.photo);
+        if (userData.photo) {
             return userData.photo;
         }
-        if (userData?.profile_image) {
-            console.log('👤 Using profile_image:', userData.profile_image);
+        if (userData.profile_image) {
             return userData.profile_image;
         }
-        if (userData?.photoURL) {
-            console.log('👤 Using photoURL:', userData.photoURL);
+        if (userData.photoURL) {
             return userData.photoURL;
         }
         
-        // Only log when no image is found
-        if (userData) {
-            console.log('👤 No profile image found. Available fields:', {
-                profilePicture: userData?.profilePicture,
-                photo: userData?.photo,
-                profile_image: userData?.profile_image,
-                photoURL: userData?.photoURL,
-                allUserData: userData
-            });
-        }
         return null;
     };
 
-    // Get user initials for default avatar
+    // Get initials for default avatar
     const getUserInitials = () => {
-        const name = userData?.name || userData?.phone || 'User';
+        if (!userData) return 'U';
+        
+        let name = 'User';
+        
+        if (userData.name) {
+            name = userData.name;
+        } else if (userData.phone) {
+            name = userData.phone;
+        }
+        
         return name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
     };
 
@@ -227,25 +208,24 @@ function PersonLogo() {
 
             {showDropdown && (
                 <div className={styles.dropdown}>
-                    {/* User Info Header */}
+                    {/* User Info Header - Always personal profile */}
                     <div className={styles.userInfo}>
                         <div className={styles.userInfoImage}>
-                            {getProfilePictureUrl() ? (
+                            {userData?.photoURL || userData?.photo ? (
                                 <img 
-                                    src={getProfilePictureUrl()!}
+                                    src={userData?.photoURL || userData?.photo!}
                                     alt="Profile"
                                     className={styles.userInfoAvatar}
                                 />
                             ) : (
                                 <div className={styles.userInfoInitials}>
-                                    {getUserInitials()}
+                                    {userData?.name ? userData.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U'}
                                 </div>
                             )}
                         </div>
                         <div className={styles.userInfoText}>
                             <div className={styles.userName}>
                                 {userData?.name || userData?.phone || 'User'}
-                                {isOrganization && <span style={{ color: '#8899a6', fontSize: '12px', marginLeft: '8px' }}>(Organization)</span>}
                             </div>
                             <div className={styles.userUsername}>
                                 @{userData?.username || userData?.phone?.replace(/\D/g, '') || 'user'}
@@ -253,19 +233,17 @@ function PersonLogo() {
                         </div>
                     </div>
 
-                    {/* Dropdown Items */}
+                    {/* Personal Navigation */}
                     <div className={styles.dropdownItems}>
-                        <div className={styles.dropdownItem} onClick={handleProfileClick}>
+                        <div className={styles.dropdownItem} onClick={() => { setShowDropdown(false); router.push('/profile'); }}>
                             <FaUser className={styles.dropdownIcon} />
-                            <span>{isOrganization ? 'Organization Profile' : 'View Profile'}</span>
+                            <span>View Profile</span>
                         </div>
 
-                        {!isOrganization && (
-                            <div className={styles.dropdownItem} onClick={handleTicketsClick}>
-                                <FaTicketAlt className={styles.dropdownIcon} />
-                                <span>Tickets</span>
-                            </div>
-                        )}
+                        <div className={styles.dropdownItem} onClick={handleTicketsClick}>
+                            <FaTicketAlt className={styles.dropdownIcon} />
+                            <span>Tickets</span>
+                        </div>
 
                         <div className={styles.dropdownItem} onClick={handleSettingsClick}>
                             <FaCog className={styles.dropdownIcon} />
@@ -273,7 +251,71 @@ function PersonLogo() {
                         </div>
 
                         <div className={styles.dropdownDivider}></div>
+                    </div>
 
+                    {/*Pages Section */}
+                    <div className={styles.ownedPagesSection}>
+                        <div className={styles.sectionTitle}>Pages</div>
+                        
+                        {/* Artist Pages */}
+                        {ownedPages.artists.map((artist) => (
+                            <div 
+                                key={artist.uid} 
+                                className={styles.pageItem}
+                                onClick={() => { 
+                                    setShowDropdown(false); 
+                                    // Redirect to management interface with specific page
+                                    router.push(`/artist?page=${artist.uid}`);
+                                }}
+                            >
+                                <FaMicrophone className={styles.pageIcon} />
+                                <span>{artist.name || 'Unnamed Artist'}</span>
+                            </div>
+                        ))}
+                        
+                        {/* Organization Pages */}
+                        {ownedPages.organizations.map((org) => (
+                            <div 
+                                key={org.uid} 
+                                className={styles.pageItem}
+                                onClick={() => { 
+                                    setShowDropdown(false); 
+                                    // Redirect to management interface with specific page
+                                    router.push(`/organisation?page=${org.uid}`);
+                                }}
+                            >
+                                <FaBuilding className={styles.pageIcon} />
+                                <span>{org.name || 'Unnamed Organization'}</span>
+                            </div>
+                        ))}
+                        
+                        {/* Venue Pages */}
+                        {ownedPages.venues.map((venue) => (
+                            <div 
+                                key={venue.uid} 
+                                className={styles.pageItem}
+                                onClick={() => { 
+                                    setShowDropdown(false); 
+                                    // Redirect to management interface with specific page
+                                    router.push(`/venue?page=${venue.uid}`);
+                                }}
+                            >
+                                <FaMapMarkerAlt className={styles.pageIcon} />
+                                <span>{venue.name || 'Unnamed Venue'}</span>
+                            </div>
+                        ))}
+                        
+                        {/* Create New Page Option */}
+                        <div className={styles.pageItem} onClick={handleCreateNewPage}>
+                            <FaPlus className={styles.pageIcon} />
+                            <span>Create new page</span>
+                        </div>
+                        
+                        <div className={styles.dropdownDivider}></div>
+                    </div>
+
+                    {/* Sign Out */}
+                    <div className={styles.dropdownItems}>
                         <div className={styles.dropdownItem} onClick={handleLogout}>
                             <FaSignOutAlt className={styles.dropdownIcon} />
                             <span>Sign Out</span>

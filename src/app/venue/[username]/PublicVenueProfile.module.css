@@ -1,0 +1,380 @@
+/* Loading States */
+.loadingContainer {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.skeletonBanner {
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+.skeletonProfileImage {
+  width: 120px;
+  height: 120px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  border-radius: 50%;
+  margin: -60px auto 20px;
+  border: 4px solid white;
+}
+
+.skeletonContent {
+  text-align: center;
+  padding: 20px;
+}
+
+.skeletonName {
+  width: 200px;
+  height: 32px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  margin: 0 auto 10px;
+  border-radius: 6px;
+}
+
+.skeletonUsername {
+  width: 120px;
+  height: 20px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  margin: 0 auto 15px;
+  border-radius: 6px;
+}
+
+.skeletonBio {
+  width: 80%;
+  height: 60px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  margin: 0 auto;
+  border-radius: 6px;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Error States */
+.errorContainer {
+  text-align: center;
+  padding: 60px 20px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.errorContainer h2 {
+  color: #333;
+  margin-bottom: 15px;
+  font-size: 28px;
+}
+
+.errorContainer p {
+  color: #666;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Main Container */
+.venueProfileContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
+  min-height: 100vh;
+}
+
+/* Banner Section */
+.venueBannerSection {
+  position: relative;
+  margin-bottom: 60px;
+}
+
+.venueBanner {
+  width: 100%;
+  height: 240px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 0 0 16px 16px;
+}
+
+.bannerImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.defaultBanner {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.venueProfileImageContainer {
+  position: absolute;
+  bottom: -60px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 4px solid white;
+  overflow: hidden;
+  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.venueProfileImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.noPhoto {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  text-align: center;
+  border-radius: 50%;
+}
+
+/* Venue Details */
+.venueDetailsSection {
+  padding: 20px;
+  text-align: center;
+}
+
+.venueHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.venueInfo {
+  flex: 1;
+}
+
+.venueName h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 8px 0;
+  line-height: 1.2;
+}
+
+.venueUsername {
+  font-size: 18px;
+  color: #666;
+  margin-bottom: 16px;
+  font-weight: 500;
+}
+
+.venueMetadata {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.venueType {
+  display: inline-block;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.venueCapacity {
+  color: #666;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.venueLocation {
+  color: #666;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.managementActions {
+  display: flex;
+  gap: 12px;
+}
+
+.manageButton {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(240, 147, 251, 0.3);
+}
+
+.manageButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(240, 147, 251, 0.4);
+}
+
+.venueBio {
+  max-width: 600px;
+  margin: 0 auto;
+  color: #444;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.venueBio p {
+  margin: 0;
+}
+
+/* Content Sections */
+.contentSections {
+  padding: 40px 20px;
+  background: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.placeholderSection {
+  background: white;
+  padding: 40px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.placeholderSection h3 {
+  color: #333;
+  margin-bottom: 16px;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.placeholderSection p {
+  color: #666;
+  font-size: 16px;
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .venueBanner {
+    height: 180px;
+  }
+  
+  .venueProfileImageContainer {
+    width: 100px;
+    height: 100px;
+    bottom: -50px;
+  }
+  
+  .venueDetailsSection {
+    padding: 20px 16px;
+  }
+  
+  .venueName h1 {
+    font-size: 24px;
+  }
+  
+  .venueHeader {
+    flex-direction: column;
+  }
+  
+  .managementActions {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .manageButton {
+    flex: 1;
+    max-width: 200px;
+  }
+  
+  .contentSections {
+    padding: 20px 16px;
+    grid-template-columns: 1fr;
+  }
+  
+  .placeholderSection {
+    padding: 30px 20px;
+  }
+  
+  .venueMetadata {
+    gap: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .venueBanner {
+    height: 150px;
+  }
+  
+  .venueProfileImageContainer {
+    width: 80px;
+    height: 80px;
+    bottom: -40px;
+  }
+  
+  .venueName h1 {
+    font-size: 20px;
+  }
+  
+  .venueUsername {
+    font-size: 16px;
+  }
+  
+  .venueType {
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+  
+  .venueCapacity,
+  .venueLocation {
+    font-size: 14px;
+  }
+  
+  .manageButton {
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+} 

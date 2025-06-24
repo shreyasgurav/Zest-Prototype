@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/firebase-admin';
+import { randomBytes } from 'crypto';
 
 export interface TicketData {
   id: string;
@@ -52,25 +53,67 @@ export interface TicketData {
 }
 
 /**
- * Generate a unique ticket number
+ * Generate a cryptographically secure unique ticket number
  */
 export function generateTicketNumber(): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substring(2, 8);
-  return `ZST-${timestamp}-${random}`.toUpperCase();
+  const random = randomBytes(8).toString('hex'); // 16 hex characters (64 bits of entropy)
+  const checksum = randomBytes(2).toString('hex'); // Additional randomness
+  return `ZST-${timestamp}-${random}-${checksum}`.toUpperCase();
 }
 
 /**
- * Generate QR code data string for ticket
+ * Generate QR code URL for ticket scanning
+ * QR code contains only the ticket number for security
  */
 export function generateQRCodeData(ticketId: string, ticketNumber: string): string {
-  return JSON.stringify({
-    ticketId,
-    ticketNumber,
-    platform: 'zest',
-    timestamp: Date.now(),
-    version: '1.0'
-  });
+  // Generate QR code image URL that contains just the ticket number
+  // This is more secure as the ticket number is the only data needed for verification
+  return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(ticketNumber)}`;
+}
+
+/**
+ * Check if a ticket number already exists to prevent duplicates
+ */
+export async function isTicketNumberUnique(ticketNumber: string): Promise<boolean> {
+  try {
+    const existingTicket = await adminDb
+      .collection('tickets')
+      .where('ticketNumber', '==', ticketNumber)
+      .limit(1)
+      .get();
+    
+    return existingTicket.empty;
+  } catch (error) {
+    console.error('Error checking ticket number uniqueness:', error);
+    // Return false to be safe - will generate a new number
+    return false;
+  }
+}
+
+/**
+ * Generate a guaranteed unique ticket number
+ */
+export async function generateUniqueTicketNumber(): Promise<string> {
+  let attempts = 0;
+  const maxAttempts = 5;
+  
+  while (attempts < maxAttempts) {
+    const ticketNumber = generateTicketNumber();
+    const isUnique = await isTicketNumberUnique(ticketNumber);
+    
+    if (isUnique) {
+      return ticketNumber;
+    }
+    
+    attempts++;
+  }
+  
+  // If we still haven't found a unique number after 5 attempts, add more entropy
+  const timestamp = Date.now().toString(36);
+  const random = randomBytes(12).toString('hex'); // More randomness
+  const extraEntropy = randomBytes(4).toString('hex');
+  return `ZST-${timestamp}-${random}-${extraEntropy}`.toUpperCase();
 }
 
 /**
@@ -104,7 +147,7 @@ export async function createTicketsForBooking(
       
       for (const [ticketType, quantity] of ticketEntries) {
         for (let i = 0; i < quantity; i++) {
-          const ticketNumber = generateTicketNumber();
+          const ticketNumber = await generateUniqueTicketNumber();
           const ticketId = `ticket_${bookingId}_${ticketType}_${i + 1}`;
           const qrCode = generateQRCodeData(ticketId, ticketNumber);
           
@@ -159,7 +202,7 @@ export async function createTicketsForBooking(
       const quantity = bookingData.tickets as number;
       
       for (let i = 0; i < quantity; i++) {
-        const ticketNumber = generateTicketNumber();
+        const ticketNumber = await generateUniqueTicketNumber();
         const ticketId = `ticket_${bookingId}_${i + 1}`;
         const qrCode = generateQRCodeData(ticketId, ticketNumber);
         

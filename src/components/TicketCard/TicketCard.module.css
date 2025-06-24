@@ -1,239 +1,335 @@
 .ticketCard {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 24px;
-  margin-bottom: 16px;
-  position: relative;
+  background: #1a1a1a;
+  border-radius: 24px;
+  padding: 32px;
+  max-width: 600px;
+  width: 100%;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s ease;
+  position: relative;
   overflow: hidden;
-  box-shadow: 
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  margin: 0 auto;
 }
 
 .ticketCard:hover {
   transform: translateY(-4px);
-  box-shadow: 
-    0 10px 25px -3px rgba(0, 0, 0, 0.1),
-    0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  border-color: rgba(192, 132, 252, 0.3);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 }
 
-.ticketCard.used {
-  opacity: 0.7;
-  background: linear-gradient(135deg, #374151 0%, #4b5563 50%, #6b7280 100%);
-}
 
-.ticketCard.used:hover {
-  transform: none;
-}
-
-/* Perforated edge effect */
-.perforation {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent 8px,
-    rgba(255, 255, 255, 0.1) 8px,
-    rgba(255, 255, 255, 0.1) 16px
-  );
-}
-
-.ticketHeader {
+.ticketContent {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
+  gap: 24px;
 }
 
 .ticketInfo {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  min-height: 200px;
 }
 
-.ticketType {
+.eventDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 40px;
+}
+
+.eventName {
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.2;
+  margin: 0;
+  color: white;
+}
+
+.dateTime {
+  font-size: 20px;
+  color: #888;
+  font-weight: 400;
+}
+
+.ticketCount {
+  font-size: 20px;
+  color: #888;
+  font-weight: 400;
+}
+
+.locationSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.locationLabel {
+  font-size: 16px;
+  color: #888;
+  font-weight: 400;
+}
+
+.locationRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: rgba(192, 132, 252, 0.9);
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: 4px;
 }
 
-.ticketType .icon {
-  font-size: 1rem;
-}
-
-.ticketNumber {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 0.85rem;
-  font-family: 'Courier New', monospace;
-  font-weight: 500;
-}
-
-.statusBadge {
-  padding: 6px 12px;
-  border-radius: 20px;
-  color: white;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.ticketContent {
-  display: flex;
-  gap: 24px;
-  align-items: flex-start;
-}
-
-.mainInfo {
-  flex: 1;
-}
-
-.title {
-  color: white;
-  font-size: 1.4rem;
-  font-weight: 700;
-  margin: 0 0 8px 0;
-  line-height: 1.3;
-}
-
-.ticketTypeLabel {
-  display: inline-block;
-  background: rgba(192, 132, 252, 0.15);
-  color: #c084fc;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-bottom: 16px;
-}
-
-.details {
-  margin-bottom: 20px;
-}
-
-.detailRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.9rem;
-}
-
-.detailIcon {
-  color: rgba(192, 132, 252, 0.7);
-  font-size: 0.85rem;
-  width: 16px;
+.locationIcon {
+  color: #888;
   flex-shrink: 0;
 }
 
-.priceSection {
+.locationName {
+  font-size: 18px;
+  font-weight: 500;
+  color: white;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: bottom;
+  -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  mask-image: linear-gradient(to right, black 85%, transparent 100%);
+}
+
+.bottomSection {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.statusBadge {
+  background: #333;
+  color: #888;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 16px;
+  font-weight: 500;
+  width: fit-content;
+}
+
+
+
+
+
+.eventImageContainer {
+  flex-shrink: 0;
+  position: relative;
   display: flex;
   align-items: center;
-  margin-top: 16px;
+  justify-content: center;
+  min-height: 200px;
 }
 
-.price {
-  color: #10b981;
-  font-size: 1.2rem;
-  font-weight: 700;
+.eventImage {
+  border-radius: 16px;
+  object-fit: cover;
 }
 
-.qrSection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  min-width: 140px;
-}
-
-.qrToggle {
-  background: rgba(192, 132, 252, 0.1);
-  border: 1px solid rgba(192, 132, 252, 0.3);
-  color: #c084fc;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.qrToggle:hover {
-  background: rgba(192, 132, 252, 0.2);
-  border-color: rgba(192, 132, 252, 0.5);
-}
-
-.qrCodeContainer {
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.qrPlaceholder {
+.placeholderImage {
+  width: 150px;
+  height: 200px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(236, 72, 153, 0.25));
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 120px;
-  height: 120px;
-  background: #f8f9fa;
-  border: 2px dashed #dee2e6;
-  border-radius: 8px;
-  color: #6c757d;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.qrPlaceholder p {
-  margin: 8px 0 0 0;
-  font-size: 0.8rem;
+.placeholderText {
+  font-size: 12px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.loadingSpinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top: 3px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.leftBottom {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rightBottom {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+/* QR Code Overlay */
+.qrOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24px;
+  z-index: 10;
+}
+
+.qrContainer {
+  background: white;
+  padding: 24px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: black;
 }
 
 .qrText {
   color: #374151;
-  font-size: 0.75rem;
+  font-size: 14px;
   font-weight: 600;
   margin: 0;
   text-align: center;
 }
 
-.ticketFooter {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+.qrWarning {
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.footerInfo {
+.closeQR {
+  background: #1a1a1a;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.2s ease;
+}
+
+.closeQR:hover {
+  background: #333;
+}
+
+/* Quick Actions */
+.quickActions {
+  position: absolute;
+  top: 16px;
+  right: 16px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 0.8rem;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
 
-/* Mobile responsiveness */
+.ticketCard:hover .quickActions {
+  opacity: 1;
+}
+
+.quickAction {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  position: relative;
+}
+
+.quickAction:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.copiedText {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(16, 185, 129, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: fadeInOut 2s ease;
+}
+
+/* Responsive design */
 @media (max-width: 768px) {
   .ticketCard {
+    padding: 24px;
+    max-width: 500px;
+  }
+
+  .eventName {
+    font-size: 28px;
+  }
+
+  .dateTime,
+  .ticketCount {
+    font-size: 18px;
+  }
+
+  .locationName {
+    font-size: 16px;
+    max-width: 180px;
+  }
+
+  .eventImage,
+  .placeholderImage {
+    width: 130px;
+    height: 170px;
+  }
+
+  .eventImageContainer {
+    min-height: 170px;
+  }
+}
+
+@media (max-width: 640px) {
+  .ticketCard {
     padding: 20px;
-    margin-bottom: 12px;
+    max-width: 400px;
+    border-radius: 20px;
   }
 
   .ticketContent {
@@ -241,42 +337,171 @@
     gap: 16px;
   }
 
-  .title {
-    font-size: 1.2rem;
+  .eventName {
+    font-size: 24px;
   }
 
-  .qrSection {
+  .dateTime,
+  .ticketCount {
+    font-size: 16px;
+  }
+
+  .locationName {
+    font-size: 14px;
+    max-width: 150px;
+  }
+
+  .locationLabel {
+    font-size: 14px;
+  }
+
+  .statusBadge {
+    font-size: 14px;
+    padding: 6px 16px;
+  }
+
+  .eventImage,
+  .placeholderImage {
+    width: 120px;
+    height: 160px;
+  }
+
+  .eventImageContainer {
     align-self: center;
-    min-width: auto;
+    min-height: 160px;
   }
 
-  .footerInfo {
+  .bottomSection {
     flex-direction: column;
-    gap: 4px;
+    gap: 12px;
     align-items: flex-start;
+  }
+
+  .rightBottom {
+    align-items: flex-start;
+    flex-direction: row;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .placeholderText {
+    font-size: 10px;
   }
 }
 
 @media (max-width: 480px) {
   .ticketCard {
     padding: 16px;
+    max-width: 320px;
+    border-radius: 16px;
   }
 
-  .ticketHeader {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
+  .eventName {
+    font-size: 20px;
   }
 
-  .title {
-    font-size: 1.1rem;
+  .dateTime,
+  .ticketCount {
+    font-size: 14px;
   }
 
-  .detailRow {
-    font-size: 0.85rem;
+  .locationName {
+    font-size: 12px;
+    max-width: 120px;
   }
 
-  .price {
-    font-size: 1.1rem;
+  .locationLabel {
+    font-size: 12px;
   }
-} 
+
+  .statusBadge {
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+
+  .eventImage,
+  .placeholderImage {
+    width: 100px;
+    height: 130px;
+  }
+
+  .eventImageContainer {
+    min-height: 130px;
+  }
+
+  .placeholderText {
+    font-size: 9px;
+  }
+
+  .locationIcon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .quickActions {
+    top: 12px;
+    right: 12px;
+    gap: 6px;
+  }
+
+  .quickAction {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+@media (max-width: 320px) {
+  .ticketCard {
+    padding: 12px;
+    max-width: 280px;
+  }
+
+  .eventName {
+    font-size: 18px;
+  }
+
+  .dateTime,
+  .ticketCount {
+    font-size: 12px;
+  }
+
+  .locationName {
+    font-size: 11px;
+    max-width: 100px;
+  }
+
+  .eventImage,
+  .placeholderImage {
+    width: 90px;
+    height: 120px;
+  }
+
+  .eventImageContainer {
+    min-height: 120px;
+  }
+
+  .quickActions {
+    top: 8px;
+    right: 8px;
+    gap: 4px;
+  }
+
+  .quickAction {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* Animations */
+@keyframes fadeInOut {
+  0%, 100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-5px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+ 

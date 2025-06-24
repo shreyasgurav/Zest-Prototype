@@ -1,18 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
 import { 
   doc, 
-  getDoc, 
+  getDoc,
   collection,
-  query, 
-  where, 
+  query,
+  where,
   getDocs
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaTicketAlt, FaUser, FaChevronRight, FaCreditCard } from 'react-icons/fa';
+import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaTicketAlt, FaUser, FaChevronRight, FaCreditCard, FaExclamationTriangle, FaSync } from 'react-icons/fa';
 import styles from './BookingFlow.module.css';
 import { initiateRazorpayPayment, BookingData } from '@/utils/razorpay';
 
@@ -26,7 +26,8 @@ interface TimeSlot {
 interface TicketType {
   name: string;
   price: number;
-  available_capacity: number;
+  capacity: number;
+  available_capacity: number; // This will be calculated dynamically
 }
 
 interface EventData {
@@ -44,12 +45,26 @@ interface UserInfo {
   phone: string;
 }
 
+interface Attendee {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  tickets: Record<string, number>;
+  selectedDate: string;
+  selectedTimeSlot: TimeSlot;
+  createdAt: string;
+  status?: string;
+  paymentStatus?: string;
+}
+
 function BookingFlow() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const auth = getAuth();
   const [step, setStep] = useState(1);
   const [event, setEvent] = useState<EventData | null>(null);
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(null);
   const [selectedTickets, setSelectedTickets] = useState<Record<string, number>>({});
@@ -62,48 +77,155 @@ function BookingFlow() {
   const [error, setError] = useState('');
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch event details
-  useEffect(() => {
-    const fetchEvent = async () => {
-      if (!params?.id) return;
+  // Calculate real-time availability like the dashboard does
+  const calculateRealTimeAvailability = (eventData: EventData, attendeesList: Attendee[]): TicketType[] => {
+    return eventData.tickets.map(ticket => {
+      // Count actual sold tickets from attendees
+      const soldCount = attendeesList.reduce((count, attendee) => 
+        count + (attendee.tickets[ticket.name] || 0), 0
+      );
+      
+      return {
+        ...ticket,
+        available_capacity: Math.max(0, ticket.capacity - soldCount)
+      };
+    });
+  };
 
-      try {
-        const eventDoc = await getDoc(doc(db, 'events', params.id));
-        if (eventDoc.exists()) {
-          const data = eventDoc.data();
-          const eventData: EventData = {
-            id: eventDoc.id,
-            title: data.title || data.eventTitle || '',
-            event_image: data.event_image || data.eventImage || '',
-            event_venue: data.event_venue || data.eventVenue || '',
-            time_slots: data.time_slots || [],
-            tickets: data.tickets || []
-          };
-          setEvent(eventData);
-          
-          // Process dates and time slots
-          const dates = Array.from(new Set(eventData.time_slots.map(slot => slot.date)));
-          setAvailableDates(dates);
-          
-          // If only one date, select it automatically
-          if (dates.length === 1) {
-            setSelectedDate(dates[0]);
-            const slotsForDate = eventData.time_slots.filter(slot => slot.date === dates[0]);
-            setTimeSlots(slotsForDate);
-          }
-        } else {
-          setError('Event not found');
+  // Fetch attendees for real-time availability calculation
+  const fetchAttendees = async () => {
+    if (!params?.id) return [];
+
+    try {
+      const attendeesRef = collection(db, 'eventAttendees');
+      const attendeesQuery = query(
+        attendeesRef,
+        where('eventId', '==', params.id)
+      );
+
+      const snapshot = await getDocs(attendeesQuery);
+      const attendeesList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Attendee[];
+      
+      return attendeesList;
+    } catch (err) {
+      console.error("Error fetching attendees:", err);
+      return [];
+    }
+  };
+
+  // Fetch event details with real-time updates
+  const fetchEvent = async (showRefreshIndicator = false) => {
+    if (!params?.id) return;
+
+    try {
+      if (showRefreshIndicator) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      
+      // Fetch event data and attendees in parallel
+      const [eventDoc, attendeesList] = await Promise.all([
+        getDoc(doc(db, 'events', params.id)),
+        fetchAttendees()
+      ]);
+      
+      if (eventDoc.exists()) {
+        const data = eventDoc.data();
+        const baseEventData: EventData = {
+          id: eventDoc.id,
+          title: data.title || data.eventTitle || '',
+          event_image: data.event_image || data.eventImage || '',
+          event_venue: data.event_venue || data.eventVenue || '',
+          time_slots: data.time_slots || [],
+          tickets: data.tickets || []
+        };
+
+        // Calculate real-time availability
+        const ticketsWithRealAvailability = calculateRealTimeAvailability(baseEventData, attendeesList);
+        
+        const eventData: EventData = {
+          ...baseEventData,
+          tickets: ticketsWithRealAvailability
+        };
+
+        setEvent(eventData);
+        setAttendees(attendeesList);
+        setLastRefresh(new Date());
+        
+        // Process dates and time slots
+        const dates = Array.from(new Set(eventData.time_slots.map(slot => slot.date)));
+        setAvailableDates(dates);
+        
+        // If only one date, select it automatically
+        if (dates.length === 1) {
+          setSelectedDate(dates[0]);
+          const slotsForDate = eventData.time_slots.filter(slot => slot.date === dates[0]);
+          setTimeSlots(slotsForDate);
         }
-      } catch (err) {
-        setError('Error fetching event details');
-        console.error(err);
-      } finally {
-        setLoading(false);
+
+        console.log('Real-time availability calculated:', {
+          totalAttendees: attendeesList.length,
+          ticketAvailability: ticketsWithRealAvailability.map(t => ({
+            name: t.name,
+            capacity: t.capacity,
+            available: t.available_capacity,
+            sold: t.capacity - t.available_capacity
+          }))
+        });
+      } else {
+        setError('Event not found');
+      }
+    } catch (err) {
+      setError('Error fetching event details');
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  // Set up automatic refresh interval
+  useEffect(() => {
+    if (step === 2) { // Only refresh on ticket selection step
+      refreshIntervalRef.current = setInterval(() => {
+        fetchEvent(true);
+      }, 15000); // Refresh every 15 seconds for critical ticket data
+
+      return () => {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+        }
+      };
+    }
+  }, [step]);
+
+  // Fetch event details on component mount and when returning to tab
+  useEffect(() => {
+    fetchEvent();
+    
+    // Refresh data when user returns to the tab
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchEvent(true);
       }
     };
-
-    fetchEvent();
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
   }, [params?.id]);
 
   // Fetch user details
@@ -116,12 +238,25 @@ function BookingFlow() {
             const userData = userDoc.data();
             setUserInfo({
               name: userData.name || '',
-              email: auth.currentUser.email || '',
+              email: userData.email || userData.contactEmail || auth.currentUser.email || '',
               phone: userData.phone || ''
+            });
+          } else {
+            // If user document doesn't exist, still set what we can from auth
+            setUserInfo({
+              name: '',
+              email: auth.currentUser.email || '',
+              phone: ''
             });
           }
         } catch (err) {
           console.error('Error fetching user details:', err);
+          // Fallback to auth data if Firestore fails
+          setUserInfo({
+            name: '',
+            email: auth.currentUser.email || '',
+            phone: ''
+          });
         }
       }
     };
@@ -171,9 +306,12 @@ function BookingFlow() {
         return rest;
       }
       
+      // Double-check against real-time availability
+      const maxAllowed = Math.min(newQuantity, ticketType.available_capacity);
+      
       return {
         ...prev,
-        [ticketType.name]: Math.min(newQuantity, ticketType.available_capacity)
+        [ticketType.name]: maxAllowed
       };
     });
   };
@@ -199,20 +337,6 @@ function BookingFlow() {
 
     try {
       setLoading(true);
-
-      // Check if user has already booked this event
-      const existingBookingQuery = query(
-        collection(db, 'eventAttendees'),
-        where("eventId", "==", params.id),
-        where("userId", "==", auth.currentUser.uid)
-      );
-      const existingBookingSnap = await getDocs(existingBookingQuery);
-
-      if (!existingBookingSnap.empty) {
-        setError("You have already booked this event.");
-        setLoading(false);
-        return;
-      }
 
       // Prepare booking data
       const bookingData: BookingData = {
@@ -258,6 +382,27 @@ function BookingFlow() {
       setError('Error initiating booking. Please try again.');
       setLoading(false);
     }
+  };
+
+  // Get availability status for a ticket
+  const getAvailabilityStatus = (ticket: TicketType) => {
+    const percentage = (ticket.available_capacity / ticket.capacity) * 100;
+    if (ticket.available_capacity === 0) {
+      return { status: 'sold-out', text: 'SOLD OUT', color: '#ef4444' };
+    } else if (percentage <= 10) {
+      return { status: 'critical', text: 'Almost Sold Out!', color: '#f59e0b' };
+    } else if (percentage <= 25) {
+      return { status: 'low', text: 'Limited Availability', color: '#f59e0b' };
+    } else if (percentage <= 50) {
+      return { status: 'medium', text: 'Good Availability', color: '#10b981' };
+    } else {
+      return { status: 'high', text: 'Available', color: '#10b981' };
+    }
+  };
+
+  // Manual refresh function with immediate feedback
+  const handleManualRefresh = async () => {
+    await fetchEvent(true);
   };
 
   if (loading) return <div className={styles.loading}>Loading...</div>;
@@ -334,39 +479,110 @@ function BookingFlow() {
 
         {step === 2 && (
           <div className={styles.bookingStep}>
-            <h2>Select Tickets</h2>
-            <div className={styles.ticketTypes}>
-              {event.tickets.map((ticket, index) => (
-                <div key={index} className={styles.ticketType}>
-                  <div className={styles.ticketDetails}>
-                    <h3>{ticket.name}</h3>
-                    <p className={styles.ticketPrice}>₹{ticket.price.toLocaleString()}</p>
-                    <p className={styles.ticketsLeft}>
-                      {ticket.available_capacity} tickets available
-                    </p>
-                  </div>
-                  <div className={styles.ticketQuantity}>
-                    <button
-                      onClick={() => handleTicketQuantityChange(ticket, -1)}
-                      className={styles.quantityButton}
-                      disabled={!selectedTickets[ticket.name]}
-                    >
-                      -
-                    </button>
-                    <span>{selectedTickets[ticket.name] || 0}</span>
-                    <button
-                      onClick={() => handleTicketQuantityChange(ticket, 1)}
-                      className={styles.quantityButton}
-                      disabled={
-                        (selectedTickets[ticket.name] || 0) >= ticket.available_capacity
-                      }
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className={styles.stepHeader}>
+              <h2>Select Tickets</h2>
+              <div className={styles.refreshSection}>
+                <button 
+                  onClick={handleManualRefresh}
+                  className={styles.refreshButton}
+                  disabled={isRefreshing}
+                >
+                  <FaSync className={isRefreshing ? styles.spinning : ''} />
+                  {isRefreshing ? 'Updating...' : 'Refresh'}
+                </button>
+                <span className={styles.lastUpdate}>
+                  Last updated: {lastRefresh.toLocaleTimeString()}
+                </span>
+              </div>
             </div>
+            
+            <div className={styles.ticketTypes}>
+              {event.tickets.map((ticket, index) => {
+                const isSoldOut = ticket.available_capacity <= 0;
+                const availability = getAvailabilityStatus(ticket);
+                const selectedQuantity = selectedTickets[ticket.name] || 0;
+                
+                return (
+                  <div key={index} className={`${styles.ticketType} ${isSoldOut ? styles.soldOut : ''}`}>
+                    <div className={styles.ticketDetails}>
+                      <div className={styles.ticketHeader}>
+                        <h3>{ticket.name}</h3>
+                        <div 
+                          className={styles.availabilityBadge}
+                          style={{ backgroundColor: availability.color }}
+                        >
+                          {availability.text}
+                        </div>
+                      </div>
+                      <p className={styles.ticketPrice}>₹{ticket.price.toLocaleString()}</p>
+                      <div className={styles.availabilityInfo}>
+                        <div className={styles.availabilityText}>
+                          {isSoldOut ? (
+                            <span className={styles.soldOutText}>
+                              <FaExclamationTriangle /> SOLD OUT
+                            </span>
+                          ) : (
+                            <span className={styles.ticketsLeft}>
+                              <FaTicketAlt /> {ticket.available_capacity} of {ticket.capacity} available
+                            </span>
+                          )}
+                        </div>
+                        {!isSoldOut && (
+                          <div className={styles.progressBar}>
+                            <div 
+                              className={styles.progressFill}
+                              style={{ 
+                                width: `${((ticket.capacity - ticket.available_capacity) / ticket.capacity) * 100}%`,
+                                backgroundColor: availability.color
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className={styles.ticketQuantity}>
+                      <button
+                        onClick={() => handleTicketQuantityChange(ticket, -1)}
+                        className={styles.quantityButton}
+                        disabled={!selectedTickets[ticket.name] || isSoldOut}
+                      >
+                        -
+                      </button>
+                      <span>{selectedTickets[ticket.name] || 0}</span>
+                      <button
+                        onClick={() => handleTicketQuantityChange(ticket, 1)}
+                        className={styles.quantityButton}
+                        disabled={
+                          isSoldOut || (selectedTickets[ticket.name] || 0) >= ticket.available_capacity
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {Object.keys(selectedTickets).length > 0 && (
+              <div className={styles.selectionSummary}>
+                <h4>Selected Tickets</h4>
+                <div className={styles.selectedTicketsList}>
+                  {Object.entries(selectedTickets).map(([ticketName, quantity]) => {
+                    const ticket = event.tickets.find(t => t.name === ticketName);
+                    return (
+                      <div key={ticketName} className={styles.selectedTicketItem}>
+                        <span>{ticketName} × {quantity}</span>
+                        <span>₹{((ticket?.price || 0) * quantity).toLocaleString()}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className={styles.totalSelected}>
+                  <strong>Total: ₹{getTotalAmount().toLocaleString()}</strong>
+                </div>
+              </div>
+            )}
 
             <button
               className={styles.nextButton}
@@ -413,20 +629,55 @@ function BookingFlow() {
               <div className={styles.userInfo}>
                 <h3><FaUser /> Attendee Information</h3>
                 <div className={styles.userDetails}>
-                  <p>Name: {userInfo.name || 'Not provided'}</p>
-                  <p>Email: {userInfo.email || 'Not provided'}</p>
-                  <p>Phone: {userInfo.phone || 'Not provided'}</p>
+                  <div className={styles.userField}>
+                    <label>Name:</label>
+                    <input
+                      type="text"
+                      value={userInfo.name}
+                      onChange={(e) => setUserInfo(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Enter your name"
+                      required
+                    />
+                  </div>
+                  <div className={styles.userField}>
+                    <label>Email:</label>
+                    <input
+                      type="email"
+                      value={userInfo.email}
+                      onChange={(e) => setUserInfo(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="Enter your email"
+                      required
+                    />
+                  </div>
+                  <div className={styles.userField}>
+                    <label>Phone:</label>
+                    <input
+                      type="tel"
+                      value={userInfo.phone}
+                      onChange={(e) => setUserInfo(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="Enter your phone number"
+                      required
+                    />
+                  </div>
                 </div>
+                {(!userInfo.name || !userInfo.email || !userInfo.phone) && (
+                  <div className={styles.missingInfoWarning}>
+                    <FaExclamationTriangle />
+                    Please fill in all required fields before proceeding with payment.
+                  </div>
+                )}
               </div>
             </div>
 
             <button
               className={styles.bookButton}
               onClick={handleBooking}
-              disabled={loading}
+              disabled={loading || !userInfo.name || !userInfo.email || !userInfo.phone}
             >
               {loading ? (
                 'Processing Payment...'
+              ) : !userInfo.name || !userInfo.email || !userInfo.phone ? (
+                'Please Complete All Fields'
               ) : (
                 <>
                   <FaCreditCard />

@@ -185,9 +185,9 @@ export default function OrganizationLanding() {
           </p>
 
           <div className={styles.heroButtons}>
-            <Link href="/login/organisation">
+            <Link href="/business">
               <button className={styles.primaryButton}>
-                Create Organisation Profile
+                Create Profile
                 <ArrowRight className={styles.buttonIcon} />
               </button>
             </Link>
@@ -325,10 +325,10 @@ export default function OrganizationLanding() {
             Join the platform that's helping organizers across the city connect with their perfect audience.
           </p>
           <div className={styles.ctaButtons}>
-            <Link href="/login/organisation">
+            <Link href="/business">
               <button className={styles.ctaPrimaryButton}>
                 <Sparkles className={styles.buttonIcon} />
-                Create Organisation Profile
+                Create Profile
               </button>
             </Link>
           </div>

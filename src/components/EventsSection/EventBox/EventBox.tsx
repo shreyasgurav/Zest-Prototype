@@ -1,58 +1,82 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, Calendar, Trash2, Clock, Music, Mic, PartyPopper } from 'lucide-react';
+import { MapPin, Calendar, Clock, Music, Mic, PartyPopper } from 'lucide-react';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import styles from './EventBox.module.css';
+
+interface EventBoxProps {
+  eventId: string;
+}
 
 interface Event {
   id: string;
-  eventTitle: string;
-  eventType: string;
-  eventCategories?: string[];
-  hostingClub: string;
-  eventDateTime?: any;
-  eventVenue: string;
-  eventRegistrationLink?: string;
-  aboutEvent: string;
-  event_image: string;
-  organizationId: string;
   title?: string;
+  eventTitle?: string;
+  eventType?: string;
+  event_categories?: string[];
+  eventCategories?: string[];
   hosting_club?: string;
+  hostingClub?: string;
+  eventDateTime?: any;
   event_venue?: string;
+  eventVenue?: string;
+  eventRegistrationLink?: string;
   about_event?: string;
+  aboutEvent?: string;
+  event_image?: string;
+  organizationId?: string;
   time_slots?: Array<{
     date: string;
     start_time: string;
     end_time: string;
     available: boolean;
   }>;
-  createdAt: any;
+  createdAt?: any;
 }
 
-interface EventBoxProps {
-  event: Event;
-  onDelete?: (id: string) => void;
-  currentUserId?: string;
-}
-
-export default function EventBox({ event, onDelete, currentUserId }: EventBoxProps) {
+export default function EventBox({ eventId }: EventBoxProps) {
   const router = useRouter();
-  const isEventCreator = currentUserId && currentUserId === event?.organizationId;
+  const [event, setEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const timeSlots = Array.isArray(event?.time_slots) ? event.time_slots : [];
-  const firstDate = timeSlots.length > 0 ? timeSlots[0].date : "No Date Available";
-  const firstTime = timeSlots.length > 0 ? timeSlots[0].start_time : "";
-  
-  // Use first category from eventCategories array, fallback to eventType, then to default
-  const displayEventType = event.eventCategories && event.eventCategories.length > 0 
-    ? event.eventCategories[0] 
-    : event.eventType || "event";
+  useEffect(() => {
+    const fetchEvent = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const eventDoc = await getDoc(doc(db, 'events', eventId));
+        
+        if (eventDoc.exists()) {
+          const eventData = {
+            id: eventDoc.id,
+            ...eventDoc.data()
+          } as Event;
+          setEvent(eventData);
+        } else {
+          setError('Event not found');
+        }
+      } catch (err) {
+        console.error('Error fetching event:', err);
+        setError('Failed to load event');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (eventId) {
+      fetchEvent();
+    }
+  }, [eventId]);
 
   const formatDate = (dateString: string) => {
-    if (dateString === "No Date Available") return "TBA";
+    if (!dateString || dateString === "No Date Available") return "TBA";
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
       month: "short",
@@ -82,6 +106,7 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
       case "party":
       case "festival":
       case "celebration":
+      case "clubbing":
         return <PartyPopper className={styles.eventTypeIcon} />;
       default:
         return <Calendar className={styles.eventTypeIcon} />;
@@ -101,6 +126,7 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
       case "party":
       case "festival":
       case "celebration":
+      case "clubbing":
         return "party";
       case "theater":
       case "drama":
@@ -111,42 +137,67 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
   };
 
   const handleClick = () => {
-    router.push(`/event-profile/${event.id}`);
-  };
-
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isEventCreator) return;
-
-    try {
-      if (window.confirm("Are you sure you want to delete this event?")) {
-        if (onDelete) {
-          onDelete(event.id);
-        }
-      }
-    } catch (error) {
-      console.error("Error deleting event:", error);
-      alert("Failed to delete event. Please try again.");
+    if (event) {
+      router.push(`/event-profile/${event.id}`);
     }
   };
+
+  if (loading) {
+    return (
+      <div className={styles.eventBoxWrapper}>
+        <div className={styles.eventBoxCard}>
+          <div className={styles.imageSection}>
+            <div className={styles.imagePlaceholder} />
+          </div>
+          <div className={styles.eventBoxInfo}>
+            <h3>Loading...</h3>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !event) {
+    return (
+      <div className={styles.eventBoxWrapper}>
+        <div className={styles.eventBoxCard}>
+          <div className={styles.imageSection}>
+            <div className={styles.noImagePlaceholder}>
+              <Calendar className={styles.eventTypeIcon} />
+            </div>
+          </div>
+          <div className={styles.eventBoxInfo}>
+            <h3>{error || 'Event not found'}</h3>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const timeSlots = Array.isArray(event?.time_slots) ? event.time_slots : [];
+  const firstDate = timeSlots.length > 0 ? timeSlots[0].date : "No Date Available";
+  const firstTime = timeSlots.length > 0 ? timeSlots[0].start_time : "";
+  
+  // Use first category from eventCategories array, fallback to eventType, then to default
+  const displayEventType = event.event_categories && event.event_categories.length > 0 
+    ? event.event_categories[0] 
+    : event.eventCategories && event.eventCategories.length > 0 
+    ? event.eventCategories[0]
+    : event.eventType || "event";
+
+  const eventTitle = event.title || event.eventTitle || "";
+  const eventVenue = event.event_venue || event.eventVenue || "";
 
   return (
     <div className={styles.eventBoxWrapper} onClick={handleClick}>
       <div className={styles.eventBoxCard}>
-        {/* Delete Button */}
-        {isEventCreator && (
-          <button className={styles.deleteButton} onClick={handleDelete} aria-label="Delete event">
-            <Trash2 className={styles.deleteIcon} />
-          </button>
-        )}
-
         {/* Image Section */}
         <div className={styles.imageSection}>
           {event.event_image && !imageError ? (
             <>
               <img
-                src={event.event_image || "/placeholder.svg?height=400&width=300"}
-                alt={event.eventTitle || event.title || "Event"}
+                src={event.event_image}
+                alt={eventTitle}
                 className={`${styles.eventImage} ${imageLoaded ? styles.imageLoaded : styles.imageLoading}`}
                 onLoad={() => setImageLoaded(true)}
                 onError={() => setImageError(true)}
@@ -154,20 +205,22 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
               {!imageLoaded && <div className={styles.imagePlaceholder} />}
             </>
           ) : (
-                      <div className={styles.noImagePlaceholder}>{getEventTypeIcon(displayEventType)}</div>
-        )}
+            <div className={styles.noImagePlaceholder}>
+              {getEventTypeIcon(displayEventType)}
+            </div>
+          )}
 
-        {/* Event Type Badge */}
-        <div className={`${styles.eventTypeBadge} ${styles[getEventTypeColor(displayEventType)]}`}>
-          {getEventTypeIcon(displayEventType)}
-          <span>{displayEventType}</span>
-        </div>
+          {/* Event Type Badge */}
+          <div className={`${styles.eventTypeBadge} ${styles[getEventTypeColor(displayEventType)]}`}>
+            {getEventTypeIcon(displayEventType)}
+            <span>{displayEventType}</span>
+          </div>
         </div>
 
         {/* Content Section */}
         <div className={styles.eventBoxInfo}>
           {/* Title */}
-          <h3>{truncateText(event.eventTitle || event.title || "", 20)}</h3>
+          <h3>{truncateText(eventTitle, 20)}</h3>
 
           {/* Date & Time */}
           <div className={styles.infoRow}>
@@ -180,7 +233,9 @@ export default function EventBox({ event, onDelete, currentUserId }: EventBoxPro
           {/* Venue */}
           <div className={styles.infoRow}>
             <MapPin className={styles.venueIcon} />
-            <span className={styles.venueText}>{truncateText(event.eventVenue || event.event_venue || "", 25)}</span>
+            <span className={styles.venueText}>
+              {truncateText(eventVenue, 25)}
+            </span>
           </div>
         </div>
       </div>

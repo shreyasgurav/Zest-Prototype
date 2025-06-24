@@ -10,10 +10,37 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
-    // Allow read/write access to Organisations collection
-    match /Organisations/{userId} {
+    // Allow read/write access to Organisations collection (ownership-based)
+    match /Organisations/{pageId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && isOwner(userId);
+      allow write: if isAuthenticated() && (
+        // Allow creation if the ownerId field matches the authenticated user
+        request.auth.uid == request.resource.data.ownerId ||
+        // Allow updates if the user owns the existing document
+        request.auth.uid == resource.data.ownerId
+      );
+    }
+
+    // Allow read/write access to Artists collection (ownership-based)
+    match /Artists/{pageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        // Allow creation if the ownerId field matches the authenticated user
+        request.auth.uid == request.resource.data.ownerId ||
+        // Allow updates if the user owns the existing document
+        request.auth.uid == resource.data.ownerId
+      );
+    }
+
+    // Allow read/write access to Venues collection (ownership-based)
+    match /Venues/{pageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        // Allow creation if the ownerId field matches the authenticated user
+        request.auth.uid == request.resource.data.ownerId ||
+        // Allow updates if the user owns the existing document
+        request.auth.uid == resource.data.ownerId
+      );
     }
     
     // Enhanced Users collection rules for better security and clarity

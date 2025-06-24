@@ -18,6 +18,7 @@ import { FaCamera, FaTimes } from 'react-icons/fa';
 import OrganisationProfileSkeleton from "./OrganisationProfileSkeleton";
 import DashboardSection from '../Dashboard/DashboardSection/DashboardSection';
 import PhotoUpload from '../PhotoUpload/PhotoUpload';
+import { useRouter } from 'next/navigation';
 import styles from "./OrganisationProfile.module.css";
 
 interface OrganisationData {
@@ -42,7 +43,12 @@ interface OrganisationData {
   };
 }
 
-const OrganisationProfile: React.FC = () => {
+interface OrganisationProfileProps {
+  selectedPageId?: string | null;
+}
+
+const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageId }) => {
+  const router = useRouter();
   const [orgDetails, setOrgDetails] = useState<OrganisationData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,17 +72,67 @@ const OrganisationProfile: React.FC = () => {
   const [showPhotoUpload, setShowPhotoUpload] = useState<boolean>(false);
   const [currentPhotoType, setCurrentPhotoType] = useState<'profile' | 'banner'>('profile');
 
-  const fetchOrgData = async (uid: string) => {
+  const fetchOrgData = async (uid: string, pageId?: string | null) => {
     console.log("Fetching org data for:", uid);
     try {
       const db = getFirestore();
-      const orgDocRef = doc(db, "Organisations", uid);
-      const docSnap = await getDoc(orgDocRef);
-  
-      if (docSnap.exists()) {
-        console.log("Document exists in Firestore");
-        const data = docSnap.data() as OrganisationData;
+      
+              // First, check if we have a selected organization page ID from props or session storage
+        const sessionSelectedPageId = sessionStorage.getItem('selectedOrganizationPageId');
+        const pageIdToUse = pageId || sessionSelectedPageId;
+      
+              if (pageIdToUse) {
+          console.log("Using selected organization page ID:", pageIdToUse);
+          const orgDocRef = doc(db, "Organisations", pageIdToUse);
+        const docSnap = await getDoc(orgDocRef);
         
+        if (docSnap.exists()) {
+          const data = docSnap.data() as OrganisationData;
+          console.log("Found organization document:", data);
+          
+          // Update states with fetched data
+          setOrgDetails(data);
+          setName(data.name || "");
+          setNewName(data.name || "");
+          setUsername(data.username || "");
+          setNewUsername(data.username || "");
+          setBio(data.bio || "");
+          setNewBio(data.bio || "");
+          setPhotoURL(data.photoURL || "");
+          setNewPhotoURL(data.photoURL || "");
+          setBannerImage(data.bannerImage || "");
+          setNewBannerImage(data.bannerImage || "");
+          
+          // Store in localStorage
+          localStorage.setItem('orgDetails', JSON.stringify(data));
+          localStorage.setItem('orgName', data.name || "");
+          localStorage.setItem('orgUsername', data.username || "");
+          localStorage.setItem('orgBio', data.bio || "");
+          localStorage.setItem('orgPhotoURL', data.photoURL || "");
+          localStorage.setItem('orgBannerImage', data.bannerImage || "");
+          return;
+        }
+      }
+      
+      // If no selected page ID or document not found, query by ownerId
+      console.log("Querying organizations by ownerId:", uid);
+      const orgsQuery = query(
+        collection(db, "Organisations"),
+        where("ownerId", "==", uid)
+      );
+      
+      const orgSnap = await getDocs(orgsQuery);
+      
+      if (!orgSnap.empty) {
+        // Use the first organization found (user might have multiple organizations)
+        const firstOrgDoc = orgSnap.docs[0];
+        const data = firstOrgDoc.data() as OrganisationData;
+        console.log("Found organization by ownerId:", data);
+        
+        // Store the page ID for future use
+        sessionStorage.setItem('selectedOrganizationPageId', firstOrgDoc.id);
+        
+        // Update states with fetched data
         setOrgDetails(data);
         setName(data.name || "");
         setNewName(data.name || "");
@@ -89,6 +145,7 @@ const OrganisationProfile: React.FC = () => {
         setBannerImage(data.bannerImage || "");
         setNewBannerImage(data.bannerImage || "");
         
+        // Store in localStorage
         localStorage.setItem('orgDetails', JSON.stringify(data));
         localStorage.setItem('orgName', data.name || "");
         localStorage.setItem('orgUsername', data.username || "");
@@ -96,30 +153,8 @@ const OrganisationProfile: React.FC = () => {
         localStorage.setItem('orgPhotoURL', data.photoURL || "");
         localStorage.setItem('orgBannerImage', data.bannerImage || "");
       } else {
-        console.log("Document doesn't exist in Firestore");
-        const auth = getAuth();
-        const user = auth.currentUser;
-        
-        if (user) {
-          const newData: OrganisationData = {
-            phoneNumber: user.phoneNumber || "",
-            isActive: true,
-            role: "Organisation",
-            settings: {
-              emailUpdates: false,
-              notifications: true,
-              privacy: {
-                contactVisibility: "followers",
-                profileVisibility: "public"
-              }
-            },
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-  
-          await setDoc(orgDocRef, newData);
-          setOrgDetails(newData);
-        }
+        console.log("No organization found, user may need to create one");
+        setError("No organization found. Please create an organization first.");
       }
     } catch (err) {
       console.error("Error in fetchOrgData:", err);
@@ -143,8 +178,12 @@ const OrganisationProfile: React.FC = () => {
       );
       
       const querySnapshot = await getDocs(usernameQuery);
+      
+      // Get the current organization page ID
+      const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
+      
       const isAvailable = querySnapshot.empty || 
-        (querySnapshot.docs[0].id === getAuth().currentUser?.uid);
+        (querySnapshot.docs[0].id === selectedOrgPageId);
       
       if (!isAvailable) {
         setUsernameError("Username is already taken");
@@ -177,7 +216,7 @@ const OrganisationProfile: React.FC = () => {
       console.log("Auth state changed:", user?.uid);
       
       if (user && isSubscribed) {
-        await fetchOrgData(user.uid);
+        await fetchOrgData(user.uid, selectedPageId);
       } else if (!user) {
         setOrgDetails(null);
         setError(null);
@@ -189,7 +228,7 @@ const OrganisationProfile: React.FC = () => {
       isSubscribed = false;
       unsubscribe();
     };
-  }, []);
+  }, [selectedPageId]);
 
   const handleSaveProfile = async () => {
     try {
@@ -212,7 +251,17 @@ const OrganisationProfile: React.FC = () => {
       }
   
       const db = getFirestore();
-      const orgDocRef = doc(db, "Organisations", user.uid);
+      
+      // Get the correct organization page ID
+      const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
+      if (!selectedOrgPageId) {
+        setError("No organization page selected");
+        toast.error("No organization page found");
+        setLoading(false);
+        return;
+      }
+      
+      const orgDocRef = doc(db, "Organisations", selectedOrgPageId);
   
       const updates = {
         name: newName,
@@ -283,7 +332,15 @@ const OrganisationProfile: React.FC = () => {
       const user = auth.currentUser;
       if (user) {
         const db = getFirestore();
-        const orgDocRef = doc(db, "Organisations", user.uid);
+        
+        // Get the correct organization page ID
+        const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
+        if (!selectedOrgPageId) {
+          toast.error("No organization page found");
+          return;
+        }
+        
+        const orgDocRef = doc(db, "Organisations", selectedOrgPageId);
         const updateField = currentPhotoType === 'profile' ? 'photoURL' : 'bannerImage';
         await updateDoc(orgDocRef, {
           [updateField]: imageUrl,
@@ -362,14 +419,32 @@ const OrganisationProfile: React.FC = () => {
             <p>{bio || "No bio available"}</p>
           </div>
 
-          {/* Edit Profile Button */}
+          {/* Profile Action Buttons */}
           {!editMode && (
-            <button 
-            onClick={() => setEditMode(true)}
-            className={styles.editProfileButton}
-            >
-              Edit Profile
-            </button>
+            <div className={styles.profileButtonsContainer}>
+              <button 
+                onClick={() => setEditMode(true)}
+                className={styles.editProfileButton}
+              >
+                Edit Profile
+              </button>
+              <button 
+                onClick={() => {
+                  // Navigate to create page with organization context
+                  const selectedOrgPageId = typeof window !== 'undefined' ? 
+                    sessionStorage.getItem('selectedOrganizationPageId') : null;
+                  
+                  if (selectedOrgPageId) {
+                    router.push(`/create?from=organisation&pageId=${selectedOrgPageId}&name=${encodeURIComponent(name || '')}&username=${encodeURIComponent(username || '')}`);
+                  } else {
+                    router.push('/create');
+                  }
+                }}
+                className={styles.createButton}
+              >
+                Create
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -486,9 +561,15 @@ const OrganisationProfile: React.FC = () => {
         </div>
       )}
 
-      <div className={styles.orgDashboardSection}>
-        <DashboardSection />
-      </div>
+                  <div className={styles.orgDashboardSection}>
+              <DashboardSection 
+                pageId={typeof window !== 'undefined' ? 
+                  sessionStorage.getItem('selectedOrganizationPageId') || undefined : 
+                  undefined
+                } 
+                pageType="organisation" 
+              />
+            </div>
     </div>
   );
 };

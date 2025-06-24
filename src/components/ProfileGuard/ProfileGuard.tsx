@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../lib/firebase';
-import { isOrganizationSession } from '../../utils/authHelpers';
 
 interface ProfileGuardProps {
   children: React.ReactNode;
@@ -22,7 +21,7 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
   const publicPages = [
     '/',
     '/login',
-    '/login/organisation',
+    '/business',
     '/about',
     '/contact',
     '/privacypolicy',
@@ -30,10 +29,12 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
     '/termsandconditions'
   ];
 
-  // Pages that are accessible for organizations (start with these prefixes)
-  const organizationPages = [
+  // Pages that are accessible without full profile completion (business pages can be accessed with basic auth)
+  const businessPages = [
     '/organisation',
     '/organization',
+    '/artist',
+    '/venue',
     '/listevents',
     '/create'
   ];
@@ -50,46 +51,28 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
       }
 
       try {
-        // Check if current page is public or organization-related
+        // Check if current page is public or business-related
         const currentPath = pathname || '/';
         const isPublicPage = publicPages.includes(currentPath);
-        const isOrganizationPage = organizationPages.some(orgPath => currentPath.startsWith(orgPath));
+        const isBusinessPage = businessPages.some(businessPath => currentPath.startsWith(businessPath));
         
-        if (isPublicPage) {
+        if (isPublicPage || isBusinessPage) {
+          // For public pages and business pages, just check if user is authenticated
+          // Business pages will handle their own access control via RoleGuard
           setIsLoading(false);
-          setIsProfileComplete(true); // Allow access to public pages
+          setIsProfileComplete(true);
           return;
         }
 
-        if (isOrganizationPage) {
-          // For organization pages, check if user has organization profile or is in organization session
-          const isOrgSession = isOrganizationSession();
-          const orgRef = doc(db, "Organisations", currentUser.uid);
-          const orgSnap = await getDoc(orgRef);
-          
-          if (orgSnap.exists() || isOrgSession) {
-            console.log("✅ Organization profile found or organization session, allowing access");
-            setIsLoading(false);
-            setIsProfileComplete(true);
-            return;
-          } else {
-            console.log("❌ No organization profile found for organization page access");
-            setIsLoading(false);
-            setIsProfileComplete(false);
-            router.push('/login/organisation');
-            return;
-          }
-        }
-
-        // For regular user pages, check user profile completeness
+        // For protected user pages, check user profile completeness
         const userRef = doc(db, "Users", currentUser.uid);
         const userSnap = await getDoc(userRef);
         
         if (userSnap.exists()) {
           const userData = userSnap.data();
-          // Updated profile completion check: name, username, and contactEmail
-          // Phone is automatically captured from authentication, not required in profile
-          const hasCompleteProfile = userData.name && userData.username && userData.contactEmail;
+          // Profile completion check: name, username, phone, and contactEmail
+          // All these fields are required for complete profile
+          const hasCompleteProfile = userData.name && userData.username && userData.phone && userData.contactEmail;
           
           setIsProfileComplete(hasCompleteProfile);
           
@@ -98,6 +81,7 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
             console.log("Profile check:", {
               name: !!userData.name,
               username: !!userData.username,
+              phone: !!userData.phone,
               contactEmail: !!userData.contactEmail
             });
             router.push('/login');
@@ -165,13 +149,13 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
     );
   }
 
-  // Check if current page is public
+  // Check if current page is public or business-related
   const currentPath = pathname || '/';
   const isPublicPage = publicPages.includes(currentPath);
-  const isOrganizationPage = organizationPages.some(orgPath => currentPath.startsWith(orgPath));
+  const isBusinessPage = businessPages.some(businessPath => currentPath.startsWith(businessPath));
 
-  // Allow access to public pages and organization pages
-  if (isPublicPage || isOrganizationPage || !user) {
+  // Allow access to public pages, business pages, and when not authenticated
+  if (isPublicPage || isBusinessPage || !user) {
     return <>{children}</>;
   }
 
