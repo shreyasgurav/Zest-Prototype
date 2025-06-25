@@ -50,12 +50,15 @@ interface Attendee {
   name: string;
   email: string;
   phone: string;
-  tickets: Record<string, number>;
+  tickets: Record<string, number> | number;
   selectedDate: string;
   selectedTimeSlot: TimeSlot;
   createdAt: string;
   status?: string;
   paymentStatus?: string;
+  // New properties for individual attendee records
+  ticketType?: string;
+  canCheckInIndependently?: boolean;
 }
 
 function BookingFlow() {
@@ -84,10 +87,18 @@ function BookingFlow() {
   // Calculate real-time availability like the dashboard does
   const calculateRealTimeAvailability = (eventData: EventData, attendeesList: Attendee[]): TicketType[] => {
     return eventData.tickets.map(ticket => {
-      // Count actual sold tickets from attendees
-      const soldCount = attendeesList.reduce((count, attendee) => 
-        count + (attendee.tickets[ticket.name] || 0), 0
-      );
+      // Count actual sold tickets from attendees - now supports individual attendee records
+      const soldCount = attendeesList.reduce((count, attendee) => {
+        // Handle new individual attendee records
+        if (attendee.canCheckInIndependently && attendee.ticketType === ticket.name) {
+          return count + 1;
+        }
+        // Handle old group booking records
+        if (typeof attendee.tickets === 'object') {
+          return count + (attendee.tickets[ticket.name] || 0);
+        }
+        return count;
+      }, 0);
       
       return {
         ...ticket,

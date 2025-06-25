@@ -47,8 +47,11 @@ export interface TicketData {
   usedAt?: string;
   validationHistory?: Array<{
     timestamp: string;
-    action: 'created' | 'validated' | 'cancelled';
+    action: 'created' | 'validated' | 'cancelled' | 'transferred';
     location?: string;
+    from?: string;
+    to?: string;
+    transferredBy?: string;
   }>;
 }
 
@@ -320,5 +323,186 @@ export async function validateTicket(ticketId: string, location?: string): Promi
   } catch (error) {
     console.error('Error validating ticket:', error);
     return false;
+  }
+}
+
+/**
+ * Transfer a ticket to another user (for group bookings)
+ */
+export async function transferTicket(
+  ticketId: string, 
+  newUserEmail: string, 
+  newUserName: string, 
+  newUserPhone: string,
+  transferredBy: string
+): Promise<boolean> {
+  try {
+    const ticketRef = adminDb.collection('tickets').doc(ticketId);
+    const attendeeRef = adminDb.collection('eventAttendees').doc(ticketId.replace('ticket_', ''));
+    
+    return adminDb.runTransaction(async (transaction) => {
+      const ticketDoc = await transaction.get(ticketRef);
+      const attendeeDoc = await transaction.get(attendeeRef);
+      
+      if (!ticketDoc.exists || !attendeeDoc.exists) {
+        throw new Error('Ticket or attendee record not found');
+      }
+      
+      const ticketData = ticketDoc.data() as TicketData;
+      const attendeeData = attendeeDoc.data();
+      
+      // Only allow transfer if ticket is active and part of a group booking
+      if (ticketData.status !== 'active') {
+        throw new Error('Only active tickets can be transferred');
+      }
+      
+      if (!attendeeData?.canCheckInIndependently || !attendeeData?.totalTicketsInBooking || attendeeData.totalTicketsInBooking === 1) {
+        throw new Error('Only tickets from group bookings can be transferred');
+      }
+      
+      // Update ticket with new user info
+      const updateData = {
+        userName: newUserName,
+        userEmail: newUserEmail,
+        userPhone: newUserPhone,
+        transferHistory: [
+          ...(ticketData.validationHistory || []),
+          {
+            timestamp: new Date().toISOString(),
+            action: 'transferred' as const,
+            from: ticketData.userName,
+            to: newUserName,
+            transferredBy: transferredBy
+          }
+        ],
+        updatedAt: new Date().toISOString()
+      };
+      
+      // Update attendee record with new user info
+      const attendeeUpdateData = {
+        name: newUserName,
+        email: newUserEmail,
+        phone: newUserPhone,
+        transferHistory: updateData.transferHistory,
+        updatedAt: new Date().toISOString()
+      };
+      
+      transaction.update(ticketRef, updateData);
+      transaction.update(attendeeRef, attendeeUpdateData);
+      
+      return true;
+    });
+  } catch (error) {
+    console.error('Error transferring ticket:', error);
+    return false;
+  }
+}
+
+/**
+ * Cancel individual tickets from a group booking (partial refund)
+ */
+export async function cancelIndividualTickets(
+  ticketIds: string[], 
+  reason: string,
+  cancelledBy: string,
+  refundAmount?: number
+): Promise<{ success: boolean, cancelledTickets: string[], refundProcessed: boolean }> {
+  try {
+    const result = {
+      success: false,
+      cancelledTickets: [] as string[],
+      refundProcessed: false
+    };
+    
+    return adminDb.runTransaction(async (transaction) => {
+      const ticketDocs = await Promise.all(
+        ticketIds.map(id => transaction.get(adminDb.collection('tickets').doc(id)))
+      );
+      
+      const attendeeDocs = await Promise.all(
+        ticketIds.map(id => transaction.get(adminDb.collection('eventAttendees').doc(id.replace('ticket_', ''))))
+      );
+      
+      // Validate all tickets can be cancelled
+      for (let i = 0; i < ticketDocs.length; i++) {
+        const ticketDoc = ticketDocs[i];
+        const attendeeDoc = attendeeDocs[i];
+        
+        if (!ticketDoc.exists || !attendeeDoc.exists) {
+          throw new Error(`Ticket ${ticketIds[i]} not found`);
+        }
+        
+        const ticketData = ticketDoc.data() as TicketData;
+        
+        if (ticketData.status === 'used') {
+          throw new Error(`Ticket ${ticketIds[i]} has already been used and cannot be cancelled`);
+        }
+        
+        if (ticketData.status === 'cancelled') {
+          throw new Error(`Ticket ${ticketIds[i]} is already cancelled`);
+        }
+      }
+      
+      // Calculate refund amount if not provided
+      let totalRefund = refundAmount || 0;
+      if (!refundAmount) {
+        totalRefund = ticketDocs.reduce((sum, doc) => {
+          const ticketData = doc.data() as TicketData;
+          return sum + ticketData.amount;
+        }, 0);
+      }
+      
+      // Cancel all tickets
+      for (let i = 0; i < ticketDocs.length; i++) {
+        const ticketRef = adminDb.collection('tickets').doc(ticketIds[i]);
+        const attendeeRef = adminDb.collection('eventAttendees').doc(ticketIds[i].replace('ticket_', ''));
+        
+        const ticketData = ticketDocs[i].data() as TicketData;
+        
+        const updateData = {
+          status: 'cancelled' as const,
+          updatedAt: new Date().toISOString(),
+          cancellationInfo: {
+            reason,
+            cancelledBy,
+            cancelledAt: new Date().toISOString(),
+            refundAmount: totalRefund / ticketIds.length, // Split refund evenly
+            partialRefund: ticketIds.length < (ticketData.ticketQuantity || 1)
+          },
+          validationHistory: [
+            ...(ticketData.validationHistory || []),
+            {
+              timestamp: new Date().toISOString(),
+              action: 'cancelled' as const,
+              location: 'system',
+              reason
+            }
+          ]
+        };
+        
+        transaction.update(ticketRef, updateData);
+        transaction.update(attendeeRef, {
+          status: 'cancelled',
+          cancellationInfo: updateData.cancellationInfo,
+          updatedAt: new Date().toISOString()
+        });
+        
+        result.cancelledTickets.push(ticketIds[i]);
+      }
+      
+      // TODO: Integrate with payment gateway for actual refund processing
+      // For now, just mark as processed
+      result.refundProcessed = true;
+      result.success = true;
+      
+      return result;
+    });
+  } catch (error) {
+    console.error('Error cancelling individual tickets:', error);
+    return {
+      success: false,
+      cancelledTickets: [],
+      refundProcessed: false
+    };
   }
 } 

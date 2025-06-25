@@ -292,6 +292,22 @@ function ActivityBookingFlow() {
   const handleBooking = async () => {
     if (!activity || !selectedDate || !selectedTimeSlot) return;
 
+    // Validate activity price before proceeding
+    if (typeof activity.price_per_slot !== 'number' || isNaN(activity.price_per_slot)) {
+      setError("This activity has an invalid price configuration. Please contact support.");
+      console.error("Invalid price for activity:", activity.id);
+      return;
+    }
+    
+    const totalAmount = activity.price_per_slot * ticketQuantity;
+
+    // If activity is free, we should handle it differently (or disallow for now)
+    // The create-order API rejects orders with amount <= 0
+    if (totalAmount <= 0) {
+      setError("Bookings for free activities are not supported via this payment flow.");
+      return;
+    }
+
     try {
       const auth = getAuth();
       const user = auth.currentUser;
@@ -316,13 +332,13 @@ function ActivityBookingFlow() {
         selectedDate,
         selectedTimeSlot,
         tickets: ticketQuantity,
-        totalAmount: activity.price_per_slot * ticketQuantity,
+        totalAmount: totalAmount,
       };
 
       // Initiate Razorpay payment
       await initiateRazorpayPayment(
         {
-          amount: activity.price_per_slot * ticketQuantity,
+          amount: totalAmount, // Corrected: amount is in rupees
           currency: 'INR',
           receipt: `activity_${activity.id}_${Date.now()}`,
           notes: {

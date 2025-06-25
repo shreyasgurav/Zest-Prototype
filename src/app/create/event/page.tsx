@@ -27,6 +27,21 @@ const ALL_CITIES = [
     'Dehradun', 'Kochi'
 ];
 
+interface EventSession {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  tickets: SessionTicket[];
+  maxCapacity?: number;
+}
+
+interface SessionTicket {
+  name: string;
+  capacity: string;
+  price: string;
+}
+
 interface EventSlot {
   date: string;
   startTime: string;
@@ -93,12 +108,28 @@ const CreateEvent = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [eventLanguages, setEventLanguages] = useState<string>("");
+  
+  // SESSION-CENTRIC: Replace eventSlots and tickets with sessions
+  const [eventSessions, setEventSessions] = useState<EventSession[]>([
+    { 
+      id: '1',
+      date: '', 
+      startTime: '', 
+      endTime: '', 
+      tickets: [{ name: '', capacity: '', price: '' }]
+    }
+  ]);
+
+  
+  // Legacy support for old format
   const [eventSlots, setEventSlots] = useState<EventSlot[]>([
     { date: '', startTime: '', endTime: '' }
   ]);
   const [tickets, setTickets] = useState<Ticket[]>([
     { name: '', capacity: '', price: '' }
   ]);
+  const [isLegacyMode, setIsLegacyMode] = useState<boolean>(false);
+  
   const [address, setAddress] = useState('');
   const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
   const [isLocationFocused, setIsLocationFocused] = useState(false);
@@ -263,6 +294,139 @@ const CreateEvent = () => {
       const previewUrl = URL.createObjectURL(file);
       setImagePreview(previewUrl);
     }
+  };
+
+  // SESSION MANAGEMENT FUNCTIONS
+  const addSession = () => {
+    const newSessionId = Date.now().toString();
+    setEventSessions([...eventSessions, { 
+      id: newSessionId,
+      date: '', 
+      startTime: '', 
+      endTime: '', 
+      tickets: [{ name: '', capacity: '', price: '' }]
+    }]);
+  };
+
+  const removeSession = (sessionId: string) => {
+    if (eventSessions.length === 1) {
+      setMessage("You must have at least one session");
+      return;
+    }
+    const newSessions = eventSessions.filter(session => session.id !== sessionId);
+    setEventSessions(newSessions);
+  };
+
+  const handleSessionChange = (sessionId: string, field: keyof EventSession, value: any) => {
+    const newSessions = eventSessions.map(session => 
+      session.id === sessionId ? { ...session, [field]: value } : session
+    );
+    setEventSessions(newSessions);
+  };
+
+  const addSessionTicket = (sessionId: string) => {
+    const newSessions = eventSessions.map(session => 
+      session.id === sessionId 
+        ? { ...session, tickets: [...session.tickets, { name: '', capacity: '', price: '' }] }
+        : session
+    );
+    setEventSessions(newSessions);
+  };
+
+  const removeSessionTicket = (sessionId: string, ticketIndex: number) => {
+    const newSessions = eventSessions.map(session => 
+      session.id === sessionId 
+        ? { ...session, tickets: session.tickets.filter((_, i) => i !== ticketIndex) }
+        : session
+    );
+    setEventSessions(newSessions);
+  };
+
+  const handleSessionTicketChange = (sessionId: string, ticketIndex: number, field: keyof SessionTicket, value: string) => {
+    const newSessions = eventSessions.map(session => 
+      session.id === sessionId 
+        ? { 
+            ...session, 
+            tickets: session.tickets.map((ticket, index) => 
+              index === ticketIndex ? { ...ticket, [field]: value } : ticket
+            )
+          }
+        : session
+    );
+    setEventSessions(newSessions);
+  };
+
+  const validateSessions = (): boolean => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    return eventSessions.every(session => {
+      // Validate session time and date
+      if (!session.date || !session.startTime || !session.endTime) {
+        return false;
+      }
+      
+      const sessionDate = new Date(session.date);
+      const startDateTime = new Date(`${session.date} ${session.startTime}`);
+      const endDateTime = new Date(`${session.date} ${session.endTime}`);
+      
+      // Check if date is not in the past
+      if (sessionDate < today) {
+        return false;
+      }
+      
+      // Check if end time is after start time
+      if (endDateTime <= startDateTime) {
+        return false;
+      }
+      
+      // Check if start time is not in the past (for today's events)
+      if (sessionDate.getTime() === today.getTime() && startDateTime < now) {
+        return false;
+      }
+
+      // Validate session tickets
+      if (session.tickets.length === 0) {
+        return false;
+      }
+
+      return session.tickets.every(ticket => 
+        ticket.name.trim() && 
+        ticket.capacity && 
+        ticket.price && 
+        parseInt(ticket.capacity) > 0 && 
+        parseFloat(ticket.price) >= 0
+      );
+    });
+  };
+
+  // Toggle between legacy and session-centric modes
+  const toggleMode = () => {
+    setIsLegacyMode(!isLegacyMode);
+    if (!isLegacyMode) {
+      // Convert sessions to legacy format
+      if (eventSessions.length > 0) {
+        const firstSession = eventSessions[0];
+        setEventSlots([{ 
+          date: firstSession.date, 
+          startTime: firstSession.startTime, 
+          endTime: firstSession.endTime 
+        }]);
+        setTickets(firstSession.tickets.map(t => ({ ...t })));
+      }
+          } else {
+        // Convert legacy format to sessions
+        if (eventSlots.length > 0 && tickets.length > 0) {
+          const firstSlot = eventSlots[0];
+          setEventSessions([{
+            id: '1',
+            date: firstSlot.date,
+            startTime: firstSlot.startTime,
+            endTime: firstSlot.endTime,
+            tickets: tickets.map(t => ({ ...t }))
+          }]);
+        }
+      }
   };
 
   // Ticket management functions
@@ -484,14 +648,22 @@ const CreateEvent = () => {
       return;
     }
     
-    if (!validateTickets()) {
-      setMessage("Please ensure all ticket types have valid names, capacities (greater than 0), and prices (0 or greater)");
-      return;
-    }
-    
-    if (!validateSlots()) {
-      setMessage("Please ensure all time slots have valid dates (not in the past), start times, and end times (end time must be after start time)");
-      return;
+    // Validate based on mode
+    if (isLegacyMode) {
+      if (!validateTickets()) {
+        setMessage("Please ensure all ticket types have valid names, capacities (greater than 0), and prices (0 or greater)");
+        return;
+      }
+      
+      if (!validateSlots()) {
+        setMessage("Please ensure all time slots have valid dates (not in the past), start times, and end times (end time must be after start time)");
+        return;
+      }
+    } else {
+      if (!validateSessions()) {
+        setMessage("Please ensure all sessions have valid details: date, time slots, and at least one ticket type with valid capacity and pricing");
+        return;
+      }
     }
     
     if (!aboutEvent.trim()) {
@@ -520,10 +692,12 @@ const CreateEvent = () => {
         }
       }
 
-      // Prepare event data
-      const eventData = {
+      // Prepare event data - SESSION-CENTRIC FORMAT
+      const eventData = isLegacyMode ? {
+        // LEGACY FORMAT
         title: eventTitle.trim(),
         event_type: "event",
+        architecture: "legacy",
         time_slots: eventSlots.map(slot => ({
           date: slot.date,
           start_time: slot.startTime,
@@ -545,6 +719,75 @@ const CreateEvent = () => {
         event_categories: selectedCategories,
         event_languages: eventLanguages.trim(),
         event_guides: guides,
+        // Creator information
+        creator: creatorInfo ? {
+          type: creatorInfo.type, // 'artist', 'organisation', or 'venue'
+          pageId: creatorInfo.pageId,
+          name: creatorInfo.name,
+          username: creatorInfo.username,
+          userId: auth.currentUser.uid
+        } : {
+          type: 'organisation',
+          pageId: auth.currentUser.uid,
+          name: orgName,
+          username: orgUsername,
+          userId: auth.currentUser.uid
+        },
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        status: 'active',
+        image_upload_status: imageUploadError ? 'failed' : (imageUrl ? 'success' : 'none')
+      } : {
+        // NEW SESSION-CENTRIC FORMAT
+        title: eventTitle.trim(),
+        event_type: "event",
+        architecture: "session-centric",
+        sessions: eventSessions.map((session, index) => ({
+          id: session.id,
+          name: `Session ${index + 1}`,
+          date: session.date,
+          start_time: session.startTime,
+          end_time: session.endTime,
+          venue: eventVenue.trim(),
+          description: '',
+          tickets: session.tickets.map(ticket => ({
+            name: ticket.name.trim(),
+            capacity: parseInt(ticket.capacity),
+            price: parseFloat(ticket.price),
+            available_capacity: parseInt(ticket.capacity)
+          })),
+          available: true,
+          maxCapacity: session.maxCapacity || session.tickets.reduce((sum, ticket) => sum + parseInt(ticket.capacity || '0'), 0)
+        })),
+        // Legacy compatibility fields
+        time_slots: eventSessions.map(session => ({
+          date: session.date,
+          start_time: session.startTime,
+          end_time: session.endTime,
+          available: true,
+          session_id: session.id
+        })),
+        tickets: eventSessions.length > 0 ? eventSessions[0].tickets.map(ticket => ({
+          name: ticket.name.trim(),
+          capacity: parseInt(ticket.capacity),
+          price: parseFloat(ticket.price),
+          available_capacity: parseInt(ticket.capacity)
+        })) : [],
+        event_venue: eventVenue.trim(),
+        venue_type: 'global',
+        about_event: aboutEvent.trim(),
+        event_image: imageUrl,
+        organizationId: auth.currentUser.uid,
+        hosting_club: orgName,
+        organization_username: orgUsername,
+        event_categories: selectedCategories,
+        event_languages: eventLanguages.trim(),
+        event_guides: guides,
+        // Session statistics
+        total_sessions: eventSessions.length,
+        total_capacity: eventSessions.reduce((sum, session) => 
+          sum + session.tickets.reduce((ticketSum, ticket) => ticketSum + parseInt(ticket.capacity || '0'), 0), 0
+        ),
         // Creator information
         creator: creatorInfo ? {
           type: creatorInfo.type, // 'artist', 'organisation', or 'venue'
@@ -702,138 +945,306 @@ const CreateEvent = () => {
                 <p className={styles.errorText}>Please select at least one category</p>
               )}
             </div>
+
+            <div className={styles.formGroup}>
+              <label>About Event</label>
+              <textarea
+                value={aboutEvent}
+                onChange={(e) => setAboutEvent(e.target.value)}
+                placeholder="Enter event description"
+                rows={4}
+                required
+              />
+            </div>
           </div>
 
-          {/* Tickets Section */}
+          {/* MODE TOGGLE */}
           <div className={styles.formSection}>
-            <h2>Create Tickets</h2>
-            {tickets.map((ticket, index) => (
-              <div key={index} className={styles.ticketSlot}>
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label>Ticket Name</label>
-                    <input
-                      type="text"
-                      value={ticket.name}
-                      onChange={(e) => handleTicketChange(index, 'name', e.target.value)}
-                      placeholder="e.g., General, VIP, Fan Pit"
-                      required
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Capacity</label>
-                    <input
-                      type="number"
-                      value={ticket.capacity}
-                      onChange={(e) => handleTicketChange(index, 'capacity', e.target.value)}
-                      placeholder="Number of tickets"
-                      min="1"
-                      required
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Price (₹)</label>
-                    <input
-                      type="number"
-                      value={ticket.price}
-                      onChange={(e) => handleTicketChange(index, 'price', e.target.value)}
-                      placeholder="Ticket price"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                  </div>
-                  {tickets.length > 1 && (
-                    <button
-                      type="button"
-                      className={styles.removeDateButton}
-                      onClick={() => removeTicketType(index)}
-                    >
-                      Remove
-                    </button>
+            <div className={styles.modeToggleContainer}>
+              <h2>Event Structure</h2>
+              <div className={styles.modeToggle}>
+                <label className={styles.toggleLabel}>
+                  <input
+                    type="checkbox"
+                    checked={!isLegacyMode}
+                    onChange={toggleMode}
+                    className={styles.toggleInput}
+                  />
+                  <span className={styles.toggleSlider}></span>
+                  <span className={styles.toggleText}>
+                    {isLegacyMode ? 'Simple Mode (Legacy)' : 'Session-Centric Mode (Recommended)'}
+                  </span>
+                </label>
+                <div className={styles.modeDescription}>
+                  {isLegacyMode ? (
+                    <p>Simple mode: One set of tickets applies to all time slots. Good for basic events.</p>
+                  ) : (
+                    <p>Session-centric mode: Each session can have its own tickets, pricing, and capacity. Perfect for multi-day events, workshops, or concerts with different pricing tiers.</p>
                   )}
                 </div>
               </div>
-            ))}
-            <button
-              type="button"
-              className={styles.addDateButton}
-              onClick={addTicketType}
-            >
-              Add Another Ticket Type
-            </button>
+            </div>
           </div>
 
-          {/* Time Slots Section */}
-          <div className={styles.formSection}>
-            <h2>Event Schedule</h2>
-            {eventSlots.map((slot, index) => (
-              <div key={index} className={styles.scheduleSlotContainer}>
-                <div className={styles.scheduleRow}>
-                  <div className={styles.scheduleIndicatorCol}>
-                    <span className={styles.scheduleCircleFilled}></span>
-                    <span className={styles.scheduleDashedLine}></span>
-                    <span className={styles.scheduleCircle}></span>
-                  </div>
-                  <div className={styles.scheduleLabelsCol}>
-                    <span className={styles.scheduleLabel}>Start</span>
-                    <span className={styles.scheduleLabel}>End</span>
-                  </div>
-                  <div className={styles.schedulePickersCol}>
-                    <div className={styles.schedulePickerRow}>
-                      <input
-                        type="date"
-                        value={slot.date}
-                        onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
-                        className={styles.scheduleDateInput}
-                        required
-                      />
-                      <input
-                        type="time"
-                        value={slot.startTime}
-                        onChange={(e) => handleSlotChange(index, 'startTime', e.target.value)}
-                        className={styles.scheduleTimeInput}
-                        required
-                      />
+          {isLegacyMode ? (
+            <>
+              {/* LEGACY: Tickets Section */}
+              <div className={styles.formSection}>
+                <h2>Create Tickets</h2>
+                {tickets.map((ticket, index) => (
+                  <div key={index} className={styles.ticketSlot}>
+                    <div className={styles.formRow}>
+                      <div className={styles.formGroup}>
+                        <label>Ticket Name</label>
+                        <input
+                          type="text"
+                          value={ticket.name}
+                          onChange={(e) => handleTicketChange(index, 'name', e.target.value)}
+                          placeholder="e.g., General, VIP, Fan Pit"
+                          required
+                        />
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label>Capacity</label>
+                        <input
+                          type="number"
+                          value={ticket.capacity}
+                          onChange={(e) => handleTicketChange(index, 'capacity', e.target.value)}
+                          placeholder="Number of tickets"
+                          min="1"
+                          required
+                        />
+                      </div>
+                      <div className={styles.formGroup}>
+                        <label>Price (₹)</label>
+                        <input
+                          type="number"
+                          value={ticket.price}
+                          onChange={(e) => handleTicketChange(index, 'price', e.target.value)}
+                          placeholder="Ticket price"
+                          min="0"
+                          step="0.01"
+                          required
+                        />
+                      </div>
+                      {tickets.length > 1 && (
+                        <button
+                          type="button"
+                          className={styles.removeDateButton}
+                          onClick={() => removeTicketType(index)}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
-                    <div className={styles.schedulePickerRow}>
-                      <input
-                        type="date"
-                        value={slot.date}
-                        onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
-                        className={styles.scheduleDateInput}
-                        required
-                        disabled
-                      />
-                      <input
-                        type="time"
-                        value={slot.endTime}
-                        onChange={(e) => handleSlotChange(index, 'endTime', e.target.value)}
-                        className={styles.scheduleTimeInput}
-                        required
-                      />
-                    </div>
                   </div>
-                </div>
-                {eventSlots.length > 1 && (
+                ))}
+                <button
+                  type="button"
+                  className={styles.addDateButton}
+                  onClick={addTicketType}
+                >
+                  Add Another Ticket Type
+                </button>
+              </div>
+
+              {/* LEGACY: Time Slots Section */}
+              <div className={styles.formSection}>
+                <h2>Event Schedule</h2>
+                {eventSlots.map((slot, index) => (
+                  <div key={index} className={styles.scheduleSlotContainer}>
+                    <div className={styles.scheduleRow}>
+                      <div className={styles.scheduleIndicatorCol}>
+                        <span className={styles.scheduleCircleFilled}></span>
+                        <span className={styles.scheduleDashedLine}></span>
+                        <span className={styles.scheduleCircle}></span>
+                      </div>
+                      <div className={styles.scheduleLabelsCol}>
+                        <span className={styles.scheduleLabel}>Start</span>
+                        <span className={styles.scheduleLabel}>End</span>
+                      </div>
+                      <div className={styles.schedulePickersCol}>
+                        <div className={styles.schedulePickerRow}>
+                          <input
+                            type="date"
+                            value={slot.date}
+                            onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
+                            className={styles.scheduleDateInput}
+                            required
+                          />
+                          <input
+                            type="time"
+                            value={slot.startTime}
+                            onChange={(e) => handleSlotChange(index, 'startTime', e.target.value)}
+                            className={styles.scheduleTimeInput}
+                            required
+                          />
+                        </div>
+                        <div className={styles.schedulePickerRow}>
+                          <input
+                            type="date"
+                            value={slot.date}
+                            onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
+                            className={styles.scheduleDateInput}
+                            required
+                            disabled
+                          />
+                          <input
+                            type="time"
+                            value={slot.endTime}
+                            onChange={(e) => handleSlotChange(index, 'endTime', e.target.value)}
+                            className={styles.scheduleTimeInput}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {eventSlots.length > 1 && (
+                      <button
+                        type="button"
+                        className={styles.removeDateButton}
+                        onClick={() => removeTimeSlot(index)}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className={styles.addDateButton}
+                  onClick={addTimeSlot}
+                >
+                  Add Another Time Slot
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* SESSION-CENTRIC: Sessions Builder */}
+              <div className={styles.formSection}>
+                <h2>Event Sessions</h2>
+                <div className={styles.sessionsBuilder}>
+                  {eventSessions.map((session, sessionIndex) => (
+                    <div key={session.id} className={styles.sessionCard}>
+                      <div className={styles.sessionHeader}>
+                        <h3>Session {sessionIndex + 1}</h3>
+                        {eventSessions.length > 1 && (
+                          <button
+                            type="button"
+                            className={styles.removeSessionButton}
+                            onClick={() => removeSession(session.id)}
+                          >
+                            Remove Session
+                          </button>
+                        )}
+                      </div>
+                      
+
+
+                      {/* Session Timing */}
+                      <div className={styles.sessionTiming}>
+                        <div className={styles.formGroup}>
+                          <label>Date</label>
+                          <input
+                            type="date"
+                            value={session.date}
+                            onChange={(e) => handleSessionChange(session.id, 'date', e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className={styles.formGroup}>
+                          <label>Start Time</label>
+                          <input
+                            type="time"
+                            value={session.startTime}
+                            onChange={(e) => handleSessionChange(session.id, 'startTime', e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className={styles.formGroup}>
+                          <label>End Time</label>
+                          <input
+                            type="time"
+                            value={session.endTime}
+                            onChange={(e) => handleSessionChange(session.id, 'endTime', e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+
+
+
+                      {/* Session Tickets */}
+                      <div className={styles.sessionTickets}>
+                        <h4>Session Tickets</h4>
+                        {session.tickets.map((ticket, ticketIndex) => (
+                          <div key={ticketIndex} className={styles.ticketRow}>
+                            <div className={styles.formGroup}>
+                              <label>Ticket Name</label>
+                              <input
+                                type="text"
+                                value={ticket.name}
+                                onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'name', e.target.value)}
+                                placeholder="e.g., General, VIP, Student"
+                                required
+                              />
+                            </div>
+                            <div className={styles.formGroup}>
+                              <label>Capacity</label>
+                              <input
+                                type="number"
+                                value={ticket.capacity}
+                                onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'capacity', e.target.value)}
+                                placeholder="Number"
+                                min="1"
+                                required
+                              />
+                            </div>
+                            <div className={styles.formGroup}>
+                              <label>Price (₹)</label>
+                              <input
+                                type="number"
+                                value={ticket.price}
+                                onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'price', e.target.value)}
+                                placeholder="Price"
+                                min="0"
+                                step="0.01"
+                                required
+                              />
+                            </div>
+                            {session.tickets.length > 1 && (
+                              <button
+                                type="button"
+                                className={styles.removeTicketButton}
+                                onClick={() => removeSessionTicket(session.id, ticketIndex)}
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className={styles.addTicketButton}
+                          onClick={() => addSessionTicket(session.id)}
+                        >
+                          Add Ticket Type
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                   <button
                     type="button"
-                    className={styles.removeDateButton}
-                    onClick={() => removeTimeSlot(index)}
+                    className={styles.addSessionButton}
+                    onClick={addSession}
                   >
-                    Remove
+                    Add Another Session
                   </button>
-                )}
+                </div>
               </div>
-            ))}
-            <button
-              type="button"
-              className={styles.addDateButton}
-              onClick={addTimeSlot}
-            >
-              Add Another Time Slot
-            </button>
-          </div>
+            </>
+          )}
 
           {/* Location */}
           <div className={styles.formSection}>
@@ -982,20 +1393,6 @@ const CreateEvent = () => {
                   className={styles.locationInput}
                 />
               )}
-            </div>
-          </div>
-
-          {/* About Event */}
-          <div className={styles.formSection}>
-            <h2>About Event</h2>
-            <div className={styles.formGroup}>
-              <textarea
-                value={aboutEvent}
-                onChange={(e) => setAboutEvent(e.target.value)}
-                placeholder="Enter event description"
-                rows={4}
-                required
-              />
             </div>
           </div>
 

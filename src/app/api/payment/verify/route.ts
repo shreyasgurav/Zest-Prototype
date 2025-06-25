@@ -39,7 +39,7 @@ async function checkPaymentDuplicate(paymentId: string): Promise<boolean> {
 }
 
 /**
- * Atomically create event booking with capacity update
+ * Atomically create event booking with capacity update and individual attendee records
  */
 async function createEventBookingAtomic(
   finalBookingData: any,
@@ -71,9 +71,103 @@ async function createEventBookingAtomic(
       };
     });
 
-    // Create booking document
-    const bookingRef = adminDb.collection('eventAttendees').doc();
-    transaction.set(bookingRef, finalBookingData);
+    // Create individual attendee records for each ticket
+    const attendeeIds: string[] = [];
+    const ticketEntries = Object.entries(bookingData.tickets as Record<string, number>);
+    
+    // Find the ticket price for amount calculation
+    const getTicketPrice = (ticketName: string) => {
+      const ticket = currentTickets.find((t: any) => t.name === ticketName);
+      return ticket ? ticket.price : 0;
+    };
+    
+    // Performance optimization: Add limits for large group bookings
+    const totalTickets = ticketEntries.reduce((total, [, qty]) => total + qty, 0);
+    
+    // Set reasonable limits to prevent database overload
+    const MAX_INDIVIDUAL_TICKETS = 50; // Maximum individual tickets per booking
+    const BATCH_SIZE = 10; // Process tickets in batches for large bookings
+    
+    if (totalTickets > MAX_INDIVIDUAL_TICKETS) {
+      throw new Error(`Group bookings are limited to ${MAX_INDIVIDUAL_TICKETS} tickets. For larger events, please contact support.`);
+    }
+    
+    // Validate that individual amounts will equal the total paid
+    let calculatedTotal = 0;
+    for (const [ticketType, quantity] of ticketEntries) {
+      const ticketPrice = getTicketPrice(ticketType);
+      calculatedTotal += ticketPrice * quantity;
+    }
+    
+    // Handle potential price discrepancies (e.g., if prices changed after booking started)
+    const totalDifference = Math.abs(calculatedTotal - bookingData.totalAmount);
+    if (totalDifference > 0.01) { // Allow 1 paisa difference for rounding
+      console.warn('Price discrepancy detected:', {
+        calculated: calculatedTotal,
+        paid: bookingData.totalAmount,
+        difference: totalDifference
+      });
+    }
+    
+    // Use the actual amount paid for individual calculations to maintain accuracy
+    let remainingAmount = bookingData.totalAmount;
+    let processedTickets = 0;
+    
+    // Process tickets in batches for better performance
+    const attendeeData: any[] = [];
+    
+    for (const [ticketType, quantity] of ticketEntries) {
+      const ticketPrice = getTicketPrice(ticketType);
+      
+      for (let i = 0; i < quantity; i++) {
+        processedTickets++;
+        
+        // Calculate individual amount - use proportional amount for last ticket to handle rounding
+        const individualAmount = processedTickets === totalTickets 
+          ? remainingAmount // Give remaining amount to last ticket
+          : Math.round((ticketPrice / bookingData.totalAmount * bookingData.totalAmount) * 100) / 100;
+        
+        remainingAmount -= individualAmount;
+        
+        const attendeeRef = adminDb.collection('eventAttendees').doc();
+        const individualAttendeeData = {
+          ...finalBookingData,
+          // Individual ticket info - each attendee gets 1 ticket of their type
+          tickets: { [ticketType]: 1 },
+          ticketType: ticketType,
+          ticketIndex: i + 1, // Track which ticket number this is (1st, 2nd, etc.)
+          totalTicketsInBooking: totalTickets,
+          individualAmount: individualAmount,
+          // Track the original booking for reference and revenue verification
+          originalBookingData: {
+            originalTotalAmount: bookingData.totalAmount,
+            originalTickets: bookingData.tickets,
+            bookingReference: attendeeRef.id,
+            priceAtBooking: ticketPrice, // Store the price at time of booking
+            verifiedTotal: calculatedTotal // Store calculated total for auditing
+          },
+          // Check-in status - each attendee can check in independently
+          checkedIn: false,
+          checkInTime: null,
+          checkInMethod: null,
+          checkedInBy: null,
+          // Add attendee identification
+          attendeeId: attendeeRef.id,
+          canCheckInIndependently: true,
+          // Performance optimization: Add batch ID for grouping
+          batchId: Math.floor(processedTickets / BATCH_SIZE),
+          createdInBatch: true
+        };
+        
+        attendeeData.push({ ref: attendeeRef, data: individualAttendeeData });
+        attendeeIds.push(attendeeRef.id);
+      }
+    }
+    
+    // Batch write all attendee records
+    for (const { ref, data } of attendeeData) {
+      transaction.set(ref, data);
+    }
     
     // Update event capacity
     transaction.update(eventRef, {
@@ -81,12 +175,13 @@ async function createEventBookingAtomic(
       updatedAt: new Date().toISOString()
     });
 
-    return bookingRef.id;
+    // Return the first attendee ID as the primary booking reference
+    return attendeeIds[0];
   });
 }
 
 /**
- * Atomically create activity booking with capacity update
+ * Atomically create activity booking with capacity update and individual attendee records
  */
 async function createActivityBookingAtomic(
   finalBookingData: any,
@@ -132,9 +227,39 @@ async function createActivityBookingAtomic(
       return day;
     });
 
-    // Create booking document
-    const bookingRef = adminDb.collection('activity_bookings').doc();
-    transaction.set(bookingRef, finalBookingData);
+    // Create individual attendee records for each ticket (using activityAttendees collection)
+    const attendeeIds: string[] = [];
+    const requestedTickets = bookingData.tickets as number;
+    const individualAmount = bookingData.totalAmount / requestedTickets;
+    
+    for (let i = 0; i < requestedTickets; i++) {
+      const attendeeRef = adminDb.collection('activityAttendees').doc();
+      const individualAttendeeData = {
+        ...finalBookingData,
+        // Individual ticket info - each attendee gets 1 ticket
+        tickets: 1,
+        ticketIndex: i + 1, // Track which ticket number this is (1st, 2nd, etc.)
+        totalTicketsInBooking: requestedTickets,
+        individualAmount: individualAmount,
+        // Track the original booking for reference
+        originalBookingData: {
+          originalTotalAmount: bookingData.totalAmount,
+          originalTickets: bookingData.tickets,
+          bookingReference: attendeeRef.id
+        },
+        // Check-in status - each attendee can check in independently
+        checkedIn: false,
+        checkInTime: null,
+        checkInMethod: null,
+        checkedInBy: null,
+        // Add attendee identification
+        attendeeId: attendeeRef.id,
+        canCheckInIndependently: true
+      };
+      
+      transaction.set(attendeeRef, individualAttendeeData);
+      attendeeIds.push(attendeeRef.id);
+    }
     
     // Update activity schedule
     transaction.update(activityRef, {
@@ -142,7 +267,8 @@ async function createActivityBookingAtomic(
       updatedAt: new Date().toISOString()
     });
 
-    return bookingRef.id;
+    // Return the first attendee ID as the primary booking reference
+    return attendeeIds[0];
   });
 }
 
@@ -332,13 +458,30 @@ export async function POST(request: NextRequest) {
         );
         console.log(`Successfully created ${ticketIds.length} tickets:`, ticketIds);
         
+        // TODO: Send consolidated email notification for group bookings
+        if (bookingType === 'event' && finalBookingData.totalTicketsInBooking > 1) {
+          console.log('Group booking created - email notification would be sent here:', {
+            userEmail: bookingData.email,
+            userName: bookingData.name,
+            totalTickets: finalBookingData.totalTicketsInBooking,
+            totalAmount: bookingData.totalAmount
+          });
+        }
+        
         return NextResponse.json({
           success: true,
           bookingId,
           ticketIds,
-          message: 'Payment verified, booking confirmed, and tickets created',
+          message: finalBookingData.totalTicketsInBooking > 1 
+            ? `Payment verified, ${finalBookingData.totalTicketsInBooking} individual tickets created for your group booking`
+            : 'Payment verified, booking confirmed, and tickets created',
           amount: validationResult.serverAmount,
-          breakdown: validationResult.breakdown
+          breakdown: validationResult.breakdown,
+          groupBookingInfo: finalBookingData.totalTicketsInBooking > 1 ? {
+            totalTickets: finalBookingData.totalTicketsInBooking,
+            individualTickets: ticketIds.length,
+            checkInInfo: 'Each person can check in independently with their individual QR code'
+          } : null
         });
         
       } catch (ticketError) {

@@ -123,7 +123,7 @@ export async function linkAccountsIfNeeded(user: User, provider: AuthProvider): 
 }
 
 /**
- * Creates a new user document with the provided data
+ * Creates a new user document with the provided data and links existing tickets
  * @param user - Firebase Auth user
  * @param provider - The authentication provider used
  * @param additionalData - Any additional data to include
@@ -149,8 +149,101 @@ export async function createUserDocument(
     }
   };
 
+  // Create user document
   await setDoc(doc(db, "Users", user.uid), userData);
+
+  // Link existing tickets if user has a phone number
+  if (userData.phone) {
+    await linkExistingTicketsToUser(user.uid, userData.phone);
+  }
+
   return userData;
+}
+
+/**
+ * Links existing tickets associated with a phone number to a user account
+ * @param userId - The user's UID
+ * @param phoneNumber - The phone number to search for
+ */
+export async function linkExistingTicketsToUser(userId: string, phoneNumber: string): Promise<void> {
+  try {
+    console.log(`Linking existing tickets for phone ${phoneNumber} to user ${userId}`);
+
+    // Find tickets associated with this phone number but no userId
+    const ticketsQuery = query(
+      collection(db, "tickets"),
+      where("phoneForFutureLink", "==", phoneNumber)
+    );
+    const ticketsSnapshot = await getDocs(ticketsQuery);
+
+    // Find attendees associated with this phone number but no userId
+    const attendeesQuery = query(
+      collection(db, "eventAttendees"),
+      where("phoneForFutureLink", "==", phoneNumber)
+    );
+    const attendeesSnapshot = await getDocs(attendeesQuery);
+
+    const batch = [];
+    let linkedTicketsCount = 0;
+    let linkedAttendeesCount = 0;
+
+    // Update tickets
+    for (const ticketDoc of ticketsSnapshot.docs) {
+      const ticketData = ticketDoc.data();
+      console.log(`Linking ticket ${ticketDoc.id} to user ${userId}`);
+      
+      batch.push(
+        updateDoc(ticketDoc.ref, {
+          userId: userId,
+          phoneForFutureLink: null, // Clear the temporary field
+          linkedToAccount: true,
+          linkedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        })
+      );
+      linkedTicketsCount++;
+    }
+
+    // Update attendees
+    for (const attendeeDoc of attendeesSnapshot.docs) {
+      const attendeeData = attendeeDoc.data();
+      console.log(`Linking attendee ${attendeeDoc.id} to user ${userId}`);
+      
+      batch.push(
+        updateDoc(attendeeDoc.ref, {
+          userId: userId,
+          phoneForFutureLink: null, // Clear the temporary field
+          linkedToAccount: true,
+          linkedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        })
+      );
+      linkedAttendeesCount++;
+    }
+
+    // Execute all updates
+    await Promise.all(batch);
+
+    if (linkedTicketsCount > 0 || linkedAttendeesCount > 0) {
+      console.log(`Successfully linked ${linkedTicketsCount} tickets and ${linkedAttendeesCount} attendee records to user ${userId}`);
+      
+      // Update user document with linked ticket IDs
+      const linkedTicketIds = ticketsSnapshot.docs.map(doc => doc.id);
+      if (linkedTicketIds.length > 0) {
+        await updateDoc(doc(db, "Users", userId), {
+          linkedTickets: linkedTicketIds,
+          ticketsLinkedFromPhone: true,
+          ticketsLinkedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    } else {
+      console.log(`No existing tickets found for phone ${phoneNumber}`);
+    }
+  } catch (error) {
+    console.error("Error linking existing tickets to user:", error);
+    // Don't throw error as this is not critical for account creation
+  }
 }
 
 /**

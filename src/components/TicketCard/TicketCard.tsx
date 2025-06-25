@@ -34,6 +34,13 @@ interface TicketCardProps {
     createdAt: string;
     usedAt?: string;
     event_image?: string;
+    ticketIndex?: number;
+    totalTicketsInBooking?: number;
+    originalBookingData?: {
+      originalTotalAmount: number;
+      originalTickets: any;
+      bookingReference: string;
+    };
   };
   onClick?: () => void;
   viewMode?: 'grid' | 'list';
@@ -153,7 +160,18 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
               {formatDate(ticket.selectedDate)} | {formatTime(ticket.selectedTimeSlot.start_time)}
             </div>
             <div className={styles.ticketCount}>
-              1 ticket
+              {ticket.totalTicketsInBooking && ticket.totalTicketsInBooking > 1 ? (
+                <div className={styles.groupBookingInfo}>
+                  <span className={styles.ticketNumber}>
+                    Ticket {ticket.ticketIndex} of {ticket.totalTicketsInBooking}
+                  </span>
+                  <span className={styles.groupBookingBadge}>
+                    Group Booking
+                  </span>
+                </div>
+              ) : (
+                '1 ticket'
+              )}
             </div>
           </div>
 

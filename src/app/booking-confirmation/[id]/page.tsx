@@ -126,7 +126,7 @@ const BookingConfirmation = () => {
           }
         } else {
           // Check if it's an activity booking
-          const activityBookingDoc = await getDoc(doc(db, "activity_bookings", params.id));
+          const activityBookingDoc = await getDoc(doc(db, "activityAttendees", params.id));
           
           if (activityBookingDoc.exists()) {
             setBookingType('activity');

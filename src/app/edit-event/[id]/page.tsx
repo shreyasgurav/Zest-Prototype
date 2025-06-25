@@ -5,7 +5,7 @@ import { db, storage } from "@/lib/firebase";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import styles from "./EditEvent.module.css";
 // @ts-ignore
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
@@ -62,8 +62,9 @@ const GUIDE_OPTIONS = [
   { id: 'alcohol', label: 'Alcohol allowed?', placeholder: 'e.g., Yes/No or details' },
 ];
 
-const EditEvent = ({ params }: { params: { id: string } }) => {
+const EditEvent = () => {
   const router = useRouter();
+  const params = useParams<{ id: string }>();
   const [eventTitle, setEventTitle] = useState<string>("");
   const [eventVenue, setEventVenue] = useState<string>("");
   const [aboutEvent, setAboutEvent] = useState<string>("");
@@ -92,6 +93,12 @@ const EditEvent = ({ params }: { params: { id: string } }) => {
     const fetchEventDetails = async () => {
       if (!auth.currentUser) {
         router.push('/');
+        return;
+      }
+
+      if (!params?.id) {
+        setMessage("Event ID not found");
+        setLoading(false);
         return;
       }
 
@@ -136,6 +143,8 @@ const EditEvent = ({ params }: { params: { id: string } }) => {
             }));
             setTickets(formattedTickets);
           }
+        } else {
+          setMessage("Event not found");
         }
       } catch (error) {
         console.error("Error fetching event details:", error);
@@ -146,7 +155,7 @@ const EditEvent = ({ params }: { params: { id: string } }) => {
     };
 
     fetchEventDetails();
-  }, [params.id, auth.currentUser, router]);
+  }, [params?.id, auth.currentUser, router]);
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -327,6 +336,10 @@ const EditEvent = ({ params }: { params: { id: string } }) => {
         image_upload_status: imageUploadError ? 'failed' : (imageUrl ? 'success' : 'none')
       };
 
+      if (!params?.id) {
+        throw new Error("Event ID not found");
+      }
+      
       await updateDoc(doc(db, "events", params.id), eventData);
       
       if (imageUploadError) {

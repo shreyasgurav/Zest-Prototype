@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, doc, getDoc, updateDoc, collection, addDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { app } from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase-admin';
 
 const db = getFirestore(app);
 
@@ -110,6 +111,57 @@ export async function POST(request: NextRequest) {
         error: 'Unauthorized to scan tickets for this event',
         code: 'UNAUTHORIZED'
       }, { status: 403 });
+    }
+
+    // Add fraud prevention for group bookings
+    if (ticketData?.originalBookingData?.bookingReference) {
+      // Check how many tickets from this booking have already been used
+      const groupBookingRef = ticketData.originalBookingData.bookingReference;
+      const totalTicketsInBooking = ticketData.totalTicketsInBooking || 1;
+      
+      // Query all attendees from the same booking
+      const sameBookingQuery = adminDb
+        .collection('eventAttendees')
+        .where('originalBookingData.bookingReference', '==', groupBookingRef)
+        .where('checkedIn', '==', true);
+        
+      const checkedInFromSameBooking = await sameBookingQuery.get();
+      
+      // Prevent check-in if this person has already checked in with another ticket from the same booking
+      const userAlreadyCheckedIn = checkedInFromSameBooking.docs.some(doc => {
+        const data = doc.data();
+        return data.email === ticketData.email && data.userId === ticketData.userId;
+      });
+      
+      if (userAlreadyCheckedIn) {
+        console.warn('Attempted duplicate check-in for same user from group booking:', {
+          userId: ticketData.userId,
+          email: ticketData.email,
+          bookingReference: groupBookingRef,
+          ticketNumber: ticketData.ticketNumber
+        });
+        
+        return NextResponse.json({
+          success: false,
+          message: 'You have already checked in with another ticket from this booking',
+          details: 'Each person can only check in once per event, even with multiple tickets'
+        }, { status: 400 });
+      }
+      
+      // Additional validation: Check if too many tickets from this booking have been used
+      if (checkedInFromSameBooking.size >= totalTicketsInBooking) {
+        console.warn('All tickets from this booking have already been used:', {
+          bookingReference: groupBookingRef,
+          totalTickets: totalTicketsInBooking,
+          checkedIn: checkedInFromSameBooking.size
+        });
+        
+        return NextResponse.json({
+          success: false,
+          message: 'All tickets from this booking have already been used',
+          details: 'No more check-ins available for this booking'
+        }, { status: 400 });
+      }
     }
 
     // Mark ticket as used

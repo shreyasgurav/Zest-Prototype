@@ -504,4 +504,30 @@
   }
 }
 
+.groupBookingInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ticketNumber {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.groupBookingBadge {
+  display: inline-flex;
+  align-items: center;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: fit-content;
+}
+
  
