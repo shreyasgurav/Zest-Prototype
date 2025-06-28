@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle, Calendar, Clock, MapPin, Ticket, CreditCard, User, Home, Copy } from 'lucide-react';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import styles from './BookingConfirmation.module.css';
@@ -103,7 +103,7 @@ const BookingConfirmation = () => {
 
       try {
         // First check if it's an event booking by booking ID
-        const eventBookingDoc = await getDoc(doc(db, "eventAttendees", params.id));
+        const eventBookingDoc = await getDoc(doc(db(), "eventAttendees", params.id));
         
         if (eventBookingDoc.exists()) {
           // It's an event booking
@@ -115,7 +115,7 @@ const BookingConfirmation = () => {
           setEventBooking(bookingData);
           
           // Fetch event details
-          const eventDoc = await getDoc(doc(db, "events", bookingData.eventId));
+          const eventDoc = await getDoc(doc(db(), "events", bookingData.eventId));
           if (eventDoc.exists()) {
             const eventData: EventData = {
               id: eventDoc.id,
@@ -126,7 +126,7 @@ const BookingConfirmation = () => {
           }
         } else {
           // Check if it's an activity booking
-          const activityBookingDoc = await getDoc(doc(db, "activityAttendees", params.id));
+          const activityBookingDoc = await getDoc(doc(db(), "activityAttendees", params.id));
           
           if (activityBookingDoc.exists()) {
             setBookingType('activity');
@@ -137,7 +137,7 @@ const BookingConfirmation = () => {
             setActivityBooking(bookingData);
             
             // Fetch activity details
-            const activityDoc = await getDoc(doc(db, "activities", bookingData.activityId));
+            const activityDoc = await getDoc(doc(db(), "activities", bookingData.activityId));
             if (activityDoc.exists()) {
               const activityData: ActivityData = {
                 id: activityDoc.id,

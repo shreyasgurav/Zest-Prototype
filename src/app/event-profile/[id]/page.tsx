@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { isOrganizationSession } from '@/utils/authHelpers';
@@ -32,6 +32,7 @@ interface EventSession {
   date: string;
   start_time: string;
   end_time: string;
+  end_date?: string; // Optional end date for multi-day sessions
   venue?: string;
   description?: string;
   tickets: Array<{
@@ -152,7 +153,7 @@ function EventProfile() {
         if (orgSession) {
           // Check if organization profile exists
           try {
-            const orgRef = doc(db, "Organisations", currentUser.uid);
+            const orgRef = doc(db(), "Organisations", currentUser.uid);
             const orgSnap = await getDoc(orgRef);
             setIsOrganization(orgSnap.exists());
           } catch (error) {
@@ -176,7 +177,7 @@ function EventProfile() {
   const calculateTicketAvailability = async (eventData: EventData) => {
     try {
       // Fetch actual attendees to calculate real availability
-      const attendeesRef = collection(db, 'eventAttendees');
+      const attendeesRef = collection(db(), 'eventAttendees');
       const attendeesQuery = query(
         attendeesRef,
         where('eventId', '==', eventData.id)
@@ -357,14 +358,36 @@ function EventProfile() {
       const allDates = event.sessions.map(s => s.date).sort();
       const uniqueDates = Array.from(new Set(allDates));
       
+      // Check if any session is multi-day
+      const hasMultiDaySessions = event.sessions.some(session => 
+        session.end_date && session.end_date !== session.date
+      );
+      
+      let dateText = '';
+      if (uniqueDates.length > 1) {
+        dateText = `${formatDate(uniqueDates[0])} onwards`;
+      } else if (hasMultiDaySessions) {
+        // Show date range for multi-day events
+        const firstSessionWithEndDate = event.sessions.find(session => 
+          session.end_date && session.end_date !== session.date
+        );
+        if (firstSessionWithEndDate) {
+          const endDate = firstSessionWithEndDate.end_date;
+          dateText = `${formatDate(uniqueDates[0])} - ${formatDate(endDate)}`;
+        } else {
+          dateText = formatDate(uniqueDates[0]);
+        }
+      } else {
+        dateText = formatDate(uniqueDates[0]);
+      }
+      
       return {
-        dateText: uniqueDates.length > 1 
-          ? `${formatDate(uniqueDates[0])} onwards`
-          : formatDate(uniqueDates[0]),
+        dateText,
         timeSlots: event.sessions.map(session => ({
           date: session.date,
           start_time: session.start_time,
           end_time: session.end_time,
+          end_date: session.end_date,
           sessionName: session.name,
           venue: session.venue || event.event_venue
         })),
@@ -393,7 +416,7 @@ function EventProfile() {
       if (!params?.id) return;
 
       try {
-        const eventDoc = doc(db, "events", params.id);
+        const eventDoc = doc(db(), "events", params.id);
         const eventSnapshot = await getDoc(eventDoc);
         
         if (eventSnapshot.exists()) {
@@ -483,7 +506,7 @@ function EventProfile() {
           return;
       }
       
-      const creatorDoc = doc(db, collectionName, creator.pageId);
+      const creatorDoc = doc(db(), collectionName, creator.pageId);
       const creatorSnapshot = await getDoc(creatorDoc);
       
       if (creatorSnapshot.exists()) {
@@ -578,32 +601,7 @@ function EventProfile() {
               <FaCalendarAlt /> {displayData?.dateText}
             </div>
             
-            {/* Time Display - Updated for session-centric */}
-            {displayData?.isSessionCentric ? (
-              // Session-centric: Show all sessions
-              <>
-                {event.sessions && event.sessions.slice(0, 3).map((session, index) => (
-                  <div key={index} className={styles.eventDetail}>
-                    <FaClock /> {session.name}: {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                    {session.venue && session.venue !== event.event_venue && (
-                      <span className={styles.sessionVenue}> at {session.venue}</span>
-                    )}
-                  </div>
-                ))}
-                {event.sessions && event.sessions.length > 3 && (
-                  <div className={styles.eventDetail}>
-                    <FaClock /> +{event.sessions.length - 3} more sessions
-                  </div>
-                )}
-              </>
-            ) : (
-              // Legacy: Show time slots
-              displayData?.timeSlots?.map((slot, index) => (
-                <div key={index} className={styles.eventDetail}>
-                  <FaClock /> {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
-                </div>
-              ))
-            )}
+
             
             {/* Venue Display */}
             <div 
@@ -617,42 +615,13 @@ function EventProfile() {
               )}
             </div>
 
-            {/* Ticket Information */}
+            {/* Starting Price Display */}
             {ticketAvailability.length > 0 && (
-              <div className={styles.ticketInfo}>
-                <div className={styles.priceDisplay}>
-                  <FaRupeeSign />
-                  <span className={styles.startingPrice}>
-                    Starting from ₹{startingPrice}
-                  </span>
-                  {event.architecture === 'session-centric' && event.total_sessions && (
-                    <span className={styles.sessionCount}>
-                      • {event.total_sessions} session{event.total_sessions > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-                <div className={styles.ticketTypes}>
-                  {ticketAvailability.slice(0, 2).map((ticket, index) => {
-                    const availability = getAvailabilityStatus(ticket);
-                    return (
-                      <div key={index} className={styles.ticketPreview}>
-                        <span className={styles.ticketName}>{ticket.name}</span>
-                        <span className={styles.ticketPrice}>₹{ticket.price}</span>
-                        <span 
-                          className={styles.availabilityBadge}
-                          style={{ color: availability.color }}
-                        >
-                          {availability.text}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {ticketAvailability.length > 2 && (
-                    <div className={styles.moreTickets}>
-                      +{ticketAvailability.length - 2} more ticket types
-                    </div>
-                  )}
-                </div>
+              <div className={styles.eventDetail}>
+                <FaRupeeSign />
+                <span className={styles.startingPrice}>
+                  Starting from ₹{startingPrice}
+                </span>
               </div>
             )}
             

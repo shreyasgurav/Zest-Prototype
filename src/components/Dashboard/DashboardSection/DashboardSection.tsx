@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from "@/lib/firebase";
+import { db } from "@/services/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { getAuth } from 'firebase/auth';
 import DashboardBox from '../DashboardBox/DashboardBox';
@@ -40,7 +40,7 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({ pageId, pageType })
 
       try {
         // Fetch events - filter by specific page if provided, otherwise by user
-        const eventsCollectionRef = collection(db, "events");
+        const eventsCollectionRef = collection(db(), "events");
         let eventsData: Event[] = [];
         
         if (pageId && pageType) {
@@ -94,7 +94,7 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({ pageId, pageType })
         }
 
         // Fetch activities - similar logic
-        const activitiesCollectionRef = collection(db, "activities");
+        const activitiesCollectionRef = collection(db(), "activities");
         let activitiesData: Activity[] = [];
         
         if (pageId && pageType) {

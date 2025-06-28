@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../../../lib/firebase';
+import { auth } from '@/services/firebase';
 import { createOrganizationDocument } from '../../../utils/authHelpers';
 import { toast } from 'react-toastify';
 import { ArrowLeft, Building2, Users, AtSign, FileText, Phone, CheckCircle, AlertCircle } from 'lucide-react';
@@ -27,7 +27,7 @@ const CreateOrganizationPage: React.FC = () => {
   const [validFields, setValidFields] = useState<any>({});
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth(), (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
         setFormData(prev => ({

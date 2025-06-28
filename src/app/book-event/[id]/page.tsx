@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { 
   doc, 
   getDoc,
@@ -38,6 +38,7 @@ interface EventSession {
   date: string;
   start_time: string;
   end_time: string;
+  end_date?: string; // Optional end date for multi-day sessions
   venue?: string;
   description?: string;
   tickets: Array<{
@@ -184,7 +185,7 @@ function BookingFlow() {
     if (!params?.id) return [];
 
     try {
-      const attendeesRef = collection(db, 'eventAttendees');
+      const attendeesRef = collection(db(), 'eventAttendees');
       const attendeesQuery = query(
         attendeesRef,
         where('eventId', '==', params.id)
@@ -216,7 +217,7 @@ function BookingFlow() {
       
       // Fetch event data and attendees in parallel
       const [eventDoc, attendeesList] = await Promise.all([
-        getDoc(doc(db, 'events', params.id)),
+        getDoc(doc(db(), 'events', params.id)),
         fetchAttendees()
       ]);
       
@@ -378,7 +379,7 @@ function BookingFlow() {
     const fetchUserDetails = async () => {
       if (auth.currentUser) {
         try {
-          const userDoc = await getDoc(doc(db, "Users", auth.currentUser.uid));
+          const userDoc = await getDoc(doc(db(), "Users", auth.currentUser.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data();
             setUserInfo({
@@ -689,34 +690,55 @@ function BookingFlow() {
                   <div className={styles.sessionSelector}>
                     <h4><FaClock /> Select Session for {formatDate(selectedSessionDate)}</h4>
                     <div className={styles.availableSessions}>
-                      {sessionsForSelectedDate.map((session, index) => (
-                        <button
-                          key={session.id}
-                          className={`${styles.sessionOption} ${selectedSession?.id === session.id ? styles.selected : ''}`}
-                          onClick={() => handleSessionSelect(session)}
-                        >
-                          <div className={styles.sessionHeader}>
-                            <h4>
-                              <FaClock /> {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                            </h4>
-                          </div>
-                          <div className={styles.sessionDetails}>
-                            {session.venue && session.venue !== event.event_venue && (
-                              <div className={styles.sessionVenue}>
-                                <FaMapMarkerAlt /> {session.venue}
-                              </div>
-                            )}
-                            {session.description && (
-                              <div className={styles.sessionDescription}>
-                                {session.description}
-                              </div>
-                            )}
-                          </div>
-                          <div className={styles.sessionCapacity}>
-                            {session.tickets.reduce((sum, ticket) => sum + ticket.available_capacity, 0)} / {session.maxCapacity || session.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0)} available
-                          </div>
-                        </button>
-                      ))}
+                      {sessionsForSelectedDate.map((session, index) => {
+                        const isMultiDay = session.end_date && session.end_date !== session.date;
+                        const startDateTime = new Date(`${session.date} ${session.start_time}`);
+                        const endDateTime = new Date(`${session.end_date || session.date} ${session.end_time}`);
+                        
+                        // Calculate duration for display
+                        const diffMs = endDateTime.getTime() - startDateTime.getTime();
+                        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                        
+                        return (
+                          <button
+                            key={session.id}
+                            className={`${styles.sessionOption} ${selectedSession?.id === session.id ? styles.selected : ''}`}
+                            onClick={() => handleSessionSelect(session)}
+                          >
+                            <div className={styles.sessionHeader}>
+                              <h4>
+                                <FaClock /> {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                                {isMultiDay && (
+                                  <span className={styles.multiDayBadge}>
+                                    {diffDays} day{diffDays > 1 ? 's' : ''}{diffHours > 0 ? `, ${diffHours}h` : ''}
+                                  </span>
+                                )}
+                              </h4>
+                            </div>
+                            <div className={styles.sessionDetails}>
+                              {isMultiDay && (
+                                <div className={styles.dateRange}>
+                                  <FaCalendarAlt /> {formatDate(session.date)} - {formatDate(session.end_date!)}
+                                </div>
+                              )}
+                              {session.venue && session.venue !== event.event_venue && (
+                                <div className={styles.sessionVenue}>
+                                  <FaMapMarkerAlt /> {session.venue}
+                                </div>
+                              )}
+                              {session.description && (
+                                <div className={styles.sessionDescription}>
+                                  {session.description}
+                                </div>
+                              )}
+                            </div>
+                            <div className={styles.sessionCapacity}>
+                              {session.tickets.reduce((sum, ticket) => sum + ticket.available_capacity, 0)} / {session.maxCapacity || session.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0)} available
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -916,15 +938,38 @@ function BookingFlow() {
                 <div className={styles.eventDetails}>
                   <h3>{event.title}</h3>
                   
-                  {/* Updated for session-centric */}
+                  {/* Updated for session-centric with multi-day support */}
                   {event.architecture === 'session-centric' && selectedSession ? (
                     <>
-                      <p>
-                        <FaCalendarAlt /> {formatDate(selectedSession.date)}
-                      </p>
-                      <p>
-                        <FaClock /> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
-                      </p>
+                      {selectedSession.end_date && selectedSession.end_date !== selectedSession.date ? (
+                        <>
+                          <p>
+                            <FaCalendarAlt /> {formatDate(selectedSession.date)} - {formatDate(selectedSession.end_date)}
+                          </p>
+                          <p>
+                            <FaClock /> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
+                            <span className={styles.multiDayDuration}>
+                              ({(() => {
+                                const startDateTime = new Date(`${selectedSession.date} ${selectedSession.start_time}`);
+                                const endDateTime = new Date(`${selectedSession.end_date} ${selectedSession.end_time}`);
+                                const diffMs = endDateTime.getTime() - startDateTime.getTime();
+                                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                                const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                                return `${diffDays} day${diffDays > 1 ? 's' : ''}${diffHours > 0 ? `, ${diffHours} hour${diffHours !== 1 ? 's' : ''}` : ''}`;
+                              })()})
+                            </span>
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p>
+                            <FaCalendarAlt /> {formatDate(selectedSession.date)}
+                          </p>
+                          <p>
+                            <FaClock /> {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
+                          </p>
+                        </>
+                      )}
                       <p>
                         <FaMapMarkerAlt /> {selectedSession.venue || event.event_venue}
                       </p>

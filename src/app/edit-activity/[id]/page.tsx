@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { db, storage } from "@/lib/firebase";
+import { db, storage } from "@/services/firebase";
 import { 
   doc, 
   getDoc, 
@@ -69,7 +69,7 @@ const EditActivity = () => {
     if (!activityId || !auth.currentUser) return;
 
     try {
-      const activityDoc = await getDoc(doc(db, 'activities', activityId));
+      const activityDoc = await getDoc(doc(db(), 'activities', activityId));
       
       if (!activityDoc.exists()) {
         setMessage("Activity not found");
@@ -195,7 +195,7 @@ const EditActivity = () => {
       // Delete old image if exists
       if (currentImageUrl) {
         try {
-          const oldImageRef = ref(storage, currentImageUrl);
+          const oldImageRef = ref(storage(), currentImageUrl);
           await deleteObject(oldImageRef);
         } catch (err) {
           console.error("Error deleting old image:", err);
@@ -205,7 +205,7 @@ const EditActivity = () => {
       // Create a unique filename
       const fileExtension = file.name.split('.').pop();
       const fileName = `activities/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-      const storageRef = ref(storage, fileName);
+      const storageRef = ref(storage(), fileName);
 
       // Set metadata
       const metadata = {
@@ -272,7 +272,7 @@ const EditActivity = () => {
       }
 
       // Check if any bookings exist for the activity
-      const bookingsRef = collection(db, 'activity_bookings');
+      const bookingsRef = collection(db(), 'activity_bookings');
       const bookingsQuery = query(bookingsRef, where('activityId', '==', activityId));
       const bookingsSnapshot = await getDocs(bookingsQuery);
       const hasBookings = !bookingsSnapshot.empty;
@@ -294,7 +294,7 @@ const EditActivity = () => {
       };
 
       // Update activity document
-      await updateDoc(doc(db, 'activities', activityId), activityData);
+      await updateDoc(doc(db(), 'activities', activityId), activityData);
       
       if (imageUploadError) {
         setMessage(`Activity updated successfully! Note: ${imageUploadErrorMessage} You can try uploading the image again later.`);

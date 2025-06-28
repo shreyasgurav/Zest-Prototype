@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, getFirestore } from 'firebase/firestore';
-import { app } from '@/lib/firebase';
+import { app } from '@/services/firebase';
 import { 
   FaQrcode, 
   FaCheckCircle, 
@@ -51,7 +51,7 @@ const TicketScannerPage = () => {
   const params = useParams();
   const eventId = params?.eventId as string;
   const auth = getAuth();
-  const db = getFirestore(app);
+  const db = getFirestore(app());
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -67,7 +67,7 @@ const TicketScannerPage = () => {
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth(), async (user) => {
       if (!user) {
         router.push('/login');
         return;

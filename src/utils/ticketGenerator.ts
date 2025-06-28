@@ -72,13 +72,13 @@ export function generateTicketNumber(): string {
 }
 
 /**
- * Generate QR code URL for ticket scanning
+ * Generate QR code data for ticket scanning
  * QR code contains only the ticket number for security
  */
 export function generateQRCodeData(ticketId: string, ticketNumber: string): string {
-  // Generate QR code image URL that contains just the ticket number
-  // This is more secure as the ticket number is the only data needed for verification
-  return `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(ticketNumber)}`;
+  // Return just the ticket number - the QR code component will handle rendering
+  // This ensures each ticket has its unique ticket number in the QR code
+  return ticketNumber;
 }
 
 /**

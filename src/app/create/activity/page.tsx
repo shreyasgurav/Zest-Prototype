@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { db, storage } from "@/lib/firebase";
+import { db, storage } from "@/services/firebase";
 import { collection, addDoc, doc, getDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -244,7 +244,7 @@ const CreateActivity = () => {
           setOrgUsername(decodeURIComponent(creatorUsername));
         } else {
           // Fallback to organization lookup (legacy behavior)
-          const orgDoc = await getDoc(doc(db, "Organisations", auth.currentUser.uid));
+          const orgDoc = await getDoc(doc(db(), "Organisations", auth.currentUser.uid));
           if (orgDoc.exists()) {
             const data = orgDoc.data();
             setOrgName(data.name || "");
@@ -414,7 +414,7 @@ const CreateActivity = () => {
 
       const fileExtension = file.name.split('.').pop();
       const fileName = `activities/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-      const storageRef = ref(storage, fileName);
+      const storageRef = ref(storage(), fileName);
 
       const metadata = {
         contentType: file.type,
@@ -548,7 +548,7 @@ const CreateActivity = () => {
       };
 
       console.log("Activity data prepared:", activityData);
-      const activitiesCollectionRef = collection(db, "activities");
+      const activitiesCollectionRef = collection(db(), "activities");
       console.log("Adding document to Firestore...");
       await addDoc(activitiesCollectionRef, activityData);
       console.log("Activity created successfully in Firestore");

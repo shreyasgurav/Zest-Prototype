@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { collection, query, getDocs, orderBy } from "firebase/firestore"
-import { db } from "../../lib/firebase"
+import { db } from "@/services/firebase"
 import { Music, Smile, Palette, PartyPopper, Mountain, Trophy, Calendar, MapPin, Users, Mic } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
@@ -84,7 +84,7 @@ export default function EventsPage() {
       try {
         if (!db) throw new Error("Firebase is not initialized")
 
-        const eventsCollectionRef = collection(db, "events")
+        const eventsCollectionRef = collection(db(), "events")
         const q = query(eventsCollectionRef, orderBy("createdAt", "desc"))
         const querySnapshot = await getDocs(q)
         

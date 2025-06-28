@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
+import { auth, db } from '@/services/firebase';
 import { checkPageOwnership, getUserOwnedPages } from '../../utils/authHelpers';
 import RoleGuardNotification from './RoleGuardNotification';
 
@@ -24,7 +24,7 @@ const RoleGuard: React.FC<RoleGuardProps> = ({ children, allowedRole, redirectPa
 
   useEffect(() => {
     const checkRoleAccess = async () => {
-      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const unsubscribe = onAuthStateChanged(auth(), async (user) => {
         if (!user) {
           // Not authenticated, redirect to login
           router.push('/login');
@@ -34,7 +34,7 @@ const RoleGuard: React.FC<RoleGuardProps> = ({ children, allowedRole, redirectPa
         try {
           // For user role, just check if they have a user profile
           if (allowedRole === 'user') {
-            const userDoc = await getDoc(doc(db, "Users", user.uid));
+            const userDoc = await getDoc(doc(db(), "Users", user.uid));
             if (userDoc.exists()) {
               setIsAuthorized(true);
             } else {

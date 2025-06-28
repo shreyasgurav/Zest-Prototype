@@ -6,10 +6,15 @@ import {
   FaShare,
   FaDownload,
   FaCopy,
-  FaQrcode
+  FaQrcode,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaClock,
+  FaExclamationTriangle
 } from 'react-icons/fa';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { getTicketDisplayStatus } from '@/utils/ticketValidator';
 import styles from './TicketCard.module.css';
 
 interface TicketCardProps {
@@ -66,16 +71,22 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
     });
   };
 
-  const getStatusText = () => {
-    switch (ticket.status) {
-      case 'active': 
-        return 'Active';
-      case 'used': 
-        return 'Finished';
-      case 'cancelled': 
-        return 'Cancelled';
-      default: 
-        return 'Unknown';
+  const getStatusDisplay = () => {
+    return getTicketDisplayStatus(ticket);
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'active':
+        return <FaCheckCircle style={{ color: '#10b981' }} />;
+      case 'used':
+        return <FaTimesCircle style={{ color: '#6b7280' }} />;
+      case 'expired':
+        return <FaClock style={{ color: '#ef4444' }} />;
+      case 'cancelled':
+        return <FaExclamationTriangle style={{ color: '#f59e0b' }} />;
+      default:
+        return <FaTimesCircle style={{ color: '#6b7280' }} />;
     }
   };
 
@@ -112,7 +123,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const statusText = getStatusText();
+  const statusDisplay = getStatusDisplay();
 
   // Fetch event/activity image
   useEffect(() => {
@@ -122,14 +133,14 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
         
         if (ticket.eventId) {
           // Fetch from events collection
-          const eventDoc = await getDoc(doc(db, 'events', ticket.eventId));
+          const eventDoc = await getDoc(doc(db(), 'events', ticket.eventId));
           if (eventDoc.exists()) {
             const eventData = eventDoc.data();
             setEventImage(eventData.event_image || null);
           }
         } else if (ticket.activityId) {
           // Fetch from activities collection
-          const activityDoc = await getDoc(doc(db, 'activities', ticket.activityId));
+          const activityDoc = await getDoc(doc(db(), 'activities', ticket.activityId));
           if (activityDoc.exists()) {
             const activityData = activityDoc.data();
             setEventImage(activityData.activity_image || activityData.event_image || null);
@@ -184,7 +195,15 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
                   <div className={styles.locationName}>{ticket.venue}</div>
                 </div>
               </div>
-              <div className={styles.statusBadge}>{statusText}</div>
+              <div 
+                className={styles.statusBadge} 
+                style={{ backgroundColor: statusDisplay.color }}
+              >
+                <span className={styles.statusIcon}>
+                  {getStatusIcon(statusDisplay.status)}
+                </span>
+                <span>{statusDisplay.displayText}</span>
+              </div>
             </div>
 
             <div className={styles.rightBottom}>
@@ -222,7 +241,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
       </div>
 
       {/* QR Code Overlay */}
-      {showQR && ticket.status === 'active' && (
+      {showQR && statusDisplay.canUse && (
         <div className={styles.qrOverlay}>
           <div className={styles.qrContainer}>
             <QRCodeSVG
@@ -250,7 +269,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
 
       {/* Quick Actions */}
       <div className={styles.quickActions}>
-        {ticket.status === 'active' && (
+        {statusDisplay.canUse && (
           <button 
             className={styles.quickAction}
             onClick={(e) => {

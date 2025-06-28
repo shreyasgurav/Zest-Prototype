@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import styles from './ActivityProfile.module.css';
 import { FaBookmark, FaMapMarkerAlt, FaLanguage, FaClock, FaUsers, FaCalendarAlt, FaMoneyBillWave, FaTags } from 'react-icons/fa';
@@ -60,7 +60,7 @@ function ActivityProfile() {
       if (!params?.id) return;
 
       try {
-        const activityDoc = doc(db, "activities", params.id);
+        const activityDoc = doc(db(), "activities", params.id);
         const activitySnapshot = await getDoc(activityDoc);
         
         if (activitySnapshot.exists()) {

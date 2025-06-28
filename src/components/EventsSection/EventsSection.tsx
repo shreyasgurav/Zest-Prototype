@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { db } from "@/lib/firebase";
+import { db } from "@/services/firebase";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import useEmblaCarousel from "embla-carousel-react";
 import EventBox from "./EventBox/EventBox";
@@ -75,7 +75,7 @@ const EventsSection = () => {
 
         if (!db) throw new Error('Firebase is not initialized');
 
-        const eventsCollectionRef = collection(db, "events");
+        const eventsCollectionRef = collection(db(), "events");
         const q = query(eventsCollectionRef, orderBy("createdAt", "desc"));
         const querySnapshot = await getDocs(q);
         

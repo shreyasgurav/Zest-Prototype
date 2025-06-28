@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, doc, getDoc, updateDoc, collection, addDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { app } from '@/lib/firebase';
+import { app } from '@/services/firebase';
 import { adminDb } from '@/lib/firebase-admin';
+import { validateTicketComprehensive, markTicketAsUsed } from '@/utils/ticketValidator';
 
-const db = getFirestore(app);
+const db = getFirestore(app());
 
 export async function POST(request: NextRequest) {
   try {
-    const { ticketNumber, scannerId, scannerType, eventId } = await request.json();
+    const { ticketNumber, scannerId, scannerType, eventId, scannerLocation } = await request.json();
 
     if (!ticketNumber || !scannerId || !scannerType || !eventId) {
       return NextResponse.json({
@@ -17,69 +18,42 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Find the ticket by ticket number
-    const ticketsRef = collection(db, 'tickets');
-    const { getDocs, query, where } = await import('firebase/firestore');
-    
-    const ticketQuery = query(ticketsRef, where('ticketNumber', '==', ticketNumber));
-    const ticketSnapshot = await getDocs(ticketQuery);
+    // Use comprehensive ticket validation
+    const validationResult = await validateTicketComprehensive(
+      ticketNumber, 
+      scannerLocation || 'venue_entrance',
+      scannerId
+    );
 
-    if (ticketSnapshot.empty) {
+    // Check if ticket is not valid
+    if (!validationResult.isValid) {
+      const statusCode = validationResult.code === 'TICKET_NOT_FOUND' ? 404 :
+                        validationResult.code === 'ALREADY_USED' ? 409 :
+                        validationResult.code === 'TICKET_EXPIRED' ? 410 :
+                        validationResult.code === 'TICKET_CANCELLED' ? 403 : 400;
+
       return NextResponse.json({
         success: false,
-        error: 'Invalid ticket number',
-        code: 'TICKET_NOT_FOUND'
-      }, { status: 404 });
+        error: validationResult.message,
+        code: validationResult.code,
+        status: validationResult.status,
+        securityFlags: validationResult.securityFlags,
+        usedAt: validationResult.ticket?.usedAt,
+        usedBy: validationResult.ticket?.usedBy,
+        expiredAt: validationResult.ticket?.expiredAt,
+        expiredReason: validationResult.ticket?.expiredReason
+      }, { status: statusCode });
     }
 
-    const ticketDoc = ticketSnapshot.docs[0];
-    const ticketData = ticketDoc.data();
+    const ticketData = validationResult.ticket;
 
-    // Verify ticket belongs to the event
+    // Verify ticket belongs to the event/activity
     if (ticketData.eventId !== eventId && ticketData.activityId !== eventId) {
       return NextResponse.json({
         success: false,
         error: 'Ticket does not belong to this event',
         code: 'WRONG_EVENT'
       }, { status: 403 });
-    }
-
-    // Check if ticket is already used
-    if (ticketData.status === 'used') {
-      return NextResponse.json({
-        success: false,
-        error: 'Ticket has already been used',
-        code: 'ALREADY_USED',
-        usedAt: ticketData.usedAt,
-        usedBy: ticketData.usedBy
-      }, { status: 409 });
-    }
-
-    // Check if ticket is cancelled
-    if (ticketData.status === 'cancelled') {
-      return NextResponse.json({
-        success: false,
-        error: 'Ticket has been cancelled',
-        code: 'CANCELLED'
-      }, { status: 403 });
-    }
-
-    // Check if ticket is for today (optional security check)
-    const ticketDate = new Date(ticketData.selectedDate);
-    const today = new Date();
-    const isToday = ticketDate.toDateString() === today.toDateString();
-    
-    if (!isToday) {
-      // Allow entry within 1 day before/after for flexibility
-      const daysDiff = Math.abs(ticketDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysDiff > 1) {
-        return NextResponse.json({
-          success: false,
-          error: 'Ticket is not valid for today',
-          code: 'WRONG_DATE',
-          ticketDate: ticketData.selectedDate
-        }, { status: 403 });
-      }
     }
 
     // Verify scanner has permission to scan for this event
@@ -164,35 +138,49 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Mark ticket as used
+    // Mark ticket as used using our comprehensive system
+    const markUsedSuccess = await markTicketAsUsed(
+      ticketNumber, 
+      scannerId, 
+      scannerLocation || 'venue_entrance'
+    );
+
+    if (!markUsedSuccess) {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to mark ticket as used. Please try again.',
+        code: 'UPDATE_FAILED'
+      }, { status: 500 });
+    }
+
     const now = new Date().toISOString();
-    await updateDoc(doc(db, 'tickets', ticketDoc.id), {
-      status: 'used',
-      usedAt: now,
-      usedBy: scannerId,
-      scannerType: scannerType,
-      entryTime: now
-    });
 
     // Log the entry
-    await addDoc(collection(db, 'entry_logs'), {
-      ticketId: ticketDoc.id,
-      ticketNumber: ticketNumber,
-      eventId: eventId,
-      eventType: ticketData.type,
-      scannerId: scannerId,
-      scannerType: scannerType,
-      timestamp: now,
-      attendeeName: ticketData.userName,
-      attendeeId: ticketData.userId
-    });
+    try {
+      await addDoc(collection(db, 'entry_logs'), {
+        ticketId: ticketData.id,
+        ticketNumber: ticketNumber,
+        eventId: eventId,
+        eventType: ticketData.type,
+        scannerId: scannerId,
+        scannerType: scannerType,
+        timestamp: now,
+        attendeeName: ticketData.userName,
+        attendeeId: ticketData.userId,
+        scannerLocation: scannerLocation || 'venue_entrance',
+        securityFlags: validationResult.securityFlags || []
+      });
+    } catch (logError) {
+      console.error('Error logging entry:', logError);
+      // Don't fail the entire operation for logging errors
+    }
 
     // Return success with ticket details
     return NextResponse.json({
       success: true,
       message: 'Entry approved',
       ticket: {
-        id: ticketDoc.id,
+        id: ticketData.id,
         ticketNumber: ticketData.ticketNumber,
         userName: ticketData.userName,
         eventTitle: ticketData.title,
@@ -201,6 +189,12 @@ export async function POST(request: NextRequest) {
         selectedDate: ticketData.selectedDate,
         selectedTimeSlot: ticketData.selectedTimeSlot,
         entryTime: now
+      },
+      securityFlags: validationResult.securityFlags,
+      validationDetails: {
+        status: validationResult.status,
+        message: validationResult.message,
+        eventDetails: validationResult.eventDetails?.title || 'Unknown Event'
       }
     });
 

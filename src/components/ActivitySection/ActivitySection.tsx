@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { db } from "@/lib/firebase";
+import { db } from "@/services/firebase";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import useEmblaCarousel from "embla-carousel-react";
 import ActivityBox from "./ActivityBox/ActivityBox";
@@ -187,7 +187,7 @@ const ActivitySection = () => {
         if (!db) throw new Error('Firebase is not initialized');
 
         console.log('Fetching activities from Firestore...');
-        const activitiesCollectionRef = collection(db, "activities");
+        const activitiesCollectionRef = collection(db(), "activities");
         // Try without orderBy first to see if that's the issue
         const querySnapshot = await getDocs(activitiesCollectionRef);
         

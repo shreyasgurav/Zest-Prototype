@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../../../lib/firebase';
+import { auth } from '@/services/firebase';
 import { createArtistDocument } from '../../../utils/authHelpers';
 import { toast } from 'react-toastify';
 import { ArrowLeft, Music, User, AtSign, Tag, MapPin, FileText, Phone, CheckCircle, AlertCircle } from 'lucide-react';
@@ -29,7 +29,7 @@ const CreateArtistPage: React.FC = () => {
   const [validFields, setValidFields] = useState<any>({});
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth(), (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
         setFormData(prev => ({

@@ -106,13 +106,23 @@
 }
 
 .statusBadge {
-  background: #333;
-  color: #888;
-  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: white;
+  padding: 8px 16px;
   border-radius: 20px;
-  font-size: 16px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   width: fit-content;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statusIcon {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
 }
 
 

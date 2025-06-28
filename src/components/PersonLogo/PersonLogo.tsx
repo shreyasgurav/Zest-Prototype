@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { auth, db } from '../../lib/firebase';
+import { auth, db } from '@/services/firebase';
 import { signOut, User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
@@ -33,12 +33,12 @@ function PersonLogo() {
 
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth(), async (currentUser) => {
             setUser(currentUser);
             if (currentUser) {
                 try {
                     // Load the user's personal profile data
-                    const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
+                    const userDoc = await getDoc(doc(db(), "Users", currentUser.uid));
                     if (userDoc.exists()) {
                         const personalData = userDoc.data() as UserData;
                         console.log('👤 Loaded personal user data:', personalData);

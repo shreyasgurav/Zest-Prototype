@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { db, storage } from "@/lib/firebase";
+import { db, storage } from "@/services/firebase";
 import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth } from "firebase/auth";
@@ -11,29 +11,7 @@ import styles from "./EditEvent.module.css";
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
 import Script from 'next/script';
 import { FaMapMarkerAlt } from 'react-icons/fa';
-// A more extensive list of cities for better search results
-const ALL_CITIES = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad', 'Chennai', 'Kolkata', 'Surat', 'Pune', 'Jaipur',
-    'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad', 'Patna',
-    'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivali',
-    'Vasai-Virar', 'Varanasi', 'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
-    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur', 'Madurai', 'Raipur', 'Kota',
-    'Guwahati', 'Chandigarh', 'Solapur', 'Hubli-Dharwad', 'Mysore', 'Tiruchirappalli', 'Bareilly', 'Aligarh',
-    'Tiruppur', 'Gurgaon', 'Moradabad', 'Jalandhar', 'Bhubaneswar', 'Salem', 'Warangal', 'Guntur', 'Noida',
-    'Dehradun', 'Kochi'
-];
 
-interface EventSlot {
-  date: string;
-  startTime: string;
-  endTime: string;
-}
-
-interface Ticket {
-  name: string;
-  capacity: string;
-  price: string;
-}
 
 const EVENT_CATEGORIES = [
   { id: 'music', label: 'Music' },
@@ -65,34 +43,62 @@ const GUIDE_OPTIONS = [
 const EditEvent = () => {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  
+  // Basic form states
   const [eventTitle, setEventTitle] = useState<string>("");
   const [eventVenue, setEventVenue] = useState<string>("");
   const [aboutEvent, setAboutEvent] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
+  const [submitting, setSubmitting] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("");
+  
+  // Image states
   const [eventImage, setEventImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string>("");
+  
+  // Category and guides states
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
-  const [eventLanguages, setEventLanguages] = useState<string>("");
-  const [eventSlots, setEventSlots] = useState<EventSlot[]>([
-    { date: '', startTime: '', endTime: '' }
-  ]);
-  const [tickets, setTickets] = useState<Ticket[]>([
-    { name: '', capacity: '', price: '' }
-  ]);
+  const [guides, setGuides] = useState<{ [key: string]: string }>({});
+  
+  // Location states
   const [address, setAddress] = useState('');
   const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
   const [isLocationFocused, setIsLocationFocused] = useState(false);
-  const [guides, setGuides] = useState<{ [key: string]: string }>({});
-  const [currentImageUrl, setCurrentImageUrl] = useState<string>("");
-  const [selectedCity, setSelectedCity] = useState('Mumbai');
+  const [mapsScriptError, setMapsScriptError] = useState(false);
   
   const auth = getAuth();
 
+  // Google Maps script loading
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.google && window.google.maps && window.google.maps.places) {
+      setIsMapsScriptLoaded(true);
+      return;
+    }
+
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+    if (existingScript) {
+      const checkInterval = setInterval(() => {
+        if (window.google && window.google.maps && window.google.maps.places) {
+          setIsMapsScriptLoaded(true);
+          clearInterval(checkInterval);
+        }
+      }, 100);
+
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!isMapsScriptLoaded) {
+          setMapsScriptError(true);
+        }
+      }, 10000);
+    }
+  }, []);
+
+  // Fetch event details
   useEffect(() => {
     const fetchEventDetails = async () => {
       if (!auth.currentUser) {
-        router.push('/');
+        router.push('/login');
         return;
       }
 
@@ -103,16 +109,21 @@ const EditEvent = () => {
       }
 
       try {
-        const eventDoc = await getDoc(doc(db, "events", params.id));
+        const eventDoc = await getDoc(doc(db(), "events", params.id));
         if (eventDoc.exists()) {
           const data = eventDoc.data();
           
-          // Check if the current user is the event creator
-          if (data.organizationId !== auth.currentUser.uid) {
-            router.push('/');
+          // Check if the current user is the event creator or has edit permissions
+          const hasEditPermission = data.organizationId === auth.currentUser.uid ||
+                                   data.creator?.userId === auth.currentUser.uid;
+          
+          if (!hasEditPermission) {
+            setMessage("You don't have permission to edit this event");
+            setLoading(false);
             return;
           }
 
+          // Set form data
           setEventTitle(data.title || "");
           setEventVenue(data.event_venue || "");
           setAddress(data.event_venue || "");
@@ -120,29 +131,7 @@ const EditEvent = () => {
           setCurrentImageUrl(data.event_image || "");
           setImagePreview(data.event_image || null);
           setSelectedCategories(data.event_categories || []);
-          setEventLanguages(data.event_languages || "");
           setGuides(data.event_guides || {});
-          setSelectedCity(data.city || "Mumbai");
-
-          // Format time slots
-          if (data.time_slots && data.time_slots.length > 0) {
-            const formattedSlots = data.time_slots.map((slot: any) => ({
-              date: slot.date || '',
-              startTime: slot.start_time || '',
-              endTime: slot.end_time || ''
-            }));
-            setEventSlots(formattedSlots);
-          }
-
-          // Format tickets
-          if (data.tickets && data.tickets.length > 0) {
-            const formattedTickets = data.tickets.map((ticket: any) => ({
-              name: ticket.name || '',
-              capacity: ticket.capacity.toString() || '',
-              price: ticket.price.toString() || ''
-            }));
-            setTickets(formattedTickets);
-          }
         } else {
           setMessage("Event not found");
         }
@@ -157,6 +146,7 @@ const EditEvent = () => {
     fetchEventDetails();
   }, [params?.id, auth.currentUser, router]);
 
+  // Image upload handler
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -167,58 +157,11 @@ const EditEvent = () => {
       setEventImage(file);
       const previewUrl = URL.createObjectURL(file);
       setImagePreview(previewUrl);
+      setMessage(""); // Clear any previous messages
     }
   };
 
-  // Ticket management functions
-  const addTicketType = () => {
-    setTickets([...tickets, { name: '', capacity: '', price: '' }]);
-  };
-
-  const removeTicketType = (index: number) => {
-    const newTickets = tickets.filter((_, i) => i !== index);
-    setTickets(newTickets);
-  };
-
-  const handleTicketChange = (index: number, field: keyof Ticket, value: string) => {
-    const newTickets = [...tickets];
-    newTickets[index][field] = value;
-    setTickets(newTickets);
-  };
-
-  const validateTickets = (): boolean => {
-    return tickets.every(ticket => 
-      ticket.name && 
-      ticket.capacity && 
-      ticket.price && 
-      parseInt(ticket.capacity) > 0 && 
-      parseFloat(ticket.price) >= 0
-    );
-  };
-
-  // Time slot functions
-  const addTimeSlot = () => {
-    setEventSlots([...eventSlots, { date: '', startTime: '', endTime: '' }]);
-  };
-
-  const removeTimeSlot = (index: number) => {
-    const newSlots = eventSlots.filter((_, i) => i !== index);
-    setEventSlots(newSlots);
-  };
-
-  const handleSlotChange = (index: number, field: keyof EventSlot, value: string) => {
-    const newSlots = [...eventSlots];
-    newSlots[index][field] = value;
-    setEventSlots(newSlots);
-  };
-
-  const validateSlots = (): boolean => {
-    return eventSlots.every(slot => 
-      slot.date && slot.startTime && slot.endTime && 
-      new Date(`${slot.date} ${slot.endTime}`) > new Date(`${slot.date} ${slot.startTime}`)
-    );
-  };
-
+  // Image upload function
   const uploadImage = async (file: File): Promise<string | null> => {
     if (!file) return null;
     
@@ -233,7 +176,7 @@ const EditEvent = () => {
 
       const fileExtension = file.name.split('.').pop();
       const fileName = `events/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-      const storageRef = ref(storage, fileName);
+      const storageRef = ref(storage(), fileName);
 
       const metadata = {
         contentType: file.type,
@@ -252,6 +195,7 @@ const EditEvent = () => {
     }
   };
 
+  // Category selection handler
   const handleCategoryChange = (categoryId: string) => {
     setSelectedCategories(prev => {
       if (prev.includes(categoryId)) {
@@ -262,22 +206,26 @@ const EditEvent = () => {
     });
   };
 
+  // Location selection handler
   const handleSelectAddress = (address: string) => {
     setAddress(address);
     setEventVenue(address);
     setIsLocationFocused(false);
   };
 
+  // Guide toggle handler
   const handleGuideToggle = (id: string) => {
     setGuides(prev =>
       id in prev ? Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)) : { ...prev, [id]: '' }
     );
   };
 
+  // Guide input handler
   const handleGuideInput = (id: string, value: string) => {
     setGuides(prev => ({ ...prev, [id]: value }));
   };
 
+  // Form submission handler
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
@@ -286,12 +234,13 @@ const EditEvent = () => {
       return;
     }
 
-    if (!eventTitle.trim() || !eventVenue.trim() || !validateSlots() || !validateTickets() || selectedCategories.length === 0) {
-      setMessage("Please fill in all required fields and ensure valid time slots, tickets, and at least one category");
+    // Validate required fields
+    if (!eventTitle.trim() || !eventVenue.trim() || !aboutEvent.trim() || selectedCategories.length === 0) {
+      setMessage("Please fill in all required fields and select at least one category");
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setMessage("");
 
     try {
@@ -299,6 +248,7 @@ const EditEvent = () => {
       let imageUploadError = false;
       let imageUploadErrorMessage = '';
 
+      // Upload new image if selected
       if (eventImage) {
         try {
           const uploadedUrl = await uploadImage(eventImage);
@@ -312,25 +262,13 @@ const EditEvent = () => {
         }
       }
 
+      // Prepare update data - only update the allowed fields
       const eventData = {
         title: eventTitle.trim(),
-        time_slots: eventSlots.map(slot => ({
-          date: slot.date,
-          start_time: slot.startTime,
-          end_time: slot.endTime,
-          available: true
-        })),
-        tickets: tickets.map(ticket => ({
-          name: ticket.name.trim(),
-          capacity: parseInt(ticket.capacity),
-          price: parseFloat(ticket.price),
-          available_capacity: parseInt(ticket.capacity)
-        })),
         event_venue: eventVenue.trim(),
         about_event: aboutEvent.trim(),
         event_image: imageUrl,
         event_categories: selectedCategories,
-        event_languages: eventLanguages.trim(),
         event_guides: guides,
         updatedAt: serverTimestamp(),
         image_upload_status: imageUploadError ? 'failed' : (imageUrl ? 'success' : 'none')
@@ -340,7 +278,7 @@ const EditEvent = () => {
         throw new Error("Event ID not found");
       }
       
-      await updateDoc(doc(db, "events", params.id), eventData);
+      await updateDoc(doc(db(), "events", params.id), eventData);
       
       if (imageUploadError) {
         setMessage(`Event updated successfully! Note: ${imageUploadErrorMessage}`);
@@ -349,22 +287,42 @@ const EditEvent = () => {
       }
 
       setTimeout(() => {
-        router.push('/');
-        router.refresh();
+        router.push(`/event-dashboard/${params.id}`);
       }, 2000);
 
     } catch (error: any) {
       console.error("Error updating event:", error);
       setMessage(`Failed to update event: ${error.message}`);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
+  // Loading state
   if (loading) {
     return (
       <div className={styles.editEventPage}>
-        <div className={styles.loadingState}>Loading event details...</div>
+        <div className={styles.editEventContainer}>
+          <div className={styles.loadingState}>Loading event details...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (message && !eventTitle) {
+    return (
+      <div className={styles.editEventPage}>
+        <div className={styles.editEventContainer}>
+          <div className={styles.loadingState} style={{color: '#ef4444'}}>{message}</div>
+          <button 
+            onClick={() => router.push('/')}
+            className={styles.cancelButton}
+            style={{marginTop: '20px'}}
+          >
+            Back to Home
+          </button>
+        </div>
       </div>
     );
   }
@@ -373,6 +331,7 @@ const EditEvent = () => {
     <div className={styles.editEventPage}>
       <div className={styles.editEventContainer}>
         <h1 className={styles.pageTitle}>Edit Event</h1>
+        
         <form onSubmit={handleSubmit} className={styles.editEventForm}>
           {/* Image Upload Section */}
           <div className={styles.formSection}>
@@ -429,164 +388,38 @@ const EditEvent = () => {
                 <p className={styles.errorText}>Please select at least one category</p>
               )}
             </div>
-          </div>
 
-          {/* Tickets Section */}
-          <div className={styles.formSection}>
-            <h2>Update Tickets</h2>
-            {tickets.map((ticket, index) => (
-              <div key={index} className={styles.ticketSlot}>
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label>Ticket Name</label>
-                    <input
-                      type="text"
-                      value={ticket.name}
-                      onChange={(e) => handleTicketChange(index, 'name', e.target.value)}
-                      placeholder="e.g., General, VIP, Fan Pit"
-                      required
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Capacity</label>
-                    <input
-                      type="number"
-                      value={ticket.capacity}
-                      onChange={(e) => handleTicketChange(index, 'capacity', e.target.value)}
-                      placeholder="Number of tickets"
-                      min="1"
-                      required
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label>Price (₹)</label>
-                    <input
-                      type="number"
-                      value={ticket.price}
-                      onChange={(e) => handleTicketChange(index, 'price', e.target.value)}
-                      placeholder="Ticket price"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                  </div>
-                  {tickets.length > 1 && (
-                    <button
-                      type="button"
-                      className={styles.removeDateButton}
-                      onClick={() => removeTicketType(index)}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-            <button
-              type="button"
-              className={styles.addDateButton}
-              onClick={addTicketType}
-            >
-              Add Another Ticket Type
-            </button>
-          </div>
-
-          {/* Time Slots Section */}
-          <div className={styles.formSection}>
-            <h2>Event Schedule</h2>
-            {eventSlots.map((slot, index) => (
-              <div key={index} className={styles.scheduleSlotContainer}>
-                <div className={styles.scheduleRow}>
-                  <div className={styles.scheduleIndicatorCol}>
-                    <span className={styles.scheduleCircleFilled}></span>
-                    <span className={styles.scheduleDashedLine}></span>
-                    <span className={styles.scheduleCircle}></span>
-                  </div>
-                  <div className={styles.scheduleLabelsCol}>
-                    <span className={styles.scheduleLabel}>Start</span>
-                    <span className={styles.scheduleLabel}>End</span>
-                  </div>
-                  <div className={styles.schedulePickersCol}>
-                    <div className={styles.schedulePickerRow}>
-                      <input
-                        type="date"
-                        value={slot.date}
-                        onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
-                        className={styles.scheduleDateInput}
-                        required
-                      />
-                      <input
-                        type="time"
-                        value={slot.startTime}
-                        onChange={(e) => handleSlotChange(index, 'startTime', e.target.value)}
-                        className={styles.scheduleTimeInput}
-                        required
-                      />
-                    </div>
-                    <div className={styles.schedulePickerRow}>
-                      <input
-                        type="date"
-                        value={slot.date}
-                        onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
-                        className={styles.scheduleDateInput}
-                        required
-                        disabled
-                      />
-                      <input
-                        type="time"
-                        value={slot.endTime}
-                        onChange={(e) => handleSlotChange(index, 'endTime', e.target.value)}
-                        className={styles.scheduleTimeInput}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-                {eventSlots.length > 1 && (
-                  <button
-                    type="button"
-                    className={styles.removeDateButton}
-                    onClick={() => removeTimeSlot(index)}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
-            <button
-              type="button"
-              className={styles.addDateButton}
-              onClick={addTimeSlot}
-            >
-              Add Another Time Slot
-            </button>
+            <div className={styles.formGroup}>
+              <label>Event Description</label>
+              <textarea
+                value={aboutEvent}
+                onChange={(e) => setAboutEvent(e.target.value)}
+                placeholder="Tell people what your event is about..."
+                rows={4}
+                required
+              />
+            </div>
           </div>
 
           {/* Location */}
           <div className={styles.formSection}>
             <h2>Location</h2>
             <div className={styles.formGroup}>
-              <label>City</label>
-              <select
-                value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
-                className={styles.citySelect}
-                required
-              >
-                {ALL_CITIES.map((city) => (
-                  <option key={city} value={city}>
-                    {city}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className={styles.formGroup}>
-              <label>Venue</label>
-                        <Script
-            src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
-            strategy="afterInteractive"
-            onLoad={() => setIsMapsScriptLoaded(true)}
-          />
+              <label>Event Venue</label>
+              {!isMapsScriptLoaded && !mapsScriptError && (
+                <Script
+                  src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
+                  strategy="afterInteractive"
+                  onLoad={() => {
+                    setIsMapsScriptLoaded(true);
+                    setMapsScriptError(false);
+                  }}
+                  onError={() => {
+                    setMapsScriptError(true);
+                    setIsMapsScriptLoaded(false);
+                  }}
+                />
+              )}
               {isMapsScriptLoaded ? (
                 <PlacesAutocomplete
                   value={address}
@@ -604,7 +437,7 @@ const EditEvent = () => {
                       <div style={{ position: 'relative' }}>
                         <input
                           {...getInputProps({
-                            placeholder: 'Search location...',
+                            placeholder: 'Where will your event take place?',
                             className: styles.locationInput,
                             required: true,
                             onFocus: () => setIsLocationFocused(true),
@@ -641,6 +474,18 @@ const EditEvent = () => {
                     );
                   }}
                 </PlacesAutocomplete>
+              ) : mapsScriptError ? (
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => {
+                    setAddress(e.target.value);
+                    setEventVenue(e.target.value);
+                  }}
+                  placeholder="Where will your event take place?"
+                  className={styles.locationInput}
+                  required
+                />
               ) : (
                 <input
                   type="text"
@@ -652,23 +497,9 @@ const EditEvent = () => {
             </div>
           </div>
 
-          {/* About Event */}
-          <div className={styles.formSection}>
-            <h2>About Event</h2>
-            <div className={styles.formGroup}>
-              <textarea
-                value={aboutEvent}
-                onChange={(e) => setAboutEvent(e.target.value)}
-                placeholder="Enter event description"
-                rows={4}
-                required
-              />
-            </div>
-          </div>
-
           {/* Event Guides */}
           <div className={styles.formSection}>
-            <h2>Event Guides</h2>
+            <h2>Additional Information (Optional)</h2>
             <div className={styles.guidesGrid}>
               {GUIDE_OPTIONS.map(option => (
                 <div key={option.id} className={styles.guideRow}>
@@ -701,14 +532,14 @@ const EditEvent = () => {
           )}
 
           <div className={styles.formActions}>
-            <button type="submit" className={styles.submitButton} disabled={loading}>
-              {loading ? "Updating Event..." : "Update Event"}
+            <button type="submit" className={styles.submitButton} disabled={submitting}>
+              {submitting ? "Updating Event..." : "Update Event"}
             </button>
             <button 
               type="button" 
               className={styles.cancelButton} 
-              onClick={() => router.push('/')}
-              disabled={loading}
+              onClick={() => router.push(`/event-dashboard/${params?.id}`)}
+              disabled={submitting}
             >
               Cancel
             </button>

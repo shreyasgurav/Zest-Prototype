@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { 
   collection, 
   query, 
@@ -91,7 +91,7 @@ const ActivityDashboard = () => {
     }
 
     try {
-      const activityDoc = await getDoc(doc(db, 'activities', activityId));
+      const activityDoc = await getDoc(doc(db(), 'activities', activityId));
       if (activityDoc.exists()) {
         const activityData = activityDoc.data();
         setIsAuthorized(activityData.organizationId === auth.currentUser.uid);
@@ -106,7 +106,7 @@ const ActivityDashboard = () => {
     if (!activityId) return;
     
     try {
-      const activityDoc = await getDoc(doc(db, 'activities', activityId));
+      const activityDoc = await getDoc(doc(db(), 'activities', activityId));
       if (activityDoc.exists()) {
         setActivityData({
           id: activityDoc.id,
@@ -125,7 +125,7 @@ const ActivityDashboard = () => {
       setLoading(true);
       console.log("Fetching attendees for activityId:", activityId);
 
-      const attendeesRef = collection(db, 'activityAttendees');
+      const attendeesRef = collection(db(), 'activityAttendees');
       const attendeesQuery = query(
         attendeesRef,
         where('activityId', '==', activityId),
@@ -162,7 +162,7 @@ const ActivityDashboard = () => {
 
     try {
       // Delete all attendees first
-      const attendeesRef = collection(db, 'activityAttendees');
+      const attendeesRef = collection(db(), 'activityAttendees');
       const attendeesQuery = query(attendeesRef, where('activityId', '==', activityId));
       const attendeesSnapshot = await getDocs(attendeesQuery);
       
@@ -173,7 +173,7 @@ const ActivityDashboard = () => {
       await Promise.all(deletePromises);
 
       // Delete all bookings
-      const bookingsRef = collection(db, 'activity_bookings');
+      const bookingsRef = collection(db(), 'activity_bookings');
       const bookingsQuery = query(bookingsRef, where('activityId', '==', activityId));
       const bookingsSnapshot = await getDocs(bookingsQuery);
       
@@ -184,7 +184,7 @@ const ActivityDashboard = () => {
       await Promise.all(deleteBookingPromises);
 
       // Delete the activity
-      await deleteDoc(doc(db, 'activities', activityId));
+      await deleteDoc(doc(db(), 'activities', activityId));
       
       // Redirect to home page
       router.push('/');

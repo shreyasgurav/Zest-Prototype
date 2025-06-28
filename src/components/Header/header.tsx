@@ -3,7 +3,7 @@
 import logo from '../header-images/zest-logo.png';
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db } from '../../lib/firebase';
+import { auth, db } from '@/services/firebase';
 import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/firestore';
 import PersonLogo from "../PersonLogo/PersonLogo";
 import styles from "./header.module.css";
@@ -83,7 +83,7 @@ const Header = () => {
         try {
             // Only check organization status if on organization routes
             if (isOrganizationRoute) {
-                const orgDoc = await getDoc(doc(db, "Organisations", user.uid));
+                const orgDoc = await getDoc(doc(db(), "Organisations", user.uid));
                 setIsOrganization(orgDoc.exists());
             } else {
                 // For regular user routes, default to false
@@ -115,7 +115,7 @@ const Header = () => {
     };
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth(), async (currentUser) => {
             setUser(currentUser);
             if (currentUser) {
                 await checkIfOrganization(currentUser);
@@ -223,7 +223,7 @@ const Header = () => {
 
             // Search Events with correct field names
             try {
-                const eventsQuery = query(collection(db, "events"), limit(15));
+                const eventsQuery = query(collection(db(), "events"), limit(15));
                 const eventsSnapshot = await getDocs(eventsQuery);
                 
                 eventsSnapshot.forEach(doc => {
@@ -258,7 +258,7 @@ const Header = () => {
 
             // Search Activities with correct field names
             try {
-                const activitiesQuery = query(collection(db, "activities"), limit(15));
+                const activitiesQuery = query(collection(db(), "activities"), limit(15));
                 const activitiesSnapshot = await getDocs(activitiesQuery);
                 
                 activitiesSnapshot.forEach(doc => {
@@ -292,7 +292,7 @@ const Header = () => {
             // Search Organizations in both collections with correct field names
             try {
                 // Search in Organisations collection (main one being used)
-                const orgsQuery = query(collection(db, "Organisations"), limit(15));
+                const orgsQuery = query(collection(db(), "Organisations"), limit(15));
                 const orgsSnapshot = await getDocs(orgsQuery);
                 
                 orgsSnapshot.forEach(doc => {
@@ -318,7 +318,7 @@ const Header = () => {
 
                 // Also search in organizations collection (if it exists)
                 try {
-                    const orgsQuery2 = query(collection(db, "organizations"), limit(10));
+                    const orgsQuery2 = query(collection(db(), "organizations"), limit(10));
                     const orgsSnapshot2 = await getDocs(orgsQuery2);
                     
                     orgsSnapshot2.forEach(doc => {

@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { QRCodeSVG } from 'qrcode.react';
 import { FaTicketAlt, FaQrcode, FaTimes, FaCalendarAlt, FaMapMarkerAlt, FaClock, FaUser, FaRupeeSign } from 'react-icons/fa';
 import TicketCard from '@/components/TicketCard/TicketCard';
+import { getTicketDisplayStatus } from '@/utils/ticketValidator';
 import styles from './Tickets.module.css';
 
 interface Ticket {
@@ -46,7 +48,19 @@ const TicketsPage = () => {
       fetchTickets(user.uid);
     });
 
-    return () => unsubscribe();
+    // Refresh tickets when page becomes visible (after scanning)
+    const handleVisibilityChange = () => {
+      if (!document.hidden && auth.currentUser) {
+        fetchTickets(auth.currentUser.uid);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [auth, router]);
 
   const fetchTickets = async (userId: string) => {
@@ -109,9 +123,14 @@ const TicketsPage = () => {
     switch (status) {
       case 'active': return '#10B981';
       case 'used': return '#6B7280';
-      case 'cancelled': return '#EF4444';
+      case 'expired': return '#EF4444';
+      case 'cancelled': return '#F59E0B';
       default: return '#6B7280';
     }
+  };
+
+  const getTicketStatus = (ticket: Ticket) => {
+    return getTicketDisplayStatus(ticket);
   };
 
   const isUpcoming = (dateString: string) => {
@@ -219,18 +238,22 @@ const TicketsPage = () => {
                 </div>
                 <div 
                   className={styles.fullTicketStatus}
-                  style={{ backgroundColor: getStatusColor(selectedTicket.status) }}
+                  style={{ backgroundColor: getStatusColor(getTicketStatus(selectedTicket).status) }}
                 >
-                  {selectedTicket.status.toUpperCase()}
+                  {getTicketStatus(selectedTicket).displayText.toUpperCase()}
                 </div>
               </div>
 
               {/* QR Code Section */}
               <div className={styles.qrSection}>
                 <div className={styles.qrCodeContainer}>
-                  <img 
-                    src={selectedTicket.qrCode} 
-                    alt="QR Code" 
+                  <QRCodeSVG
+                    value={selectedTicket.qrCode}
+                    size={200}
+                    bgColor="#ffffff"
+                    fgColor="#000000"
+                    level="M"
+                    includeMargin={true}
                     className={styles.qrCode}
                   />
                 </div>

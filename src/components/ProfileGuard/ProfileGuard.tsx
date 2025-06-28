@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../../lib/firebase';
+import { auth, db } from '@/services/firebase';
 
 interface ProfileGuardProps {
   children: React.ReactNode;
@@ -40,7 +40,7 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
   ];
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth(), async (currentUser) => {
       setUser(currentUser);
       
       if (!currentUser) {
@@ -65,7 +65,7 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
         }
 
         // For protected user pages, check user profile completeness
-        const userRef = doc(db, "Users", currentUser.uid);
+        const userRef = doc(db(), "Users", currentUser.uid);
         const userSnap = await getDoc(userRef);
         
         if (userSnap.exists()) {

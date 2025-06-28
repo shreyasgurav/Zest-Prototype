@@ -10,7 +10,7 @@ import {
   signInWithPhoneNumber, 
   ConfirmationResult 
 } from "firebase/auth"
-import { auth, db } from "../../lib/firebase"
+import { auth, db } from "@/services/firebase"
 import { ArrowLeft } from "lucide-react"
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore"
 import { toast } from "react-toastify"
@@ -71,7 +71,7 @@ export default function LoginPage() {
     // Only run on client side when component is initialized
     if (!isClient) return;
     
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth(), async (user) => {
       if (user) {
         await checkUserProfileAndRedirect(user)
       } else {
@@ -126,7 +126,7 @@ export default function LoginPage() {
       }
 
       window.recaptchaVerifier = new RecaptchaVerifier(
-        auth,
+        auth(),
         'recaptcha-container',
         {
           size: 'invisible',
@@ -172,7 +172,7 @@ export default function LoginPage() {
       console.log("🔵 User login page - checking USER profiles only");
 
       // Check user profile for regular users
-      const userRef = doc(db, "Users", user.uid)
+      const userRef = doc(db(), "Users", user.uid)
       const userSnap = await getDoc(userRef)
       
       if (userSnap.exists()) {
@@ -214,7 +214,7 @@ export default function LoginPage() {
     } catch (error) {
       console.error("Error checking user profile:", error)
       toast.error("Error checking user profile. Please try again.")
-      await signOut(auth)
+      await signOut(auth())
     } finally {
       setIsChecking(false)
     }
@@ -248,7 +248,7 @@ export default function LoginPage() {
       }
 
       const confirmationResult = await signInWithPhoneNumber(
-        auth,
+        auth(),
         formattedPhone,
         window.recaptchaVerifier
       )
@@ -409,7 +409,7 @@ export default function LoginPage() {
         return
       }
 
-      const userRef = doc(db, "Users", currentUser.uid)
+      const userRef = doc(db(), "Users", currentUser.uid)
       const updateData = {
         name: formData.name.trim(),
         username: formData.username.toLowerCase().trim(),

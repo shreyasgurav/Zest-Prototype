@@ -1,9 +1,9 @@
 "use client";
 // UserProfile.jsx
 import React, { useEffect, useState, useRef } from "react";
-import { auth, db, storage } from "@/lib/firebase";
+import { auth, db, storage } from "@/services/firebase";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
-import { updateProfile, User } from "firebase/auth";
+import { updateProfile, User, onAuthStateChanged } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { toast } from "react-toastify";
 import PhotoUpload from "../PhotoUpload/PhotoUpload";
@@ -75,9 +75,9 @@ function UserProfile() {
   const fetchUserData = async () => {
     try {
       setIsLoading(true);
-      const unsubscribe = auth.onAuthStateChanged(async (user: User | null) => {
+      const unsubscribe = onAuthStateChanged(auth(), async (user: User | null) => {
         if (user) {
-          const docRef = doc(db, "Users", user.uid);
+          const docRef = doc(db(), "Users", user.uid);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
             const data = docSnap.data();
@@ -133,14 +133,14 @@ function UserProfile() {
 
   const handlePhotoChange = async (imageUrl: string) => {
     try {
-      const user = auth.currentUser;
+      const user = auth().currentUser;
       if (!user) return;
 
       // Update Firebase Auth profile
       await updateProfile(user, { photoURL: imageUrl });
       
       // Update Firestore document
-      const userRef = doc(db, "Users", user.uid);
+      const userRef = doc(db(), "Users", user.uid);
       await updateDoc(userRef, { photo: imageUrl });
       
       // Update local state
@@ -167,7 +167,7 @@ function UserProfile() {
     }
     
     const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
-    const currentUser = auth.currentUser;
+    const currentUser = auth().currentUser;
     const result = await checkGlobalUsernameAvailability(
       username, 
       currentUser?.uid
@@ -200,7 +200,7 @@ function UserProfile() {
 
   const handleUpdateProfile = async () => {
     try {
-      const user = auth.currentUser;
+      const user = auth().currentUser;
       if (!user || !userDetails) return;
       
       // Check username availability
@@ -216,7 +216,7 @@ function UserProfile() {
       await updateProfile(user, { displayName: formData.name });
       
       // Update Firestore document
-      const userRef = doc(db, "Users", user.uid);
+      const userRef = doc(db(), "Users", user.uid);
       const userData = {
         name: formData.name,
         username: formData.username.toLowerCase(),

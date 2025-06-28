@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../lib/firebase";
+import { db } from "@/services/firebase";
 import { isOrganizationSession, getUserOwnedPages } from "../../utils/authHelpers";
 import styles from "./create.module.css";
 

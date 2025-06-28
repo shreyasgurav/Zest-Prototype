@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { 
   collection, 
   query, 
@@ -19,6 +19,7 @@ import {
 import { getAuth } from 'firebase/auth';
 import styles from './EventDashboard.module.css';
 import { DashboardSecurity, DashboardPermissions } from '@/utils/dashboardSecurity';
+import { getTicketDisplayStatus, expireTicketsForPastEvents } from '@/utils/ticketValidator';
 import { 
   FaEdit, 
   FaTrash, 
@@ -228,6 +229,7 @@ const EventDashboard = () => {
   const [showManualCheckIn, setShowManualCheckIn] = useState(false);
   const [manualCheckInSearch, setManualCheckInSearch] = useState('');
   const [selectedAttendeeForCheckIn, setSelectedAttendeeForCheckIn] = useState<Attendee | null>(null);
+  const [manualQrInput, setManualQrInput] = useState('');
   const [qrScannerSupported, setQrScannerSupported] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -268,15 +270,62 @@ const EventDashboard = () => {
   useEffect(() => {
     const checkQRSupport = async () => {
       try {
-        // Check if BarcodeDetector is supported
+        // FIXED: Better browser detection and QR support checking
+        const userAgent = navigator.userAgent.toLowerCase();
+        const isSafari = /safari/.test(userAgent) && !/chrome/.test(userAgent);
+        const isFirefox = /firefox/.test(userAgent);
+        const isChrome = /chrome/.test(userAgent) && !/edge/.test(userAgent);
+        const isEdge = /edge/.test(userAgent);
+        const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+
+        console.log('Browser detection:', { isSafari, isFirefox, isChrome, isEdge, isMobile });
+
+        // Check camera access first
+        let hasCamera = false;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          stream.getTracks().forEach(track => track.stop()); // Clean up test stream
+          hasCamera = true;
+        } catch (cameraError) {
+          console.log('Camera access denied or not available:', cameraError);
+          hasCamera = false;
+        }
+
+        if (!hasCamera) {
+          console.log('❌ No camera access - QR scanning disabled');
+          setQrScannerSupported(false);
+          return;
+        }
+
+        // Check BarcodeDetector API support
         if ('BarcodeDetector' in window) {
-          setQrScannerSupported(true);
+          try {
+            // Test if BarcodeDetector actually works
+            const barcodeDetector = new (window as any).BarcodeDetector({
+              formats: ['qr_code']
+            });
+            console.log('✅ BarcodeDetector API supported and working');
+            setQrScannerSupported(true);
+          } catch (barcodeError) {
+            console.log('❌ BarcodeDetector API exists but failed to initialize:', barcodeError);
+            setQrScannerSupported(false);
+          }
         } else {
-          console.log('BarcodeDetector not supported, will use manual input fallback');
+          console.log('❌ BarcodeDetector API not supported');
+          
+          // Special handling for different browsers
+          if (isSafari) {
+            console.log('🍎 Safari detected - BarcodeDetector not supported, manual entry recommended');
+          } else if (isFirefox) {
+            console.log('🦊 Firefox detected - BarcodeDetector not supported, manual entry recommended');
+          } else {
+            console.log('📱 Browser does not support BarcodeDetector API');
+          }
+          
           setQrScannerSupported(false);
         }
       } catch (error) {
-        console.log('QR scanner not supported:', error);
+        console.log('❌ QR scanner support check failed:', error);
         setQrScannerSupported(false);
       }
     };
@@ -286,30 +335,62 @@ const EventDashboard = () => {
 
   // Start QR scanner
   const startQRScanner = async () => {
+    // Detect browser and provide specific guidance
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
     if (!qrScannerSupported) {
+      let message = 'QR scanning not supported on this browser. ';
+      if (isSafari && isMac) {
+        message += 'Safari on Mac has limited QR support. Try using Chrome or use manual check-in instead.';
+      } else {
+        message += 'Use manual check-in instead.';
+      }
+      
       setScanResult({
         type: 'info',
-        message: 'QR scanning not supported on this device. Use manual check-in instead.'
+        message
       });
+      
+      // Auto-show manual check-in for better UX
+      setShowManualCheckIn(true);
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' } // Use back camera
-      });
+      // Try different camera constraints for better compatibility
+      let stream;
+      try {
+        // First try with back camera (mobile)
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: 'environment',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
+      } catch (backCameraError) {
+        // Fallback to any available camera
+        console.log('Back camera not available, trying any camera:', backCameraError);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
+      }
       
       setCameraStream(stream);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
       }
       
       setScannerActive(true);
       setScanResult({
         type: 'info',
-        message: 'QR scanner started. Point camera at attendee QR code.'
+        message: isMac ? 'QR scanner started. If scanning doesn\'t work, use manual check-in below.' : 'QR scanner started. Point camera at attendee QR code.'
       });
 
       // Start scanning for QR codes
@@ -317,10 +398,29 @@ const EventDashboard = () => {
       
     } catch (error) {
       console.error('Error starting camera:', error);
+      
+      let errorMessage = 'Could not access camera. ';
+      if (error instanceof DOMException) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage += 'Please allow camera permissions in your browser settings and refresh the page.';
+        } else if (error.name === 'NotFoundError') {
+          errorMessage += 'No camera found on this device.';
+        } else {
+          errorMessage += 'Please use manual check-in instead.';
+        }
+      } else if (isMac && isSafari) {
+        errorMessage += 'Safari on Mac may have camera issues. Try Chrome or use manual check-in.';
+      } else {
+        errorMessage += 'Please use manual check-in instead.';
+      }
+      
       setScanResult({
         type: 'error',
-        message: 'Could not access camera. Please ensure camera permissions are granted.'
+        message: errorMessage
       });
+      
+      // Auto-show manual check-in as fallback
+      setShowManualCheckIn(true);
     }
   };
 
@@ -408,25 +508,73 @@ const EventDashboard = () => {
         return;
       }
 
-      // Find attendee by ticket ID or attendee ID
-      const attendee = sessionAttendees.find(a => 
-        a.id === attendeeId || 
-        a.ticketIds?.includes(ticketId) ||
-        a.id === ticketId ||
-        a.email.includes(ticketId) // Fallback for email-based lookup
-      );
-
-      if (!attendee) {
-        setScanResult({
-          type: 'error',
-          message: `No attendee found for this ticket (${ticketId})`
-        });
-        return;
-      }
-
-      // Stop scanner and process check-in
+      // Stop scanner first to prevent multiple scans
       stopQRScanner();
-      await handleSessionCheckIn(attendee);
+
+      setScanResult({
+        type: 'info',
+        message: 'Validating ticket...'
+      });
+
+      // Use the comprehensive ticket validation API
+      try {
+        const response = await fetch('/api/tickets/verify-entry', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ticketId: ticketId,
+            eventId: eventId,
+            sessionId: selectedSession?.id
+          }),
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          setScanResult({
+            type: 'success',
+            message: `✅ ${result.ticket.userName} checked in successfully! Ticket marked as used.`
+          });
+          
+          // Clear message after 5 seconds
+          setTimeout(() => setScanResult(null), 5000);
+        } else {
+          setScanResult({
+            type: 'error',
+            message: result.message || 'Ticket validation failed'
+          });
+          setTimeout(() => setScanResult(null), 5000);
+        }
+      } catch (validationError) {
+        console.error('Ticket validation API error:', validationError);
+        
+        // FIXED: Improved fallback with safer matching
+        const attendee = sessionAttendees.find(a => {
+          // Primary: Direct ID match
+          if (a.id === ticketId || a.id === attendeeId) return true;
+          
+          // Secondary: Ticket IDs array match
+          if (a.ticketIds?.includes(ticketId)) return true;
+          
+          // REMOVED: Dangerous email.includes() check
+          // Tertiary: Exact email match only if ticketId looks like email
+          if (ticketId.includes('@') && a.email === ticketId) return true;
+          
+          return false;
+        });
+
+        if (attendee) {
+          await handleSessionCheckIn(attendee);
+        } else {
+          setScanResult({
+            type: 'error',
+            message: `No attendee found for ticket: ${ticketId.substring(0, 20)}...`
+          });
+          setTimeout(() => setScanResult(null), 5000);
+        }
+      }
       
     } catch (error) {
       console.error('Error processing QR code:', error);
@@ -434,6 +582,7 @@ const EventDashboard = () => {
         type: 'error',
         message: 'Error processing QR code. Please try manual check-in.'
       });
+      setTimeout(() => setScanResult(null), 5000);
     }
   };
 
@@ -453,6 +602,57 @@ const EventDashboard = () => {
       minute: '2-digit',
       hour12: true
     });
+  };
+
+  // FIXED: Standardized revenue calculation function
+  const calculateAttendeeRevenue = (attendee: Attendee, sessionContext?: EventSession): number => {
+    try {
+      // Method 1: Individual amount (preferred for new records)
+      if (attendee.individualAmount && typeof attendee.individualAmount === 'number' && attendee.individualAmount > 0) {
+        return attendee.individualAmount;
+      }
+      
+      // Method 2: Calculate from ticket prices using session context
+      if (typeof attendee.tickets === 'object' && attendee.tickets && sessionContext) {
+        const calculatedRevenue = Object.entries(attendee.tickets).reduce((sum, [ticketName, quantity]) => {
+          const ticket = sessionContext.tickets.find(t => t.name === ticketName);
+          const count = Number(quantity);
+          if (ticket && !isNaN(count) && count > 0) {
+            return sum + (ticket.price * count);
+          }
+          return sum;
+        }, 0);
+        
+        if (calculatedRevenue > 0) {
+          return calculatedRevenue;
+        }
+      }
+      
+      // Method 3: Legacy single ticket booking
+      if (typeof attendee.tickets === 'number' && attendee.tickets > 0 && sessionContext && sessionContext.tickets.length > 0) {
+        return sessionContext.tickets[0].price * attendee.tickets;
+      }
+      
+      // Method 4: Fallback to original booking data
+      if (attendee.originalBookingData?.originalTotalAmount && 
+          typeof attendee.originalBookingData.originalTotalAmount === 'number' && 
+          attendee.originalBookingData.originalTotalAmount > 0) {
+        return attendee.originalBookingData.originalTotalAmount;
+      }
+      
+      // Default: No revenue found
+      return 0;
+    } catch (error) {
+      console.warn('Error calculating revenue for attendee:', attendee.id, error);
+      return 0;
+    }
+  };
+
+  // FIXED: Standardized session revenue calculation
+  const calculateSessionRevenue = (attendees: Attendee[], sessionContext?: EventSession): number => {
+    return attendees.reduce((total, attendee) => {
+      return total + calculateAttendeeRevenue(attendee, sessionContext);
+    }, 0);
   };
 
   // NEW: Session selection handler
@@ -582,7 +782,7 @@ const EventDashboard = () => {
     if (!eventId) return;
 
     try {
-      const eventDoc = await getDoc(doc(db, "events", eventId));
+      const eventDoc = await getDoc(doc(db(), "events", eventId));
       if (eventDoc.exists()) {
         const data = eventDoc.data() as EventData;
         setEventData({ ...data, id: eventDoc.id });
@@ -641,7 +841,7 @@ const EventDashboard = () => {
     }
 
     // Get all attendees for the event to populate session selector stats
-    const attendeesRef = collection(db, 'eventAttendees');
+    const attendeesRef = collection(db(), 'eventAttendees');
     const attendeesQuery = query(
       attendeesRef,
       where('eventId', '==', eventId),
@@ -678,7 +878,7 @@ const EventDashboard = () => {
       unsubscribeAttendees.current();
     }
 
-    const attendeesRef = collection(db, 'eventAttendees');
+    const attendeesRef = collection(db(), 'eventAttendees');
     let attendeesQuery;
 
     // For session-centric events with selected session, filter by session
@@ -812,7 +1012,7 @@ const EventDashboard = () => {
       unsubscribeTickets.current();
     }
 
-    const ticketsRef = collection(db, 'tickets');
+    const ticketsRef = collection(db(), 'tickets');
     let ticketsQuery;
 
     // For session-centric events with selected session, filter by session
@@ -968,24 +1168,120 @@ const EventDashboard = () => {
     setCheckInLoading(attendee.id);
     
     try {
-      const attendeeRef = doc(db, 'eventAttendees', attendee.id);
-      await updateDoc(attendeeRef, {
-        checkedIn: true,
-        checkInTime: new Date().toISOString(),
-        checkInMethod: 'manual',
-        checkedInBy: auth.currentUser?.uid || 'unknown',
-        checkInSessionId: selectedSession.id
-      });
+      const checkInTime = new Date().toISOString();
+      const checkInUser = auth.currentUser?.uid || 'unknown';
+
+      // FIXED: Use transaction-like approach with better error handling
+      let attendeeUpdateSuccess = false;
+      let ticketUpdateErrors: string[] = [];
+
+      // 1. Update attendee record first
+      try {
+        const attendeeRef = doc(db(), 'eventAttendees', attendee.id);
+        await updateDoc(attendeeRef, {
+          checkedIn: true,
+          checkInTime: checkInTime,
+          checkInMethod: 'manual',
+          checkedInBy: checkInUser,
+          checkInSessionId: selectedSession.id
+        });
+        attendeeUpdateSuccess = true;
+        console.log(`✅ Attendee ${attendee.id} checked in successfully`);
+      } catch (error) {
+        console.error('❌ Failed to update attendee record:', error);
+        throw new Error('Failed to update attendee check-in status');
+      }
+
+      // 2. Mark associated tickets as "used" with better error handling
+      if (attendeeUpdateSuccess && attendee.ticketIds && attendee.ticketIds.length > 0) {
+        // Update all tickets associated with this attendee
+        const ticketUpdatePromises = attendee.ticketIds.map(async (ticketId) => {
+          try {
+            const ticketRef = doc(db(), 'tickets', ticketId);
+            await updateDoc(ticketRef, {
+              status: 'used',
+              usedAt: checkInTime,
+              checkedInBy: checkInUser,
+              checkInMethod: 'manual'
+            });
+            console.log(`✅ Ticket ${ticketId} marked as used`);
+            return { success: true, ticketId };
+          } catch (error) {
+            console.error(`❌ Error updating ticket ${ticketId}:`, error);
+            ticketUpdateErrors.push(`Ticket ${ticketId}: ${error}`);
+            return { success: false, ticketId, error };
+          }
+        });
+
+        const ticketResults = await Promise.allSettled(ticketUpdatePromises);
+        const failedTickets = ticketResults.filter(result => 
+          result.status === 'rejected' || 
+          (result.status === 'fulfilled' && !result.value.success)
+        );
+
+        if (failedTickets.length > 0) {
+          console.warn(`⚠️ Some tickets failed to update:`, failedTickets);
+          // Don't fail the entire check-in, but log the issues
+        }
+      } else if (attendeeUpdateSuccess) {
+        // Fallback: Find tickets by email and session with improved query
+        try {
+          const ticketsRef = collection(db(), 'tickets');
+          const ticketQuery = query(
+            ticketsRef,
+            where('userEmail', '==', attendee.email),
+            where('eventId', '==', eventId),
+            where('status', '==', 'active')
+          );
+
+          const ticketSnapshot = await getDocs(ticketQuery);
+          const relevantTickets = ticketSnapshot.docs.filter(ticketDoc => {
+            const ticketData = ticketDoc.data();
+            // Match by session if available, otherwise by event
+            return !selectedSession?.id || ticketData.sessionId === selectedSession.id;
+          });
+
+          const ticketUpdatePromises = relevantTickets.map(async (ticketDoc) => {
+            try {
+              await updateDoc(ticketDoc.ref, {
+                status: 'used',
+                usedAt: checkInTime,
+                checkedInBy: checkInUser,
+                checkInMethod: 'manual'
+              });
+              console.log(`✅ Ticket ${ticketDoc.id} marked as used via email match`);
+              return { success: true, ticketId: ticketDoc.id };
+            } catch (error) {
+              console.error(`❌ Error updating ticket ${ticketDoc.id}:`, error);
+              return { success: false, ticketId: ticketDoc.id, error };
+            }
+          });
+
+          await Promise.allSettled(ticketUpdatePromises);
+        } catch (fallbackError) {
+          console.error('❌ Fallback ticket query failed:', fallbackError);
+          ticketUpdateErrors.push(`Fallback query failed: ${fallbackError}`);
+        }
+      }
 
       // Store for undo functionality
       setRecentCheckIn({
-        attendee: { ...attendee, checkedIn: true, checkInTime: new Date().toISOString() },
+        attendee: { ...attendee, checkedIn: true, checkInTime: checkInTime },
         timestamp: new Date()
       });
 
+      // Success message with warnings if applicable
+      let successMessage = `${attendee.name} checked in successfully!`;
+      if (ticketUpdateErrors.length > 0) {
+        successMessage += ` (Warning: Some ticket updates failed - contact support)`;
+      } else {
+        successMessage += ` Tickets marked as used.`;
+      }
+      successMessage += ` Undo available for 30 seconds.`;
+
       setScanResult({
         type: 'success',
-        message: `${attendee.name} checked in successfully! Undo available for 30 seconds.`
+        message: successMessage
       });
 
       // Clear undo option after 30 seconds
@@ -994,11 +1290,14 @@ const EventDashboard = () => {
       }, 30000);
 
       setTimeout(() => setScanResult(null), 5000);
+      
     } catch (error) {
-      console.error('Error checking in attendee:', error);
+      console.error('❌ Error checking in attendee:', error);
+      
+      // If attendee update failed, provide specific error
       setScanResult({
         type: 'error',
-        message: 'Failed to check in attendee. Please try again.'
+        message: error instanceof Error ? error.message : 'Failed to check in attendee. Please try again.'
       });
       setTimeout(() => setScanResult(null), 5000);
     } finally {
@@ -1013,7 +1312,10 @@ const EventDashboard = () => {
     setUndoLoading(true);
     
     try {
-      const attendeeRef = doc(db, 'eventAttendees', recentCheckIn.attendee.id);
+      const attendee = recentCheckIn.attendee;
+
+      // 1. Revert attendee record
+      const attendeeRef = doc(db(), 'eventAttendees', attendee.id);
       await updateDoc(attendeeRef, {
         checkedIn: false,
         checkInTime: null,
@@ -1022,9 +1324,57 @@ const EventDashboard = () => {
         checkInSessionId: null
       });
 
+      // 2. Revert associated tickets back to "active"
+      if (attendee.ticketIds && attendee.ticketIds.length > 0) {
+        // Update all tickets associated with this attendee
+        const ticketUpdatePromises = attendee.ticketIds.map(async (ticketId) => {
+          try {
+            const ticketRef = doc(db(), 'tickets', ticketId);
+            await updateDoc(ticketRef, {
+              status: 'active',
+              usedAt: null,
+              checkedInBy: null,
+              checkInMethod: null
+            });
+            console.log(`Ticket ${ticketId} reverted to active`);
+          } catch (error) {
+            console.error(`Error reverting ticket ${ticketId}:`, error);
+          }
+        });
+
+        await Promise.all(ticketUpdatePromises);
+      } else {
+        // Fallback: Find tickets by email and session
+        const ticketsRef = collection(db(), 'tickets');
+        const ticketQuery = query(
+          ticketsRef,
+          where('userEmail', '==', attendee.email),
+          where('eventId', '==', eventId),
+          where('sessionId', '==', selectedSession?.id),
+          where('status', '==', 'used')
+        );
+
+        const ticketSnapshot = await getDocs(ticketQuery);
+        const ticketUpdatePromises = ticketSnapshot.docs.map(async (ticketDoc) => {
+          try {
+            await updateDoc(ticketDoc.ref, {
+              status: 'active',
+              usedAt: null,
+              checkedInBy: null,
+              checkInMethod: null
+            });
+            console.log(`Ticket ${ticketDoc.id} reverted to active via email match`);
+          } catch (error) {
+            console.error(`Error reverting ticket ${ticketDoc.id}:`, error);
+          }
+        });
+
+        await Promise.all(ticketUpdatePromises);
+      }
+
       setScanResult({
         type: 'info',
-        message: `Check-in undone for ${recentCheckIn.attendee.name}`
+        message: `Check-in undone for ${attendee.name}. Tickets reverted to active status.`
       });
 
       setRecentCheckIn(null);
@@ -1057,7 +1407,7 @@ const EventDashboard = () => {
 
     try {
       // Delete all related data
-      await deleteDoc(doc(db, "events", eventId!));
+      await deleteDoc(doc(db(), "events", eventId!));
       
       // Redirect to events list
       router.push('/events');
@@ -1125,7 +1475,7 @@ const EventDashboard = () => {
       updatedSessions[sessionIndex].tickets = updatedTickets;
 
       // Update in database
-      await updateDoc(doc(db, 'events', eventId!), {
+      await updateDoc(doc(db(), 'events', eventId!), {
         sessions: updatedSessions,
         updatedAt: serverTimestamp()
       });
@@ -1191,7 +1541,7 @@ const EventDashboard = () => {
       });
 
       // Update in database
-      await updateDoc(doc(db, 'events', eventId!), {
+      await updateDoc(doc(db(), 'events', eventId!), {
         sessions: updatedSessions,
         updatedAt: serverTimestamp()
       });
@@ -1286,41 +1636,8 @@ const EventDashboard = () => {
               const sessionAttendeeCount = sessionAttendeesList.length;
               const sessionCapacity = session.maxCapacity || session.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0);
               
-              // Calculate revenue for this session with better error handling
-              const sessionRevenue = sessionAttendeesList.reduce((sum, attendee) => {
-                try {
-                  // Try individualAmount first (for new individual records)
-                  if (attendee.individualAmount && typeof attendee.individualAmount === 'number') {
-                    return sum + attendee.individualAmount;
-                  }
-                  
-                  // Calculate from ticket prices for group bookings or legacy records
-                  if (typeof attendee.tickets === 'object' && attendee.tickets) {
-                    const ticketRevenue = Object.entries(attendee.tickets).reduce((ticketSum, [ticketName, quantity]) => {
-                      const ticket = session.tickets.find(t => t.name === ticketName);
-                      const count = Number(quantity);
-                      return ticketSum + (ticket && !isNaN(count) ? ticket.price * count : 0);
-                    }, 0);
-                    return sum + ticketRevenue;
-                  }
-                  
-                  // For legacy single ticket bookings
-                  if (typeof attendee.tickets === 'number' && session.tickets.length > 0) {
-                    return sum + (session.tickets[0].price * attendee.tickets);
-                  }
-                  
-                  // Fallback: try to get from originalBookingData
-                  if (attendee.originalBookingData?.originalTotalAmount && 
-                      typeof attendee.originalBookingData.originalTotalAmount === 'number') {
-                    return sum + attendee.originalBookingData.originalTotalAmount;
-                  }
-                  
-                  return sum;
-                } catch (error) {
-                  console.warn('Error calculating revenue for attendee:', attendee.id, error);
-                  return sum;
-                }
-              }, 0);
+              // FIXED: Use standardized revenue calculation
+              const sessionRevenue = calculateSessionRevenue(sessionAttendeesList, session);
 
               return (
                 <div
@@ -1435,36 +1752,7 @@ const EventDashboard = () => {
                 <FaMoneyBillWave />
               </div>
               <div className={styles.statContent}>
-                <h3>₹{(() => {
-                  const totalRevenue = sessionAttendees.reduce((sum, attendee) => {
-                    // Try individualAmount first (for new individual records)
-                    if (attendee.individualAmount) {
-                      return sum + attendee.individualAmount;
-                    }
-                    
-                    // Calculate from ticket prices for group bookings or legacy records
-                    if (typeof attendee.tickets === 'object' && selectedSession) {
-                      return sum + Object.entries(attendee.tickets).reduce((ticketSum, [ticketName, quantity]) => {
-                        const ticket = selectedSession.tickets.find(t => t.name === ticketName);
-                        return ticketSum + (ticket ? ticket.price * Number(quantity) : 0);
-                      }, 0);
-                    }
-                    
-                    // For legacy single ticket bookings
-                    if (typeof attendee.tickets === 'number' && selectedSession && selectedSession.tickets.length > 0) {
-                      return sum + (selectedSession.tickets[0].price * attendee.tickets);
-                    }
-                    
-                    // Fallback: try to get from originalBookingData
-                    if (attendee.originalBookingData?.originalTotalAmount) {
-                      return sum + attendee.originalBookingData.originalTotalAmount;
-                    }
-                    
-                    return sum;
-                  }, 0);
-                  
-                  return totalRevenue.toLocaleString();
-                })()}</h3>
+                <h3>₹{calculateSessionRevenue(sessionAttendees, selectedSession || undefined).toLocaleString()}</h3>
                 <p>Total Revenue</p>
               </div>
             </div>
@@ -1749,34 +2037,7 @@ const EventDashboard = () => {
                                 </td>
                                 <td>
                                   <span className={styles.amountCell}>
-                                    ₹{(() => {
-                                      // Try individualAmount first
-                                      if (attendee.individualAmount) {
-                                        return attendee.individualAmount.toLocaleString();
-                                      }
-                                      
-                                      // Calculate from ticket prices if selectedSession available
-                                      if (typeof attendee.tickets === 'object' && selectedSession) {
-                                        const calculatedAmount = Object.entries(attendee.tickets).reduce((sum, [ticketName, quantity]) => {
-                                          const ticket = selectedSession.tickets.find(t => t.name === ticketName);
-                                          return sum + (ticket ? ticket.price * Number(quantity) : 0);
-                                        }, 0);
-                                        return calculatedAmount.toLocaleString();
-                                      }
-                                      
-                                      // Legacy single ticket
-                                      if (typeof attendee.tickets === 'number' && selectedSession && selectedSession.tickets.length > 0) {
-                                        const amount = selectedSession.tickets[0].price * attendee.tickets;
-                                        return amount.toLocaleString();
-                                      }
-                                      
-                                      // Fallback
-                                      if (attendee.originalBookingData?.originalTotalAmount) {
-                                        return attendee.originalBookingData.originalTotalAmount.toLocaleString();
-                                      }
-                                      
-                                      return '0';
-                                    })()}
+                                    ₹{calculateAttendeeRevenue(attendee, selectedSession || undefined).toLocaleString()}
                                   </span>
                                 </td>
                                 <td>
@@ -1896,7 +2157,7 @@ const EventDashboard = () => {
                   onClick={scannerActive ? stopQRScanner : startQRScanner}
                 >
                   <FaQrcode />
-                  {scannerActive ? 'Stop QR Scanner' : 'Start QR Scanner'}
+                  {scannerActive ? 'Stop QR Scanner' : 'QR Camera Scanner'}
                 </button>
                 
                 <button 
@@ -1906,6 +2167,33 @@ const EventDashboard = () => {
                   <FaSearch />
                   Manual Search & Check-in
                 </button>
+              </div>
+              
+              {/* Manual QR Input for Mac/Safari users */}
+              <div className={styles.manualQrSection}>
+                <h4>Manual QR Code Entry</h4>
+                <p>If camera scanning doesn't work on your device, manually enter or paste the QR code data:</p>
+                <div className={styles.qrInputContainer}>
+                  <input
+                    type="text"
+                    placeholder="Paste or type QR code data here..."
+                    value={manualQrInput}
+                    onChange={(e) => setManualQrInput(e.target.value)}
+                    className={styles.qrInput}
+                  />
+                  <button
+                    onClick={() => {
+                      if (manualQrInput.trim()) {
+                        processQRCode(manualQrInput.trim());
+                        setManualQrInput('');
+                      }
+                    }}
+                    disabled={!manualQrInput.trim()}
+                    className={styles.processQrButton}
+                  >
+                    <FaQrcode /> Process QR Code
+                  </button>
+                </div>
               </div>
             </div>
 

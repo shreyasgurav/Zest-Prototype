@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { storage } from '@/lib/firebase';
+import { storage } from '@/services/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
 import styles from './PhotoUpload.module.css';
@@ -290,7 +290,7 @@ const PhotoUpload: React.FC<PhotoUploadProps> = ({
       }
 
       const fileName = `${type}/${user.uid}/${Date.now()}.jpg`;
-      const storageRef = ref(storage, fileName);
+      const storageRef = ref(storage(), fileName);
       
       console.log('Uploading to Firebase Storage:', { fileName, blobSize: blob.size });
       

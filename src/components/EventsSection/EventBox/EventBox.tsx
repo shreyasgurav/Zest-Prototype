@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Calendar, Clock, Music, Mic, PartyPopper } from 'lucide-react';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import styles from './EventBox.module.css';
 
@@ -51,7 +51,7 @@ export default function EventBox({ eventId }: EventBoxProps) {
         setLoading(true);
         setError(null);
         
-        const eventDoc = await getDoc(doc(db, 'events', eventId));
+        const eventDoc = await getDoc(doc(db(), 'events', eventId));
         
         if (eventDoc.exists()) {
           const eventData = {

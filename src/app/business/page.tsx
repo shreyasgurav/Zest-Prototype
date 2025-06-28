@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { onAuthStateChanged } from "firebase/auth"
-import { auth } from "../../lib/firebase"
+import { auth } from "@/services/firebase"
 import { ArrowLeft, Music, Building2, MapPin } from "lucide-react"
 import styles from "./business.module.css"
 
@@ -19,7 +19,7 @@ export default function BusinessProfileSelectionPage() {
   useEffect(() => {
     if (!isClient) return
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth(), (user) => {
       setIsLoading(false)
     })
 

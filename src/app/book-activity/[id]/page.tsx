@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { doc, getDoc, collection, updateDoc, query, where, getDocs } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaUsers, FaLanguage, FaChevronLeft, FaChevronRight, FaCreditCard, FaSync, FaExclamationTriangle } from 'react-icons/fa';
@@ -115,7 +115,7 @@ function ActivityBookingFlow() {
     if (!params?.id) return [];
 
     try {
-      const bookingsRef = collection(db, 'activity_bookings');
+      const bookingsRef = collection(db(), 'activity_bookings');
       const bookingsQuery = query(
         bookingsRef,
         where('activityId', '==', params.id)
@@ -147,7 +147,7 @@ function ActivityBookingFlow() {
       
       // Fetch activity data and bookings in parallel
       const [activityDoc, bookingsList] = await Promise.all([
-        getDoc(doc(db, "activities", params.id)),
+        getDoc(doc(db(), "activities", params.id)),
         fetchActivityBookings()
       ]);
       
@@ -320,7 +320,7 @@ function ActivityBookingFlow() {
       setLoading(true);
 
       // Get user profile data
-      const userDoc = await getDoc(doc(db, "Users", user.uid));
+      const userDoc = await getDoc(doc(db(), "Users", user.uid));
       const userData = userDoc.exists() ? userDoc.data() : null;
 
       const bookingData: BookingData = {

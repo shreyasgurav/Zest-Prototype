@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { collection, query, getDocs, orderBy, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import styles from './activities.module.css';
 import { Calendar, MapPin, Clock, Building2, Music, PartyPopper, Palette, Beer, Mountain, Trophy, Users, Sun, Sparkles, User, Heart } from 'lucide-react';
 import Link from 'next/link';
@@ -141,7 +141,7 @@ export default function ActivitiesPage() {
           console.log('Activities page: Starting to fetch activities...');
           
           // Try without orderBy first to see if that's the issue
-          const activitiesCollectionRef = collection(db, "activities");
+          const activitiesCollectionRef = collection(db(), "activities");
           const querySnapshot = await getDocs(activitiesCollectionRef);
           
           console.log(`Activities page: Found ${querySnapshot.docs.length} activity documents in Firestore`);

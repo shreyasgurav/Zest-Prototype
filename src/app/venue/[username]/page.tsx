@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getFirestore, doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../../../lib/firebase';
+import { auth } from '@/services/firebase';
 import { checkPageOwnership } from '../../../utils/authHelpers';
 import styles from './PublicVenueProfile.module.css';
 
@@ -33,7 +33,7 @@ const PublicVenueProfile = () => {
 
   useEffect(() => {
     // Check if current user can manage this page
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth(), (user) => {
       setCurrentUser(user);
     });
     return () => unsubscribe();

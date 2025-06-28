@@ -1,71 +1,67 @@
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
-import { db, storage } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getUserOwnedPages } from "@/utils/authHelpers";
-import styles from "./CreateEvent.module.css";
-// @ts-ignore
-import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
 import Script from 'next/script';
 import { FaMapMarkerAlt } from 'react-icons/fa';
+// @ts-ignore
+import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
 
-// City list for venue selection
-const ALL_CITIES = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad', 'Chennai', 'Kolkata', 'Surat', 'Pune', 'Jaipur',
-    'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad', 'Patna',
-    'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivali',
-    'Vasai-Virar', 'Varanasi', 'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
-    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur', 'Madurai', 'Raipur', 'Kota',
-    'Guwahati', 'Chandigarh', 'Solapur', 'Hubli-Dharwad', 'Mysore', 'Tiruchirappalli', 'Bareilly', 'Aligarh',
-    'Tiruppur', 'Gurgaon', 'Moradabad', 'Jalandhar', 'Bhubaneswar', 'Salem', 'Warangal', 'Guntur', 'Noida',
-    'Dehradun', 'Kochi'
-];
+// New structured imports
+import { 
+  CITIES,
+  EVENT_CONFIG,
+  GUIDE_OPTIONS,
+  type EventCreator
+} from '@/lib';
 
-interface EventSession {
-  id: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  tickets: SessionTicket[];
-  maxCapacity?: number;
-}
+import {
+  firestoreService,
+  storageService,
+  authService,
+  auth as firebaseAuth,
+  db,
+  storage
+} from '@/services';
 
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  doc,
+  getDoc
+} from 'firebase/firestore';
+
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from 'firebase/storage';
+
+import {
+  getAuth,
+  onAuthStateChanged
+} from 'firebase/auth';
+
+import { getUserOwnedPages } from "@/utils/authHelpers";
+import styles from "./CreateEvent.module.css";
+
+// Interface definitions for this component
 interface SessionTicket {
   name: string;
   capacity: string;
   price: string;
 }
 
-const EVENT_CATEGORIES = [
-  { id: 'music', label: 'Music' },
-  { id: 'comedy', label: 'Comedy' },
-  { id: 'clubbing', label: 'Clubbing' },
-  { id: 'party', label: 'Party' },
-  { id: 'art', label: 'Art' },
-  { id: 'adventure', label: 'Adventure' },
-  { id: 'sports', label: 'Sports' }
-];
-
-const GUIDE_OPTIONS = [
-  { id: 'duration', label: 'Duration', placeholder: 'e.g., 2 hours' },
-  { id: 'age_requirement', label: 'Age Requirement', placeholder: 'e.g., 16+ years' },
-  { id: 'language', label: 'Language', placeholder: 'e.g., Hindi, English' },
-  { id: 'seating', label: 'Seating Arrangement', placeholder: 'e.g., Theater, Round Table' },
-  { id: 'kid_friendly', label: 'Kid Friendly', placeholder: 'e.g., Yes/No or details' },
-  { id: 'pet_friendly', label: 'Pet Friendly', placeholder: 'e.g., Yes/No or details' },
-  { id: 'wheelchair', label: 'Wheelchair Accessible', placeholder: 'e.g., Yes/No or details' },
-  { id: 'parking', label: 'Parking Available', placeholder: 'e.g., Yes/No or details' },
-  { id: 'food', label: 'Food & Beverages', placeholder: 'e.g., Snacks, Dinner, Drinks' },
-  { id: 'outdoor', label: 'Outdoor Event', placeholder: 'e.g., Yes/No or details' },
-  { id: 'indoor', label: 'Indoor Event', placeholder: 'e.g., Yes/No or details' },
-  { id: 'dress_code', label: 'Dress Code', placeholder: 'e.g., Formal, Casual' },
-  { id: 'photography', label: 'Photography Allowed?', placeholder: 'e.g., Yes/No or details' },
-  { id: 'alcohol', label: 'Alcohol allowed?', placeholder: 'e.g., Yes/No or details' },
-];
+interface EventSession {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  endDate?: string; // Optional end date - if different from start date
+  tickets: SessionTicket[];
+  maxCapacity?: number;
+}
 
 const CreateEvent = () => {
   const router = useRouter();
@@ -102,6 +98,7 @@ const CreateEvent = () => {
       date: '', 
       startTime: '', 
       endTime: '', 
+      endDate: '',
       tickets: [{ name: '', capacity: '', price: '' }]
     }
   ]);
@@ -236,7 +233,7 @@ const CreateEvent = () => {
           setOrgUsername(decodeURIComponent(creatorUsername));
         } else {
           // Fallback to organization lookup (legacy behavior)
-          const orgDoc = await getDoc(doc(db, "Organisations", auth.currentUser.uid));
+          const orgDoc = await getDoc(doc(db(), "Organisations", auth.currentUser.uid));
           if (orgDoc.exists()) {
             const data = orgDoc.data();
             setOrgName(data.name || "");
@@ -267,6 +264,7 @@ const CreateEvent = () => {
       date: '', 
       startTime: '', 
       endTime: '', 
+      endDate: '',
       tickets: [{ name: '', capacity: '', price: '' }]
     }]);
   };
@@ -337,20 +335,36 @@ const CreateEvent = () => {
         setMessage(`Session ${i + 1}: Please fill in all date and time fields`);
         return false;
       }
-      
+
       const sessionDate = new Date(session.date);
+      const endDate = session.endDate ? new Date(session.endDate) : sessionDate;
       const startDateTime = new Date(`${session.date} ${session.startTime}`);
-      const endDateTime = new Date(`${session.date} ${session.endTime}`);
+      const endDateTime = new Date(`${session.endDate || session.date} ${session.endTime}`);
       
-      // Check if date is not in the past
+      // Check if dates are not in the past
       if (sessionDate < today) {
-        setMessage(`Session ${i + 1}: Date cannot be in the past`);
+        setMessage(`Session ${i + 1}: Start date cannot be in the past`);
+        return false;
+      }
+
+      if (session.endDate && endDate < today) {
+        setMessage(`Session ${i + 1}: End date cannot be in the past`);
         return false;
       }
       
-      // Check if end time is after start time
+      // If end date is provided, check if it's after start date
+      if (session.endDate && endDate < sessionDate) {
+        setMessage(`Session ${i + 1}: End date must be after or same as start date`);
+        return false;
+      }
+      
+      // Check if end time is after start time (for same day or multi-day)
       if (endDateTime <= startDateTime) {
-        setMessage(`Session ${i + 1}: End time must be after start time`);
+        if (session.endDate) {
+          setMessage(`Session ${i + 1}: Event must end after it starts (check dates and times)`);
+        } else {
+          setMessage(`Session ${i + 1}: End time must be after start time`);
+        }
         return false;
       }
       
@@ -445,7 +459,7 @@ const CreateEvent = () => {
       // Create a unique filename
       const fileExtension = file.name.split('.').pop();
       const fileName = `events/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
-      const storageRef = ref(storage, fileName);
+      const storageRef = ref(storage(), fileName);
 
       // Set metadata with CORS-friendly content type
       const metadata = {
@@ -549,6 +563,7 @@ const CreateEvent = () => {
           date: session.date,
           start_time: session.startTime,
           end_time: session.endTime,
+          end_date: session.endDate || null, // Store end date if provided
           venue: eventVenue.trim(),
           description: '',
           tickets: session.tickets.map(ticket => ({
@@ -616,7 +631,7 @@ const CreateEvent = () => {
       });
 
       // Create event document
-      const eventsCollectionRef = collection(db, "events");
+      const eventsCollectionRef = collection(db(), "events");
       const docRef = await addDoc(eventsCollectionRef, eventData);
       console.log('Event created with ID:', docRef.id);
       
@@ -738,7 +753,7 @@ const CreateEvent = () => {
             <div className={styles.formGroup}>
               <label>Event Categories</label>
               <div className={styles.categoriesGrid}>
-                {EVENT_CATEGORIES.map((category) => (
+                {EVENT_CONFIG.categories.map((category) => (
                   <button
                     key={category.id}
                     type="button"
@@ -887,7 +902,7 @@ const CreateEvent = () => {
                   {/* Session Timing */}
                   <div className={styles.sessionTiming}>
                     <div className={styles.formGroup}>
-                      <label>Date</label>
+                      <label>Start Date</label>
                       <input
                         type="date"
                         value={session.date}
@@ -895,6 +910,21 @@ const CreateEvent = () => {
                         required
                       />
                     </div>
+
+                    <div className={styles.formGroup}>
+                      <label>End Date (Optional)</label>
+                      <input
+                        type="date"
+                        value={session.endDate || ''}
+                        onChange={(e) => handleSessionChange(session.id, 'endDate', e.target.value)}
+                        min={session.date} // End date can't be before start date
+                        placeholder="Leave empty for same day"
+                      />
+                      <small style={{ color: '#888', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                        Leave empty for same-day events. Fill for multi-day events like treks or conferences.
+                      </small>
+                    </div>
+
                     <div className={styles.formGroup}>
                       <label>Start Time</label>
                       <input
@@ -913,6 +943,39 @@ const CreateEvent = () => {
                         required
                       />
                     </div>
+
+                    {/* Duration Display */}
+                    {session.date && session.startTime && session.endTime && (
+                      <div className={styles.durationDisplay}>
+                        <span className={styles.durationLabel}>Duration:</span>
+                        <span className={styles.durationValue}>
+                          {(() => {
+                            const startDate = new Date(session.date);
+                            const endDate = session.endDate 
+                              ? new Date(session.endDate) 
+                              : startDate;
+                            const startDateTime = new Date(`${session.date} ${session.startTime}`);
+                            const endDateTime = new Date(`${session.endDate || session.date} ${session.endTime}`);
+                            
+                            if (endDateTime > startDateTime) {
+                              const diffMs = endDateTime.getTime() - startDateTime.getTime();
+                              const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                              const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                              const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                              
+                              if (diffDays > 0) {
+                                return `${diffDays} day${diffDays > 1 ? 's' : ''}, ${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+                              } else if (diffHours > 0) {
+                                return `${diffHours} hour${diffHours !== 1 ? 's' : ''}, ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+                              } else {
+                                return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+                              }
+                            }
+                            return 'Invalid duration';
+                          })()}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Session Tickets */}
