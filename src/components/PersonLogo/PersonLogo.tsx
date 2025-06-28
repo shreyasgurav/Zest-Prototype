@@ -99,7 +99,7 @@ function PersonLogo() {
             // Clear all session markers before logout
             clearAllSessions();
             
-            await signOut(auth);
+            await signOut(auth());
             setShowDropdown(false);
             router.push('/');
             console.log("User logged out successfully!");
