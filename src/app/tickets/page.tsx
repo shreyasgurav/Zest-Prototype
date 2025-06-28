@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { QRCodeSVG } from 'qrcode.react';
 import { FaTicketAlt, FaQrcode, FaTimes, FaCalendarAlt, FaMapMarkerAlt, FaClock, FaUser, FaRupeeSign } from 'react-icons/fa';
 import TicketCard from '@/components/TicketCard/TicketCard';
 import { getTicketDisplayStatus } from '@/utils/ticketValidator';
+import { getFirebaseAuth } from '@/services/firebase';
 import styles from './Tickets.module.css';
 
 interface Ticket {
@@ -33,24 +34,36 @@ interface Ticket {
 
 const TicketsPage = () => {
   const router = useRouter();
-  const auth = getAuth();
+  const auth = getFirebaseAuth();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('Auth state changed:', {
+        userExists: !!user,
+        userId: user?.uid,
+        email: user?.email,
+        timestamp: new Date().toISOString()
+      });
+      
       if (!user) {
+        console.log('No user found, redirecting to login');
         router.push('/login');
         return;
       }
+      
+      console.log('User authenticated, fetching tickets for userId:', user.uid);
       fetchTickets(user.uid);
     });
 
     // Refresh tickets when page becomes visible (after scanning)
     const handleVisibilityChange = () => {
       if (!document.hidden && auth.currentUser) {
+        console.log('Page became visible, refreshing tickets');
         fetchTickets(auth.currentUser.uid);
       }
     };
@@ -63,13 +76,85 @@ const TicketsPage = () => {
     };
   }, [auth, router]);
 
-  const fetchTickets = async (userId: string) => {
+  const fetchTickets = async (userId: string, retryCount = 0) => {
+    const maxRetries = 2;
+    
     try {
       setLoading(true);
-      const response = await fetch(`/api/tickets?userId=${userId}`);
+      setError(null);
+      
+      console.log(`Fetching tickets for userId: ${userId.substring(0, 8)}... (attempt ${retryCount + 1})`);
+      console.log('API URL:', `/api/tickets?userId=${userId}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
+      const response = await fetch(`/api/tickets?userId=${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log('API Response status:', response.status);
+      console.log('API Response ok:', response.ok);
+      
+      if (!response.ok) {
+        console.error('API Response not OK:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url
+        });
+        
+        // Try to get error details from response
+        const errorText = await response.text();
+        console.error('Error response body:', errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (parseError) {
+          console.error('Failed to parse error response as JSON:', parseError);
+          errorData = { error: 'Server error', details: errorText };
+        }
+        
+        // Handle specific error types
+        if (response.status === 500 && retryCount < maxRetries) {
+          console.log(`500 error detected, retrying in ${(retryCount + 1) * 2} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
+          return fetchTickets(userId, retryCount + 1);
+        }
+        
+        if (response.status === 503 || response.status === 504) {
+          if (retryCount < maxRetries) {
+            console.log(`Service unavailable/timeout, retrying in ${(retryCount + 1) * 3} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 3000));
+            return fetchTickets(userId, retryCount + 1);
+          }
+        }
+        
+        setError(`Failed to load tickets (${response.status}): ${errorData.error || 'Unknown error'}`);
+        setDebugInfo({
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          userId: userId.substring(0, 8) + '...',
+          timestamp: new Date().toISOString(),
+          retryCount,
+          userAgent: navigator.userAgent
+        });
+        return;
+      }
+      
       const data = await response.json();
+      console.log('API Response data:', data);
 
       if (data.success) {
+        console.log(`Successfully loaded ${data.tickets.length} tickets`);
+        
         // Sort tickets: upcoming active tickets first, then by date
         const sortedTickets = data.tickets.sort((a: Ticket, b: Ticket) => {
           const now = new Date();
@@ -89,12 +174,48 @@ const TicketsPage = () => {
         });
         
         setTickets(sortedTickets);
+        setDebugInfo(data.debug || null);
       } else {
+        console.error('API returned success=false:', data);
         setError(data.error || 'Failed to fetch tickets');
+        setDebugInfo(data.debug || null);
       }
     } catch (err) {
-      console.error('Error fetching tickets:', err);
-      setError('Failed to fetch tickets');
+      console.error('Network error fetching tickets:', err);
+      console.error('Error details:', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : 'No stack trace',
+        type: typeof err,
+        userId: userId.substring(0, 8) + '...',
+        timestamp: new Date().toISOString(),
+        isAbortError: err instanceof Error && err.name === 'AbortError',
+        retryCount
+      });
+      
+      // Handle network errors with retry
+      if (err instanceof Error && err.name === 'AbortError') {
+        if (retryCount < maxRetries) {
+          console.log(`Request timeout, retrying in ${(retryCount + 1) * 2} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
+          return fetchTickets(userId, retryCount + 1);
+        }
+        setError('Request timeout. Please check your internet connection and try again.');
+      } else if (retryCount < maxRetries) {
+        console.log(`Network error, retrying in ${(retryCount + 1) * 2} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, (retryCount + 1) * 2000));
+        return fetchTickets(userId, retryCount + 1);
+      } else {
+        setError(`Network error: ${err instanceof Error ? err.message : 'Failed to fetch tickets'}`);
+      }
+      
+      setDebugInfo({
+        error: 'Network error',
+        details: err instanceof Error ? err.message : String(err),
+        userId: userId.substring(0, 8) + '...',
+        timestamp: new Date().toISOString(),
+        retryCount,
+        finalAttempt: retryCount >= maxRetries
+      });
     } finally {
       setLoading(false);
     }
@@ -155,6 +276,12 @@ const TicketsPage = () => {
           <div className={styles.errorIcon}>❌</div>
           <h2>Error Loading Tickets</h2>
           <p>{error}</p>
+          {debugInfo && process.env.NODE_ENV === 'development' && (
+            <div className={styles.debugInfo}>
+              <h4>Debug Information:</h4>
+              <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+            </div>
+          )}
           <button 
             className={styles.retryButton}
             onClick={() => auth.currentUser && fetchTickets(auth.currentUser.uid)}
