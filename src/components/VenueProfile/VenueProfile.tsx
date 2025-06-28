@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  getFirestore,
   doc,
   getDoc,
   setDoc,
@@ -12,7 +11,8 @@ import {
   getDocs,
   updateDoc,
 } from "firebase/firestore";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth, db } from '@/services/firebase';
 import { toast } from "react-toastify";
 import { FaCamera, FaTimes } from 'react-icons/fa';
 import VenueProfileSkeleton from "./VenueProfileSkeleton";
@@ -93,7 +93,6 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
   const fetchVenueData = async (pageId: string) => {
     console.log("Fetching venue data for page:", pageId);
     try {
-      const db = getFirestore();
       const venueDocRef = doc(db(), "Venues", pageId);
       const docSnap = await getDoc(venueDocRef);
   
@@ -133,8 +132,7 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
         localStorage.setItem('venueBannerImage', data.bannerImage || "");
       } else {
         console.log("Document doesn't exist in Firestore");
-        const auth = getAuth();
-        const user = auth.currentUser;
+        const user = auth().currentUser;
         
         if (user) {
           const newData: VenueData = {
@@ -215,7 +213,6 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
   };
 
   useEffect(() => {
-    const auth = getAuth();
     let isSubscribed = true;
     
     const unsubscribe = onAuthStateChanged(auth(), async (user: User | null) => {
@@ -279,8 +276,7 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
   const handleSaveProfile = async () => {
     try {
       setLoading(true);
-      const auth = getAuth();
-      const user = auth.currentUser;
+      const user = auth().currentUser;
   
       if (!user) {
         setError("User not authenticated");
@@ -296,7 +292,6 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
         }
       }
   
-      const db = getFirestore();
       if (!currentVenuePageId) {
         setError("No venue page selected");
         toast.error("No venue page selected");
@@ -382,10 +377,8 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
       }
 
       // Update Firestore immediately
-      const auth = getAuth();
-      const user = auth.currentUser;
+      const user = auth().currentUser;
       if (user && currentVenuePageId) {
-        const db = getFirestore();
         const venueDocRef = doc(db(), "Venues", currentVenuePageId);
         const updateField = currentPhotoType === 'profile' ? 'photoURL' : 'bannerImage';
         await updateDoc(venueDocRef, {
