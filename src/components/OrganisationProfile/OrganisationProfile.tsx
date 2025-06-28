@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  getFirestore,
   doc,
   getDoc,
   setDoc,
@@ -12,7 +11,8 @@ import {
   getDocs,
   updateDoc,
 } from "firebase/firestore";
-import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { auth, db } from '@/services/firebase';
 import { toast } from "react-toastify";
 import { FaCamera, FaTimes } from 'react-icons/fa';
 import OrganisationProfileSkeleton from "./OrganisationProfileSkeleton";
@@ -75,7 +75,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   const fetchOrgData = async (uid: string, pageId?: string | null) => {
     console.log("Fetching org data for:", uid);
     try {
-      const db = getFirestore();
       
               // First, check if we have a selected organization page ID from props or session storage
         const sessionSelectedPageId = sessionStorage.getItem('selectedOrganizationPageId');
@@ -212,7 +211,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   };
 
   useEffect(() => {
-    const auth = getAuth();
     let isSubscribed = true;
     
     const unsubscribe = onAuthStateChanged(auth(), async (user: User | null) => {
@@ -236,8 +234,7 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   const handleSaveProfile = async () => {
     try {
       setLoading(true);
-      const auth = getAuth();
-      const user = auth.currentUser;
+      const user = auth().currentUser;
   
       if (!user) {
         setError("User not authenticated");
@@ -252,8 +249,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
           return;
         }
       }
-  
-      const db = getFirestore();
       
       // Get the correct organization page ID
       const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
@@ -331,10 +326,8 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
       }
 
       // Update Firestore immediately
-      const auth = getAuth();
-      const user = auth.currentUser;
+      const user = auth().currentUser;
       if (user) {
-        const db = getFirestore();
         
         // Get the correct organization page ID
         const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
