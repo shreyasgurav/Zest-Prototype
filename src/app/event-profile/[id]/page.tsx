@@ -15,6 +15,7 @@ interface TimeSlot {
   start_time: string;
   end_time: string;
   available: boolean;
+  session_id?: string;
 }
 
 interface TicketType {
@@ -22,6 +23,25 @@ interface TicketType {
   price: number;
   capacity: number;
   available_capacity: number;
+}
+
+// NEW: Session interface for session-centric events
+interface EventSession {
+  id: string;
+  name: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  venue?: string;
+  description?: string;
+  tickets: Array<{
+    name: string;
+    capacity: number;
+    price: number;
+    available_capacity: number;
+  }>;
+  available: boolean;
+  maxCapacity?: number;
 }
 
 interface GuideOption {
@@ -53,6 +73,7 @@ interface EventData {
   eventTitle?: string;
   event_type?: string;
   type?: string;
+  architecture?: 'legacy' | 'session-centric';
   eventDateTime?: any;
   event_venue: string;
   eventVenue?: string;
@@ -69,8 +90,17 @@ interface EventData {
   event_languages?: string;
   event_duration?: string;
   event_age_limit?: string;
+  
+  // Legacy fields
   time_slots?: TimeSlot[];
   tickets?: TicketType[];
+  
+  // NEW: Session-centric fields
+  sessions?: EventSession[];
+  venue_type?: 'global' | 'per_session';
+  total_sessions?: number;
+  total_capacity?: number;
+  
   event_guides?: { [key: string]: string };
   creator?: {
     type: 'artist' | 'organisation' | 'venue';
@@ -88,8 +118,12 @@ interface CreatorProfile {
 }
 
 interface Attendee {
-  tickets: Record<string, number>;
+  id: string;
+  tickets?: Record<string, number>;
   eventId: string;
+  sessionId?: string;
+  ticketType?: string;
+  canCheckInIndependently?: boolean;
 }
 
 function EventProfile() {
@@ -138,10 +172,8 @@ function EventProfile() {
     return () => unsubscribe();
   }, []);
 
-  // Calculate real-time ticket availability
+  // Calculate real-time ticket availability - UPDATED for session-centric
   const calculateTicketAvailability = async (eventData: EventData) => {
-    if (!eventData.tickets || eventData.tickets.length === 0) return [];
-
     try {
       // Fetch actual attendees to calculate real availability
       const attendeesRef = collection(db, 'eventAttendees');
@@ -151,27 +183,94 @@ function EventProfile() {
       );
 
       const snapshot = await getDocs(attendeesQuery);
-      const attendees = snapshot.docs.map(doc => doc.data()) as Attendee[];
+      const attendees = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Attendee[];
 
-      // Calculate real-time availability
-      const updatedTickets = eventData.tickets.map(ticket => {
-        const soldCount = attendees.reduce((count, attendee) => 
-          count + (attendee.tickets[ticket.name] || 0), 0
-        );
+      let allTickets: TicketType[] = [];
+
+      // Handle session-centric events
+      if (eventData.architecture === 'session-centric' && eventData.sessions) {
+        // For session-centric events, aggregate tickets across all sessions
+        const ticketMap = new Map<string, TicketType>();
         
-        return {
-          ...ticket,
-          available_capacity: Math.max(0, ticket.capacity - soldCount)
-        };
-      });
+        eventData.sessions.forEach(session => {
+          session.tickets.forEach(ticket => {
+            const key = ticket.name;
+            if (ticketMap.has(key)) {
+              const existing = ticketMap.get(key)!;
+              existing.capacity += ticket.capacity;
+              existing.available_capacity += ticket.available_capacity;
+            } else {
+              ticketMap.set(key, {
+                name: ticket.name,
+                price: ticket.price,
+                capacity: ticket.capacity,
+                available_capacity: ticket.available_capacity
+              });
+            }
+          });
+        });
 
-      setTicketAvailability(updatedTickets);
-      return updatedTickets;
+        allTickets = Array.from(ticketMap.values());
+
+        // Calculate real-time availability for session-centric
+        const updatedTickets = allTickets.map(ticket => {
+          const soldCount = attendees.reduce((count, attendee) => {
+            // Handle individual attendee records (new format)
+            if (attendee.canCheckInIndependently && attendee.ticketType === ticket.name) {
+              return count + 1;
+            }
+            // Handle group booking records (old format)
+            if (typeof attendee.tickets === 'object' && attendee.tickets) {
+              return count + (attendee.tickets[ticket.name] || 0);
+            }
+            return count;
+          }, 0);
+          
+          return {
+            ...ticket,
+            available_capacity: Math.max(0, ticket.capacity - soldCount)
+          };
+        });
+
+        setTicketAvailability(updatedTickets);
+        return updatedTickets;
+      } 
+      // Handle legacy events
+      else if (eventData.tickets && eventData.tickets.length > 0) {
+        const updatedTickets = eventData.tickets.map(ticket => {
+          const soldCount = attendees.reduce((count, attendee) => {
+            // Handle individual attendee records (new format)
+            if (attendee.canCheckInIndependently && attendee.ticketType === ticket.name) {
+              return count + 1;
+            }
+            // Handle group booking records (old format)
+            if (typeof attendee.tickets === 'object' && attendee.tickets) {
+              return count + (attendee.tickets[ticket.name] || 0);
+            }
+            return count;
+          }, 0);
+          
+          return {
+            ...ticket,
+            available_capacity: Math.max(0, ticket.capacity - soldCount)
+          };
+        });
+
+        setTicketAvailability(updatedTickets);
+        return updatedTickets;
+      }
+
+      setTicketAvailability([]);
+      return [];
     } catch (error) {
       console.error('Error calculating ticket availability:', error);
       // Fallback to original capacity if calculation fails
-      setTicketAvailability(eventData.tickets || []);
-      return eventData.tickets || [];
+      const fallbackTickets = eventData.tickets || [];
+      setTicketAvailability(fallbackTickets);
+      return fallbackTickets;
     }
   };
 
@@ -248,6 +347,47 @@ function EventProfile() {
     }
   };
 
+  // NEW: Get display data for both legacy and session-centric events
+  const getEventDisplayData = () => {
+    if (!event) return null;
+
+    // Handle session-centric events
+    if (event.architecture === 'session-centric' && event.sessions) {
+      const firstSession = event.sessions[0];
+      const allDates = event.sessions.map(s => s.date).sort();
+      const uniqueDates = Array.from(new Set(allDates));
+      
+      return {
+        dateText: uniqueDates.length > 1 
+          ? `${formatDate(uniqueDates[0])} onwards`
+          : formatDate(uniqueDates[0]),
+        timeSlots: event.sessions.map(session => ({
+          date: session.date,
+          start_time: session.start_time,
+          end_time: session.end_time,
+          sessionName: session.name,
+          venue: session.venue || event.event_venue
+        })),
+        venue: event.venue_type === 'per_session' ? 'Multiple Venues' : event.event_venue,
+        isSessionCentric: true
+      };
+    }
+    // Handle legacy events
+    else {
+      const timeSlots = event.time_slots || [];
+      return {
+        dateText: timeSlots.length > 0 
+          ? timeSlots.length > 1 
+            ? `${formatDate(timeSlots[0].date)} onwards` 
+            : formatDate(timeSlots[0].date)
+          : 'Date to be announced',
+        timeSlots: timeSlots,
+        venue: event.event_venue,
+        isSessionCentric: false
+      };
+    }
+  };
+
   useEffect(() => {
     const fetchEvent = async () => {
       if (!params?.id) return;
@@ -264,6 +404,7 @@ function EventProfile() {
             eventTitle: data.eventTitle,
             event_type: data.event_type,
             type: data.type,
+            architecture: data.architecture || 'legacy',
             eventDateTime: data.event_date_time || data.eventDateTime,
             event_venue: data.event_venue || data.eventVenue || '',
             eventVenue: data.eventVenue,
@@ -280,8 +421,17 @@ function EventProfile() {
             event_languages: data.event_languages || '',
             event_duration: data.event_duration || '',
             event_age_limit: data.event_age_limit || '',
+            
+            // Legacy fields
             time_slots: data.time_slots || [],
             tickets: data.tickets || [],
+            
+            // Session-centric fields
+            sessions: data.sessions || [],
+            venue_type: data.venue_type || 'global',
+            total_sessions: data.total_sessions || 0,
+            total_capacity: data.total_capacity || 0,
+            
             event_guides: data.event_guides || {},
             creator: data.creator || null
           };
@@ -382,14 +532,8 @@ function EventProfile() {
     return <div className={styles.errorMessage}>{error || "Event not found"}</div>;
   }
 
-  const { event_image, title, event_venue, hosting_club, about_event, time_slots } = event;
-
-  // Determine the date text for the profile
-  const dateText = time_slots && time_slots.length > 0 
-    ? time_slots.length > 1 
-      ? `${formatDate(time_slots[0].date)} onwards` 
-      : formatDate(time_slots[0].date)
-    : 'Date to be announced';
+  const { event_image, title, hosting_club, about_event } = event;
+  const displayData = getEventDisplayData();
 
   // Calculate total starting price
   const startingPrice = ticketAvailability.length > 0 
@@ -428,20 +572,49 @@ function EventProfile() {
                 <span className={styles.organizationLink}>{getCreatorDisplayName()}</span>
               </div>
             </div>
+            
+            {/* Date Display */}
             <div className={styles.eventDetail}>
-              <FaCalendarAlt /> {dateText}
+              <FaCalendarAlt /> {displayData?.dateText}
             </div>
-            {time_slots && time_slots.map((slot, index) => (
-              <div key={index} className={styles.eventDetail}>
-                <FaClock /> {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
-              </div>
-            ))}
+            
+            {/* Time Display - Updated for session-centric */}
+            {displayData?.isSessionCentric ? (
+              // Session-centric: Show all sessions
+              <>
+                {event.sessions && event.sessions.slice(0, 3).map((session, index) => (
+                  <div key={index} className={styles.eventDetail}>
+                    <FaClock /> {session.name}: {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                    {session.venue && session.venue !== event.event_venue && (
+                      <span className={styles.sessionVenue}> at {session.venue}</span>
+                    )}
+                  </div>
+                ))}
+                {event.sessions && event.sessions.length > 3 && (
+                  <div className={styles.eventDetail}>
+                    <FaClock /> +{event.sessions.length - 3} more sessions
+                  </div>
+                )}
+              </>
+            ) : (
+              // Legacy: Show time slots
+              displayData?.timeSlots?.map((slot, index) => (
+                <div key={index} className={styles.eventDetail}>
+                  <FaClock /> {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                </div>
+              ))
+            )}
+            
+            {/* Venue Display */}
             <div 
               className={`${styles.eventDetail} ${styles.locationDetail}`}
               onClick={handleLocationClick}
               style={{ cursor: 'pointer' }}
             >
-              <FaMapMarkerAlt /> {event_venue}
+              <FaMapMarkerAlt /> {displayData?.venue}
+              {event.architecture === 'session-centric' && event.venue_type === 'per_session' && (
+                <span className={styles.venueNote}> (Check individual sessions for specific venues)</span>
+              )}
             </div>
 
             {/* Ticket Information */}
@@ -452,6 +625,11 @@ function EventProfile() {
                   <span className={styles.startingPrice}>
                     Starting from ₹{startingPrice}
                   </span>
+                  {event.architecture === 'session-centric' && event.total_sessions && (
+                    <span className={styles.sessionCount}>
+                      • {event.total_sessions} session{event.total_sessions > 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
                 <div className={styles.ticketTypes}>
                   {ticketAvailability.slice(0, 2).map((ticket, index) => {

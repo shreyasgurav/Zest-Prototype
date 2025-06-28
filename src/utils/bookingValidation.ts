@@ -15,6 +15,7 @@ export interface BookingValidationData {
   phone: string;
   selectedDate: string;
   selectedTimeSlot: any;
+  selectedSession?: any;
   tickets: any;
   totalAmount: number;
 }
@@ -115,7 +116,39 @@ export async function calculateEventAmount(bookingData: BookingValidationData): 
   }
 
   const eventData = eventDoc.data();
-  const tickets = eventData?.tickets || [];
+  
+  // Handle session-centric vs legacy events
+  let tickets: any[] = [];
+  
+  if (eventData?.architecture === 'session-centric') {
+    // For session-centric events, extract session ID and find session-specific tickets
+    const sessionId = bookingData.selectedTimeSlot?.session_id || 
+                     bookingData.selectedSession?.id;
+    
+    if (!sessionId) {
+      throw new Error('Session ID is required for session-centric events');
+    }
+    
+    // Find the specific session
+    const targetSession = eventData.sessions?.find((session: any) => session.id === sessionId);
+    
+    if (!targetSession) {
+      throw new Error(`Session ${sessionId} not found in event`);
+    }
+    
+    tickets = targetSession.tickets || [];
+    
+    if (tickets.length === 0) {
+      throw new Error(`No tickets found for session ${sessionId}`);
+    }
+  } else {
+    // For legacy events, use global tickets
+    tickets = eventData?.tickets || [];
+  }
+  
+  if (tickets.length === 0) {
+    throw new Error('No tickets found for this event');
+  }
   
   let totalAmount = 0;
   const breakdown: any[] = [];
@@ -124,7 +157,7 @@ export async function calculateEventAmount(bookingData: BookingValidationData): 
     const ticketType = tickets.find((t: any) => t.name === ticketTypeName);
     
     if (!ticketType) {
-      throw new Error(`Invalid ticket type: ${ticketTypeName}`);
+      throw new Error(`Invalid ticket type: ${ticketTypeName}. Available tickets: ${tickets.map(t => t.name).join(', ')}`);
     }
 
     const subtotal = ticketType.price * quantity;
@@ -134,7 +167,10 @@ export async function calculateEventAmount(bookingData: BookingValidationData): 
       ticketType: ticketTypeName,
       quantity,
       price: ticketType.price,
-      subtotal
+      subtotal,
+      sessionId: eventData?.architecture === 'session-centric' ? 
+        (bookingData.selectedTimeSlot?.session_id || bookingData.selectedSession?.id) : 
+        null
     });
   }
 

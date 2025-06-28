@@ -680,4 +680,61 @@
     font-size: 14px;
     margin: 0;
     font-weight: 500;
+}
+
+/* NEW: Session-centric styles */
+.sessionVenue {
+    color: #6b7280;
+    font-size: 0.85em;
+    font-style: italic;
+}
+
+.venueNote {
+    color: #6b7280;
+    font-size: 0.75em;
+    font-style: italic;
+    margin-left: 8px;
+}
+
+.sessionCount {
+    color: #6b7280;
+    font-size: 0.85em;
+    margin-left: 8px;
+}
+
+.eventDetail .sessionVenue {
+    display: inline;
+    margin-left: 8px;
+}
+
+/* Mobile responsive updates for session-centric */
+@media (max-width: 768px) {
+    .sessionVenue {
+        font-size: 0.8em;
+    }
+    
+    .venueNote {
+        font-size: 0.7em;
+        margin-left: 4px;
+        display: block;
+        margin-top: 2px;
+    }
+    
+    .sessionCount {
+        font-size: 0.8em;
+        margin-left: 4px;
+        display: block;
+        margin-top: 2px;
+    }
+}
+
+@media (max-width: 480px) {
+    .sessionVenue {
+        font-size: 0.75em;
+    }
+    
+    .venueNote,
+    .sessionCount {
+        font-size: 0.65em;
+    }
 } 

@@ -6,16 +6,14 @@ import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/fires
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useRouter, useSearchParams } from "next/navigation";
-import RoleGuard from "@/components/RoleGuard/RoleGuard";
 import { getUserOwnedPages } from "@/utils/authHelpers";
 import styles from "./CreateEvent.module.css";
 // @ts-ignore
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
 import Script from 'next/script';
 import { FaMapMarkerAlt } from 'react-icons/fa';
-import LocationSelector from '@/components/LocationSelector/LocationSelector';
 
-// A more extensive list of cities for better search results
+// City list for venue selection
 const ALL_CITIES = [
     'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad', 'Chennai', 'Kolkata', 'Surat', 'Pune', 'Jaipur',
     'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad', 'Patna',
@@ -37,18 +35,6 @@ interface EventSession {
 }
 
 interface SessionTicket {
-  name: string;
-  capacity: string;
-  price: string;
-}
-
-interface EventSlot {
-  date: string;
-  startTime: string;
-  endTime: string;
-}
-
-interface Ticket {
   name: string;
   capacity: string;
   price: string;
@@ -109,7 +95,7 @@ const CreateEvent = () => {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [eventLanguages, setEventLanguages] = useState<string>("");
   
-  // SESSION-CENTRIC: Replace eventSlots and tickets with sessions
+  // SESSION-CENTRIC: Main sessions state
   const [eventSessions, setEventSessions] = useState<EventSession[]>([
     { 
       id: '1',
@@ -119,16 +105,6 @@ const CreateEvent = () => {
       tickets: [{ name: '', capacity: '', price: '' }]
     }
   ]);
-
-  
-  // Legacy support for old format
-  const [eventSlots, setEventSlots] = useState<EventSlot[]>([
-    { date: '', startTime: '', endTime: '' }
-  ]);
-  const [tickets, setTickets] = useState<Ticket[]>([
-    { name: '', capacity: '', price: '' }
-  ]);
-  const [isLegacyMode, setIsLegacyMode] = useState<boolean>(false);
   
   const [address, setAddress] = useState('');
   const [isMapsScriptLoaded, setIsMapsScriptLoaded] = useState(false);
@@ -283,19 +259,6 @@ const CreateEvent = () => {
     fetchCreatorDetails();
   }, [searchParams]);
 
-  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5242880) {
-        setMessage("Image size should be less than 5MB");
-        return;
-      }
-      setEventImage(file);
-      const previewUrl = URL.createObjectURL(file);
-      setImagePreview(previewUrl);
-    }
-  };
-
   // SESSION MANAGEMENT FUNCTIONS
   const addSession = () => {
     const newSessionId = Date.now().toString();
@@ -315,6 +278,7 @@ const CreateEvent = () => {
     }
     const newSessions = eventSessions.filter(session => session.id !== sessionId);
     setEventSessions(newSessions);
+    setMessage("");
   };
 
   const handleSessionChange = (sessionId: string, field: keyof EventSession, value: any) => {
@@ -360,9 +324,17 @@ const CreateEvent = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
-    return eventSessions.every(session => {
+    if (eventSessions.length === 0) {
+      setMessage("You must have at least one session");
+      return false;
+    }
+    
+    for (let i = 0; i < eventSessions.length; i++) {
+      const session = eventSessions[i];
+      
       // Validate session time and date
       if (!session.date || !session.startTime || !session.endTime) {
+        setMessage(`Session ${i + 1}: Please fill in all date and time fields`);
         return false;
       }
       
@@ -372,137 +344,90 @@ const CreateEvent = () => {
       
       // Check if date is not in the past
       if (sessionDate < today) {
+        setMessage(`Session ${i + 1}: Date cannot be in the past`);
         return false;
       }
       
       // Check if end time is after start time
       if (endDateTime <= startDateTime) {
+        setMessage(`Session ${i + 1}: End time must be after start time`);
         return false;
       }
       
       // Check if start time is not in the past (for today's events)
       if (sessionDate.getTime() === today.getTime() && startDateTime < now) {
+        setMessage(`Session ${i + 1}: Start time cannot be in the past`);
         return false;
       }
 
       // Validate session tickets
       if (session.tickets.length === 0) {
+        setMessage(`Session ${i + 1}: Must have at least one ticket type`);
         return false;
       }
 
-      return session.tickets.every(ticket => 
-        ticket.name.trim() && 
-        ticket.capacity && 
-        ticket.price && 
-        parseInt(ticket.capacity) > 0 && 
-        parseFloat(ticket.price) >= 0
-      );
+      for (let j = 0; j < session.tickets.length; j++) {
+        const ticket = session.tickets[j];
+        if (!ticket.name.trim()) {
+          setMessage(`Session ${i + 1}: Ticket ${j + 1} name is required`);
+          return false;
+        }
+        if (!ticket.capacity || parseInt(ticket.capacity) <= 0) {
+          setMessage(`Session ${i + 1}: Ticket ${j + 1} must have valid capacity`);
+          return false;
+        }
+        if (!ticket.price || parseFloat(ticket.price) < 0) {
+          setMessage(`Session ${i + 1}: Ticket ${j + 1} must have valid price`);
+          return false;
+        }
+      }
+    }
+    
+    setMessage(""); // Clear any validation errors
+    return true;
+  };
+
+  // Other form handlers
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5242880) {
+        setMessage("Image size should be less than 5MB");
+        return;
+      }
+      setEventImage(file);
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+    }
+  };
+
+  const handleCategoryChange = (categoryId: string) => {
+    setSelectedCategories(prev => {
+      if (prev.includes(categoryId)) {
+        return prev.filter(id => id !== categoryId);
+      } else {
+        return [...prev, categoryId];
+      }
     });
   };
 
-  // Toggle between legacy and session-centric modes
-  const toggleMode = () => {
-    setIsLegacyMode(!isLegacyMode);
-    if (!isLegacyMode) {
-      // Convert sessions to legacy format
-      if (eventSessions.length > 0) {
-        const firstSession = eventSessions[0];
-        setEventSlots([{ 
-          date: firstSession.date, 
-          startTime: firstSession.startTime, 
-          endTime: firstSession.endTime 
-        }]);
-        setTickets(firstSession.tickets.map(t => ({ ...t })));
-      }
-          } else {
-        // Convert legacy format to sessions
-        if (eventSlots.length > 0 && tickets.length > 0) {
-          const firstSlot = eventSlots[0];
-          setEventSessions([{
-            id: '1',
-            date: firstSlot.date,
-            startTime: firstSlot.startTime,
-            endTime: firstSlot.endTime,
-            tickets: tickets.map(t => ({ ...t }))
-          }]);
-        }
-      }
+  const handleSelectAddress = (address: string) => {
+    setAddress(address);
+    setEventVenue(address);
+    setIsLocationFocused(false);
   };
 
-  // Ticket management functions
-  const addTicketType = () => {
-    setTickets([...tickets, { name: '', capacity: '', price: '' }]);
-  };
-
-  const removeTicketType = (index: number) => {
-    const newTickets = tickets.filter((_, i) => i !== index);
-    setTickets(newTickets);
-  };
-
-  const handleTicketChange = (index: number, field: keyof Ticket, value: string) => {
-    const newTickets = [...tickets];
-    newTickets[index][field] = value;
-    setTickets(newTickets);
-  };
-
-  const validateTickets = (): boolean => {
-    return tickets.every(ticket => 
-      ticket.name && 
-      ticket.capacity && 
-      ticket.price && 
-      parseInt(ticket.capacity) > 0 && 
-      parseFloat(ticket.price) >= 0
+  const handleGuideToggle = (id: string) => {
+    setGuides(prev =>
+      id in prev ? Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)) : { ...prev, [id]: '' }
     );
   };
 
-  // Time slot functions
-  const addTimeSlot = () => {
-    setEventSlots([...eventSlots, { date: '', startTime: '', endTime: '' }]);
+  const handleGuideInput = (id: string, value: string) => {
+    setGuides(prev => ({ ...prev, [id]: value }));
   };
 
-  const removeTimeSlot = (index: number) => {
-    const newSlots = eventSlots.filter((_, i) => i !== index);
-    setEventSlots(newSlots);
-  };
-
-  const handleSlotChange = (index: number, field: keyof EventSlot, value: string) => {
-    const newSlots = [...eventSlots];
-    newSlots[index][field] = value;
-    setEventSlots(newSlots);
-  };
-
-  const validateSlots = (): boolean => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    return eventSlots.every(slot => {
-      if (!slot.date || !slot.startTime || !slot.endTime) {
-        return false;
-      }
-      
-      const slotDate = new Date(slot.date);
-      const startDateTime = new Date(`${slot.date} ${slot.startTime}`);
-      const endDateTime = new Date(`${slot.date} ${slot.endTime}`);
-      
-      // Check if date is not in the past
-      if (slotDate < today) {
-        return false;
-      }
-      
-      // Check if end time is after start time
-      if (endDateTime <= startDateTime) {
-        return false;
-      }
-      
-      // Check if start time is not in the past (for today's events)
-      if (slotDate.getTime() === today.getTime() && startDateTime < now) {
-        return false;
-      }
-      
-      return true;
-    });
-  };
-
+  // Image upload function
   const uploadImage = async (file: File): Promise<string | null> => {
     if (!file) return null;
     
@@ -571,59 +496,7 @@ const CreateEvent = () => {
     }
   };
 
-  const handleCategoryChange = (categoryId: string) => {
-    setSelectedCategories(prev => {
-      if (prev.includes(categoryId)) {
-        return prev.filter(id => id !== categoryId);
-      } else {
-        return [...prev, categoryId];
-      }
-    });
-  };
-
-  const handleSelectAddress = (address: string) => {
-    setAddress(address);
-    setEventVenue(address);
-    
-    // Extract city from the address
-    const addressParts = address.split(',');
-    if (addressParts.length >= 2) {
-      // Try to find a city name from the address parts
-      // Usually the city is one of the later parts in Google Places results
-      for (let i = addressParts.length - 3; i >= 0; i--) {
-        const part = addressParts[i].trim();
-        // Check if this part might be a city (not a postal code or country)
-        if (part && !/^\d+$/.test(part) && part.length > 2) {
-          // Check if it matches any of our known cities
-          const matchedCity = ALL_CITIES.find((city: string) => 
-            city.toLowerCase().includes(part.toLowerCase()) || 
-            part.toLowerCase().includes(city.toLowerCase())
-          );
-          if (matchedCity) {
-            setSelectedCity(matchedCity);
-            break;
-          } else {
-            // If no exact match, use the first valid part as city
-            setSelectedCity(part);
-            break;
-          }
-        }
-      }
-    }
-    
-    setIsLocationFocused(false);
-  };
-
-  const handleGuideToggle = (id: string) => {
-    setGuides(prev =>
-      id in prev ? Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)) : { ...prev, [id]: '' }
-    );
-  };
-
-  const handleGuideInput = (id: string, value: string) => {
-    setGuides(prev => ({ ...prev, [id]: value }));
-  };
-
+  // Handle form submission
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     
@@ -632,42 +505,14 @@ const CreateEvent = () => {
       return;
     }
 
-    // Comprehensive validation with specific error messages
-    if (!eventTitle.trim()) {
-      setMessage("Please enter an event name");
+    // Validate required fields
+    if (!eventTitle.trim() || !eventVenue.trim() || selectedCategories.length === 0 || !aboutEvent.trim()) {
+      setMessage("Please fill in all required fields and select at least one category");
       return;
     }
-    
-    if (!eventVenue.trim()) {
-      setMessage("Please enter a venue location");
-      return;
-    }
-    
-    if (selectedCategories.length === 0) {
-      setMessage("Please select at least one event category");
-      return;
-    }
-    
-    // Validate based on mode
-    if (isLegacyMode) {
-      if (!validateTickets()) {
-        setMessage("Please ensure all ticket types have valid names, capacities (greater than 0), and prices (0 or greater)");
-        return;
-      }
-      
-      if (!validateSlots()) {
-        setMessage("Please ensure all time slots have valid dates (not in the past), start times, and end times (end time must be after start time)");
-        return;
-      }
-    } else {
-      if (!validateSessions()) {
-        setMessage("Please ensure all sessions have valid details: date, time slots, and at least one ticket type with valid capacity and pricing");
-        return;
-      }
-    }
-    
-    if (!aboutEvent.trim()) {
-      setMessage("Please provide a description for your event");
+
+    // Validate sessions
+    if (!validateSessions()) {
       return;
     }
 
@@ -693,52 +538,8 @@ const CreateEvent = () => {
       }
 
       // Prepare event data - SESSION-CENTRIC FORMAT
-      const eventData = isLegacyMode ? {
-        // LEGACY FORMAT
-        title: eventTitle.trim(),
-        event_type: "event",
-        architecture: "legacy",
-        time_slots: eventSlots.map(slot => ({
-          date: slot.date,
-          start_time: slot.startTime,
-          end_time: slot.endTime,
-          available: true
-        })),
-        tickets: tickets.map(ticket => ({
-          name: ticket.name.trim(),
-          capacity: parseInt(ticket.capacity),
-          price: parseFloat(ticket.price),
-          available_capacity: parseInt(ticket.capacity)
-        })),
-        event_venue: eventVenue.trim(),
-        about_event: aboutEvent.trim(),
-        event_image: imageUrl,
-        organizationId: auth.currentUser.uid,
-        hosting_club: orgName,
-        organization_username: orgUsername,
-        event_categories: selectedCategories,
-        event_languages: eventLanguages.trim(),
-        event_guides: guides,
-        // Creator information
-        creator: creatorInfo ? {
-          type: creatorInfo.type, // 'artist', 'organisation', or 'venue'
-          pageId: creatorInfo.pageId,
-          name: creatorInfo.name,
-          username: creatorInfo.username,
-          userId: auth.currentUser.uid
-        } : {
-          type: 'organisation',
-          pageId: auth.currentUser.uid,
-          name: orgName,
-          username: orgUsername,
-          userId: auth.currentUser.uid
-        },
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        status: 'active',
-        image_upload_status: imageUploadError ? 'failed' : (imageUrl ? 'success' : 'none')
-      } : {
-        // NEW SESSION-CENTRIC FORMAT
+      const eventData = {
+        // SESSION-CENTRIC FORMAT
         title: eventTitle.trim(),
         event_type: "event",
         architecture: "session-centric",
@@ -833,7 +634,13 @@ const CreateEvent = () => {
 
     } catch (error: any) {
       console.error("Error creating event:", error);
-      setMessage(`Failed to create event: ${error.message}`);
+      const errorMessage = error.message || "An unexpected error occurred";
+      setMessage(`Failed to create event: ${errorMessage}`);
+      
+      // If it's a validation error, scroll to the top
+      if (errorMessage.includes("validation") || errorMessage.includes("required")) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } finally {
       setLoading(false);
     }
@@ -889,6 +696,7 @@ const CreateEvent = () => {
             </span>
           )}
         </h1>
+        
         <form onSubmit={handleSubmit} className={styles.createEventForm}>
           {/* Image Upload Section */}
           <div className={styles.formSection}>
@@ -947,333 +755,22 @@ const CreateEvent = () => {
             </div>
 
             <div className={styles.formGroup}>
-              <label>About Event</label>
+              <label>Event Description</label>
               <textarea
                 value={aboutEvent}
                 onChange={(e) => setAboutEvent(e.target.value)}
-                placeholder="Enter event description"
+                placeholder="Tell people what your event is about..."
                 rows={4}
                 required
               />
             </div>
           </div>
 
-          {/* MODE TOGGLE */}
-          <div className={styles.formSection}>
-            <div className={styles.modeToggleContainer}>
-              <h2>Event Structure</h2>
-              <div className={styles.modeToggle}>
-                <label className={styles.toggleLabel}>
-                  <input
-                    type="checkbox"
-                    checked={!isLegacyMode}
-                    onChange={toggleMode}
-                    className={styles.toggleInput}
-                  />
-                  <span className={styles.toggleSlider}></span>
-                  <span className={styles.toggleText}>
-                    {isLegacyMode ? 'Simple Mode (Legacy)' : 'Session-Centric Mode (Recommended)'}
-                  </span>
-                </label>
-                <div className={styles.modeDescription}>
-                  {isLegacyMode ? (
-                    <p>Simple mode: One set of tickets applies to all time slots. Good for basic events.</p>
-                  ) : (
-                    <p>Session-centric mode: Each session can have its own tickets, pricing, and capacity. Perfect for multi-day events, workshops, or concerts with different pricing tiers.</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {isLegacyMode ? (
-            <>
-              {/* LEGACY: Tickets Section */}
-              <div className={styles.formSection}>
-                <h2>Create Tickets</h2>
-                {tickets.map((ticket, index) => (
-                  <div key={index} className={styles.ticketSlot}>
-                    <div className={styles.formRow}>
-                      <div className={styles.formGroup}>
-                        <label>Ticket Name</label>
-                        <input
-                          type="text"
-                          value={ticket.name}
-                          onChange={(e) => handleTicketChange(index, 'name', e.target.value)}
-                          placeholder="e.g., General, VIP, Fan Pit"
-                          required
-                        />
-                      </div>
-                      <div className={styles.formGroup}>
-                        <label>Capacity</label>
-                        <input
-                          type="number"
-                          value={ticket.capacity}
-                          onChange={(e) => handleTicketChange(index, 'capacity', e.target.value)}
-                          placeholder="Number of tickets"
-                          min="1"
-                          required
-                        />
-                      </div>
-                      <div className={styles.formGroup}>
-                        <label>Price (₹)</label>
-                        <input
-                          type="number"
-                          value={ticket.price}
-                          onChange={(e) => handleTicketChange(index, 'price', e.target.value)}
-                          placeholder="Ticket price"
-                          min="0"
-                          step="0.01"
-                          required
-                        />
-                      </div>
-                      {tickets.length > 1 && (
-                        <button
-                          type="button"
-                          className={styles.removeDateButton}
-                          onClick={() => removeTicketType(index)}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className={styles.addDateButton}
-                  onClick={addTicketType}
-                >
-                  Add Another Ticket Type
-                </button>
-              </div>
-
-              {/* LEGACY: Time Slots Section */}
-              <div className={styles.formSection}>
-                <h2>Event Schedule</h2>
-                {eventSlots.map((slot, index) => (
-                  <div key={index} className={styles.scheduleSlotContainer}>
-                    <div className={styles.scheduleRow}>
-                      <div className={styles.scheduleIndicatorCol}>
-                        <span className={styles.scheduleCircleFilled}></span>
-                        <span className={styles.scheduleDashedLine}></span>
-                        <span className={styles.scheduleCircle}></span>
-                      </div>
-                      <div className={styles.scheduleLabelsCol}>
-                        <span className={styles.scheduleLabel}>Start</span>
-                        <span className={styles.scheduleLabel}>End</span>
-                      </div>
-                      <div className={styles.schedulePickersCol}>
-                        <div className={styles.schedulePickerRow}>
-                          <input
-                            type="date"
-                            value={slot.date}
-                            onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
-                            className={styles.scheduleDateInput}
-                            required
-                          />
-                          <input
-                            type="time"
-                            value={slot.startTime}
-                            onChange={(e) => handleSlotChange(index, 'startTime', e.target.value)}
-                            className={styles.scheduleTimeInput}
-                            required
-                          />
-                        </div>
-                        <div className={styles.schedulePickerRow}>
-                          <input
-                            type="date"
-                            value={slot.date}
-                            onChange={(e) => handleSlotChange(index, 'date', e.target.value)}
-                            className={styles.scheduleDateInput}
-                            required
-                            disabled
-                          />
-                          <input
-                            type="time"
-                            value={slot.endTime}
-                            onChange={(e) => handleSlotChange(index, 'endTime', e.target.value)}
-                            className={styles.scheduleTimeInput}
-                            required
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    {eventSlots.length > 1 && (
-                      <button
-                        type="button"
-                        className={styles.removeDateButton}
-                        onClick={() => removeTimeSlot(index)}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  className={styles.addDateButton}
-                  onClick={addTimeSlot}
-                >
-                  Add Another Time Slot
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* SESSION-CENTRIC: Sessions Builder */}
-              <div className={styles.formSection}>
-                <h2>Event Sessions</h2>
-                <div className={styles.sessionsBuilder}>
-                  {eventSessions.map((session, sessionIndex) => (
-                    <div key={session.id} className={styles.sessionCard}>
-                      <div className={styles.sessionHeader}>
-                        <h3>Session {sessionIndex + 1}</h3>
-                        {eventSessions.length > 1 && (
-                          <button
-                            type="button"
-                            className={styles.removeSessionButton}
-                            onClick={() => removeSession(session.id)}
-                          >
-                            Remove Session
-                          </button>
-                        )}
-                      </div>
-                      
-
-
-                      {/* Session Timing */}
-                      <div className={styles.sessionTiming}>
-                        <div className={styles.formGroup}>
-                          <label>Date</label>
-                          <input
-                            type="date"
-                            value={session.date}
-                            onChange={(e) => handleSessionChange(session.id, 'date', e.target.value)}
-                            required
-                          />
-                        </div>
-                        <div className={styles.formGroup}>
-                          <label>Start Time</label>
-                          <input
-                            type="time"
-                            value={session.startTime}
-                            onChange={(e) => handleSessionChange(session.id, 'startTime', e.target.value)}
-                            required
-                          />
-                        </div>
-                        <div className={styles.formGroup}>
-                          <label>End Time</label>
-                          <input
-                            type="time"
-                            value={session.endTime}
-                            onChange={(e) => handleSessionChange(session.id, 'endTime', e.target.value)}
-                            required
-                          />
-                        </div>
-                      </div>
-
-
-
-                      {/* Session Tickets */}
-                      <div className={styles.sessionTickets}>
-                        <h4>Session Tickets</h4>
-                        {session.tickets.map((ticket, ticketIndex) => (
-                          <div key={ticketIndex} className={styles.ticketRow}>
-                            <div className={styles.formGroup}>
-                              <label>Ticket Name</label>
-                              <input
-                                type="text"
-                                value={ticket.name}
-                                onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'name', e.target.value)}
-                                placeholder="e.g., General, VIP, Student"
-                                required
-                              />
-                            </div>
-                            <div className={styles.formGroup}>
-                              <label>Capacity</label>
-                              <input
-                                type="number"
-                                value={ticket.capacity}
-                                onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'capacity', e.target.value)}
-                                placeholder="Number"
-                                min="1"
-                                required
-                              />
-                            </div>
-                            <div className={styles.formGroup}>
-                              <label>Price (₹)</label>
-                              <input
-                                type="number"
-                                value={ticket.price}
-                                onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'price', e.target.value)}
-                                placeholder="Price"
-                                min="0"
-                                step="0.01"
-                                required
-                              />
-                            </div>
-                            {session.tickets.length > 1 && (
-                              <button
-                                type="button"
-                                className={styles.removeTicketButton}
-                                onClick={() => removeSessionTicket(session.id, ticketIndex)}
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          className={styles.addTicketButton}
-                          onClick={() => addSessionTicket(session.id)}
-                        >
-                          Add Ticket Type
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    className={styles.addSessionButton}
-                    onClick={addSession}
-                  >
-                    Add Another Session
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-
           {/* Location */}
           <div className={styles.formSection}>
             <h2>Location</h2>
             <div className={styles.formGroup}>
-              <label>City</label>
-              <div className={styles.locationSelectorWrapper}>
-                <div className={styles.cityInputGroup}>
-                  <input
-                    type="text"
-                    value={selectedCity}
-                    onChange={(e) => setSelectedCity(e.target.value)}
-                    placeholder="Enter city name"
-                    className={styles.cityInput}
-                    list="cities-list"
-                  />
-                  <datalist id="cities-list">
-                    {ALL_CITIES.map(city => (
-                      <option key={city} value={city} />
-                    ))}
-                  </datalist>
-                </div>
-                <p className={styles.locationNote}>
-                  The city will be automatically detected from the venue address below, or you can manually enter it above.
-                </p>
-              </div>
-            </div>
-            <div className={styles.formGroup}>
-              <label>Venue</label>
+              <label>Event Venue</label>
               {!isMapsScriptLoaded && !mapsScriptError && (
                 <Script
                   src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
@@ -1307,7 +804,7 @@ const CreateEvent = () => {
                       <div style={{ position: 'relative' }}>
                         <input
                           {...getInputProps({
-                            placeholder: 'Search for venue location...',
+                            placeholder: 'Where will your event take place?',
                             className: styles.locationInput,
                             required: true,
                             onFocus: () => setIsLocationFocused(true),
@@ -1345,46 +842,17 @@ const CreateEvent = () => {
                   }}
                 </PlacesAutocomplete>
               ) : mapsScriptError ? (
-                <div>
-                  <input
-                    type="text"
-                    value={address}
-                    onChange={(e) => {
-                      setAddress(e.target.value);
-                      setEventVenue(e.target.value);
-                    }}
-                    placeholder="Enter venue address manually"
-                    className={styles.locationInput}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      console.log('Retrying Google Maps load...');
-                      setMapsScriptError(false);
-                      setIsMapsScriptLoaded(false);
-                      // Remove existing script if any
-                      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-                      if (existingScript) {
-                        existingScript.remove();
-                      }
-                    }}
-                    style={{
-                      marginTop: '8px',
-                      padding: '8px 16px',
-                      backgroundColor: '#4CAF50',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Retry Maps Loading
-                  </button>
-                  <p style={{ color: '#888', fontSize: '14px', marginTop: '8px' }}>
-                    Google Maps failed to load. You can enter the address manually or try reloading.
-                  </p>
-                </div>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={(e) => {
+                    setAddress(e.target.value);
+                    setEventVenue(e.target.value);
+                  }}
+                  placeholder="Where will your event take place?"
+                  className={styles.locationInput}
+                  required
+                />
               ) : (
                 <input
                   type="text"
@@ -1396,9 +864,174 @@ const CreateEvent = () => {
             </div>
           </div>
 
+          {/* Event Sessions */}
+          <div className={styles.formSection}>
+            <h2>Event Sessions</h2>
+            <p className={styles.sectionDescription}>Set up your event sessions, timing, and ticketing</p>
+            <div className={styles.sessionsBuilder}>
+              {eventSessions.map((session, sessionIndex) => (
+                <div key={session.id} className={styles.sessionCard}>
+                  <div className={styles.sessionHeader}>
+                    <h4>Session {sessionIndex + 1}</h4>
+                    {eventSessions.length > 1 && (
+                      <button
+                        type="button"
+                        className={styles.removeSessionButton}
+                        onClick={() => removeSession(session.id)}
+                      >
+                        Remove Session
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Session Timing */}
+                  <div className={styles.sessionTiming}>
+                    <div className={styles.formGroup}>
+                      <label>Date</label>
+                      <input
+                        type="date"
+                        value={session.date}
+                        onChange={(e) => handleSessionChange(session.id, 'date', e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Start Time</label>
+                      <input
+                        type="time"
+                        value={session.startTime}
+                        onChange={(e) => handleSessionChange(session.id, 'startTime', e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>End Time</label>
+                      <input
+                        type="time"
+                        value={session.endTime}
+                        onChange={(e) => handleSessionChange(session.id, 'endTime', e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Session Tickets */}
+                  <div className={styles.sessionTickets}>
+                    <h5>Session Tickets</h5>
+                    {session.tickets.map((ticket, ticketIndex) => (
+                      <div key={ticketIndex} className={styles.ticketRow}>
+                        <div className={styles.formGroup}>
+                          <label>Ticket Name</label>
+                          <input
+                            type="text"
+                            value={ticket.name}
+                            onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'name', e.target.value)}
+                            placeholder="e.g., General, VIP, Student"
+                            required
+                          />
+                        </div>
+                        <div className={styles.formGroup}>
+                          <label>Capacity</label>
+                          <input
+                            type="number"
+                            value={ticket.capacity}
+                            onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'capacity', e.target.value)}
+                            placeholder="Number"
+                            min="1"
+                            required
+                          />
+                        </div>
+                        <div className={styles.formGroup}>
+                          <label>Price (₹)</label>
+                          <input
+                            type="number"
+                            value={ticket.price}
+                            onChange={(e) => handleSessionTicketChange(session.id, ticketIndex, 'price', e.target.value)}
+                            placeholder="Price"
+                            min="0"
+                            step="0.01"
+                            required
+                          />
+                        </div>
+                        {session.tickets.length > 1 && (
+                          <button
+                            type="button"
+                            className={styles.removeTicketButton}
+                            onClick={() => removeSessionTicket(session.id, ticketIndex)}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className={styles.addTicketButton}
+                      onClick={() => addSessionTicket(session.id)}
+                    >
+                      Add Ticket Type
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.addSessionButton}
+                onClick={addSession}
+              >
+                Add Another Session
+              </button>
+            </div>
+          </div>
+
+          {/* Event Summary */}
+          <div className={styles.formSection}>
+            <h2>Event Summary</h2>
+            <div className={styles.eventSummary}>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>Total Sessions:</span>
+                <span className={styles.summaryValue}>{eventSessions.length}</span>
+              </div>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>Total Capacity:</span>
+                <span className={styles.summaryValue}>
+                  {eventSessions.reduce((sum, session) => 
+                    sum + session.tickets.reduce((ticketSum, ticket) => 
+                      ticketSum + (parseInt(ticket.capacity) || 0), 0), 0
+                  )}
+                </span>
+              </div>
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryLabel}>Expected Revenue:</span>
+                <span className={styles.summaryValue}>
+                  ₹{eventSessions.reduce((sum, session) => 
+                    sum + session.tickets.reduce((ticketSum, ticket) => 
+                      ticketSum + ((parseInt(ticket.capacity) || 0) * (parseFloat(ticket.price) || 0)), 0), 0
+                  ).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Event Information */}
+          <div className={styles.formSection}>
+            <h2>Event Information</h2>
+            <div className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label>Languages</label>
+                <input
+                  type="text"
+                  value={eventLanguages}
+                  onChange={(e) => setEventLanguages(e.target.value)}
+                  placeholder="e.g., English, Hindi, Local language"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Event Guides */}
           <div className={styles.formSection}>
-            <h2>Event Guides</h2>
+            <h2>Additional Information (Optional)</h2>
             <div className={styles.guidesGrid}>
               {GUIDE_OPTIONS.map(option => (
                 <div key={option.id} className={styles.guideRow}>

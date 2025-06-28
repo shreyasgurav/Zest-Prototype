@@ -54,7 +54,35 @@ async function createEventBookingAtomic(
     }
 
     const eventData = eventDoc.data();
-    const currentTickets = eventData?.tickets || [];
+    
+    // Handle session-centric vs legacy events differently
+    const isSessionCentric = eventData?.architecture === 'session-centric';
+    let currentTickets = [];
+    let sessionId: string | null = null;
+    let selectedSession = null;
+
+    if (isSessionCentric) {
+      // For session-centric events, extract session information
+      sessionId = bookingData.selectedSession?.id || 
+                 bookingData.selectedTimeSlot?.session_id || 
+                 null;
+      selectedSession = bookingData.selectedSession;
+      
+      if (!sessionId || !selectedSession) {
+        throw new Error('Session information missing for session-centric event');
+      }
+      
+      // Find the specific session and its tickets
+      const targetSession = eventData.sessions?.find((s: any) => s.id === sessionId);
+      if (!targetSession) {
+        throw new Error(`Session ${sessionId} not found in event`);
+      }
+      
+      currentTickets = targetSession.tickets || [];
+    } else {
+      // For legacy events, use global tickets
+      currentTickets = eventData?.tickets || [];
+    }
     
     // Check availability and calculate new capacity
     const updatedTickets = currentTickets.map((ticket: any) => {
@@ -138,13 +166,29 @@ async function createEventBookingAtomic(
           ticketIndex: i + 1, // Track which ticket number this is (1st, 2nd, etc.)
           totalTicketsInBooking: totalTickets,
           individualAmount: individualAmount,
+          
+          // CRITICAL FIX: Store session information for session-centric events
+          sessionId: sessionId, // Store the session ID for efficient querying
+          selectedSession: selectedSession, // Store full session object for compatibility
+          isSessionCentric: isSessionCentric,
+          
+          // Ensure consistent time slot data
+          selectedTimeSlot: isSessionCentric ? {
+            date: selectedSession.date,
+            start_time: selectedSession.start_time,
+            end_time: selectedSession.end_time,
+            available: true,
+            session_id: sessionId
+          } : bookingData.selectedTimeSlot,
+          
           // Track the original booking for reference and revenue verification
           originalBookingData: {
             originalTotalAmount: bookingData.totalAmount,
             originalTickets: bookingData.tickets,
             bookingReference: attendeeRef.id,
             priceAtBooking: ticketPrice, // Store the price at time of booking
-            verifiedTotal: calculatedTotal // Store calculated total for auditing
+            verifiedTotal: calculatedTotal, // Store calculated total for auditing
+            sessionReference: sessionId // Store session reference
           },
           // Check-in status - each attendee can check in independently
           checkedIn: false,
@@ -169,11 +213,30 @@ async function createEventBookingAtomic(
       transaction.set(ref, data);
     }
     
-    // Update event capacity
-    transaction.update(eventRef, {
-      tickets: updatedTickets,
-      updatedAt: new Date().toISOString()
-    });
+    // Update event capacity based on event type
+    if (isSessionCentric) {
+      // Update specific session's tickets
+      const updatedSessions = eventData.sessions.map((session: any) => {
+        if (session.id === sessionId) {
+          return {
+            ...session,
+            tickets: updatedTickets
+          };
+        }
+        return session;
+      });
+      
+      transaction.update(eventRef, {
+        sessions: updatedSessions,
+        updatedAt: new Date().toISOString()
+      });
+    } else {
+      // Update global tickets for legacy events
+      transaction.update(eventRef, {
+        tickets: updatedTickets,
+        updatedAt: new Date().toISOString()
+      });
+    }
 
     // Return the first attendee ID as the primary booking reference
     return attendeeIds[0];

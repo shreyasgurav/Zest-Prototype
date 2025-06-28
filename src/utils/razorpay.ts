@@ -47,6 +47,7 @@ export interface BookingData {
   phone: string;
   selectedDate: string;
   selectedTimeSlot: any;
+  selectedSession?: any;
   tickets: any;
   totalAmount: number;
 }

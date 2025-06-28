@@ -17,12 +17,18 @@ export interface TicketData {
   title: string;
   venue: string;
   
+  // Session information for session-centric events
+  sessionId?: string;
+  selectedSession?: any;
+  isSessionCentric?: boolean;
+  
   // Booking details
   bookingId: string;
   selectedDate: string;
   selectedTimeSlot: {
     start_time: string;
     end_time: string;
+    session_id?: string;
   };
   
   // For events - ticket type and quantity
@@ -145,6 +151,11 @@ export async function createTicketsForBooking(
         venue = eventData?.event_venue || eventData?.eventVenue || 'Venue TBD';
       }
       
+      // Extract session information for session-centric events
+      const isSessionCentric = bookingData.isSessionCentric || false;
+      const sessionId = bookingData.sessionId || bookingData.selectedSession?.id || bookingData.selectedTimeSlot?.session_id || null;
+      const selectedSession = bookingData.selectedSession || null;
+      
       // For events, create tickets based on ticket types and quantities
       const ticketEntries = Object.entries(bookingData.tickets as Record<string, number>);
       
@@ -168,9 +179,17 @@ export async function createTicketsForBooking(
             title,
             venue,
             
+            sessionId: sessionId,
+            selectedSession: selectedSession,
+            isSessionCentric: isSessionCentric,
+            
             bookingId,
             selectedDate: bookingData.selectedDate,
-            selectedTimeSlot: bookingData.selectedTimeSlot,
+            selectedTimeSlot: {
+              start_time: bookingData.selectedTimeSlot.start_time,
+              end_time: bookingData.selectedTimeSlot.end_time,
+              session_id: sessionId
+            },
             
             ticketType,
             ticketQuantity: 1, // Each ticket represents 1 person

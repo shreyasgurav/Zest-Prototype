@@ -48,7 +48,11 @@ import {
   FaCopy,
   FaCog,
   FaExclamationTriangle,
-  FaUserPlus
+  FaUserPlus,
+  FaArrowLeft,
+  FaLayerGroup,
+  FaChevronRight,
+  FaPercentage
 } from 'react-icons/fa';
 
 interface TimeSlot {
@@ -61,24 +65,23 @@ interface Attendee {
   name: string;
   email: string;
   phone: string;
-  tickets: Record<string, number> | number; // Can be object for events or number for activities
+  tickets: Record<string, number> | number;
   selectedDate: string;
   selectedTimeSlot: TimeSlot;
+  selectedSession?: EventSession;
+  sessionId?: string;
   createdAt: string;
   status?: string;
   paymentStatus?: string;
   checkedIn?: boolean;
   checkInTime?: string;
   ticketIds?: string[];
-  userId?: string; // The authenticated user ID who made the booking
-  eventId?: string; // The event this attendee is registered for
-  activityId?: string; // The activity this attendee is registered for
-  
-  // New properties for individual attendee records
-  ticketType?: string; // For events - which ticket type this attendee has
-  ticketIndex?: number; // Which ticket number in the booking (1st, 2nd, etc.)
-  totalTicketsInBooking?: number; // How many total tickets were in the original booking
-  individualAmount?: number; // This attendee's portion of the payment
+  userId?: string;
+  eventId?: string;
+  ticketType?: string;
+  ticketIndex?: number;
+  totalTicketsInBooking?: number;
+  individualAmount?: number;
   originalBookingData?: {
     originalTotalAmount: number;
     originalTickets: Record<string, number> | number;
@@ -97,7 +100,7 @@ interface Ticket {
   userEmail: string;
   ticketType?: string;
   eventId?: string;
-  activityId?: string;
+  sessionId?: string;
   userId: string;
   status: 'active' | 'used' | 'cancelled' | 'expired';
   createdAt: string;
@@ -177,8 +180,13 @@ const EventDashboard = () => {
   const auth = getAuth();
   const eventId = params?.id;
   
+  // NEW: Session-centric states
+  const [selectedSession, setSelectedSession] = useState<EventSession | null>(null);
+  const [showSessionSelector, setShowSessionSelector] = useState(true);
+  
   // State management
   const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [sessionAttendees, setSessionAttendees] = useState<Attendee[]>([]);
   const [eventData, setEventData] = useState<EventData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,16 +198,17 @@ const EventDashboard = () => {
     canViewFinancials: false,
     canSendCommunications: false,
     role: 'unauthorized'
-      });
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
-    const [deleteConfirmText, setDeleteConfirmText] = useState<string>('');
+  });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'overview' | 'attendees' | 'checkin' | 'settings' | 'manage-tickets'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'confirmed' | 'pending' | 'checked-in' | 'not-checked-in'>('all');
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [sessionTickets, setSessionTickets] = useState<Ticket[]>([]);
   
-  // Real-time data
-  const [realTimeStats, setRealTimeStats] = useState({
+  // Real-time data for selected session
+  const [sessionStats, setSessionStats] = useState({
     totalRevenue: 0,
     soldTickets: 0,
     availableTickets: 0,
@@ -219,6 +228,14 @@ const EventDashboard = () => {
   const [showManualCheckIn, setShowManualCheckIn] = useState(false);
   const [manualCheckInSearch, setManualCheckInSearch] = useState('');
   const [selectedAttendeeForCheckIn, setSelectedAttendeeForCheckIn] = useState<Attendee | null>(null);
+  const [qrScannerSupported, setQrScannerSupported] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  // Loading and Undo states
+  const [checkInLoading, setCheckInLoading] = useState<string | null>(null); // attendeeId being processed
+  const [recentCheckIn, setRecentCheckIn] = useState<{attendee: Attendee, timestamp: Date} | null>(null);
+  const [undoLoading, setUndoLoading] = useState(false);
   
   // Ticket management state
   const [showTicketManager, setShowTicketManager] = useState(false);
@@ -244,33 +261,252 @@ const EventDashboard = () => {
   const unsubscribeAttendees = useRef<(() => void) | null>(null);
   const unsubscribeTickets = useRef<(() => void) | null>(null);
 
-  // Update real-time statistics - now works with individual attendee records
-  const updateRealTimeStats = useCallback((attendeesList: Attendee[], ticketsList: Ticket[]) => {
-    if (!eventData) return;
+  // Remove complex analytics state - keep it simple
+  const [showBasicStats, setShowBasicStats] = useState(true);
 
-    const totalCapacity = eventData.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0);
+  // Check QR scanner support on mount
+  useEffect(() => {
+    const checkQRSupport = async () => {
+      try {
+        // Check if BarcodeDetector is supported
+        if ('BarcodeDetector' in window) {
+          setQrScannerSupported(true);
+        } else {
+          console.log('BarcodeDetector not supported, will use manual input fallback');
+          setQrScannerSupported(false);
+        }
+      } catch (error) {
+        console.log('QR scanner not supported:', error);
+        setQrScannerSupported(false);
+      }
+    };
+
+    checkQRSupport();
+  }, []);
+
+  // Start QR scanner
+  const startQRScanner = async () => {
+    if (!qrScannerSupported) {
+      setScanResult({
+        type: 'info',
+        message: 'QR scanning not supported on this device. Use manual check-in instead.'
+      });
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' } // Use back camera
+      });
+      
+      setCameraStream(stream);
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      
+      setScannerActive(true);
+      setScanResult({
+        type: 'info',
+        message: 'QR scanner started. Point camera at attendee QR code.'
+      });
+
+      // Start scanning for QR codes
+      startBarcodeDetection(stream);
+      
+    } catch (error) {
+      console.error('Error starting camera:', error);
+      setScanResult({
+        type: 'error',
+        message: 'Could not access camera. Please ensure camera permissions are granted.'
+      });
+    }
+  };
+
+  // Stop QR scanner
+  const stopQRScanner = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
     
-    // With individual attendee records, each attendee represents 1 ticket
-    const soldTickets = attendeesList.length;
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     
-    // Calculate revenue - each attendee has their individual amount
-    const revenue = attendeesList.reduce((sum, attendee) => {
-      // Use individualAmount if available (new system), fallback to calculation for old records
+    setScannerActive(false);
+    setScanResult(null);
+  };
+
+  // Barcode detection
+  const startBarcodeDetection = async (stream: MediaStream) => {
+    if (!('BarcodeDetector' in window)) return;
+
+    try {
+      const barcodeDetector = new (window as any).BarcodeDetector({
+        formats: ['qr_code']
+      });
+
+      const detectBarcodes = async () => {
+        if (videoRef.current && scannerActive) {
+          try {
+            const barcodes = await barcodeDetector.detect(videoRef.current);
+            
+            if (barcodes.length > 0) {
+              const qrData = barcodes[0].rawValue;
+              await processQRCode(qrData);
+            }
+            
+            // Continue scanning if still active
+            if (scannerActive) {
+              requestAnimationFrame(detectBarcodes);
+            }
+          } catch (error) {
+            // Continue scanning even if detection fails
+            if (scannerActive) {
+              requestAnimationFrame(detectBarcodes);
+            }
+          }
+        }
+      };
+
+      // Start detection loop
+      detectBarcodes();
+      
+    } catch (error) {
+      console.error('Error setting up barcode detection:', error);
+      setScanResult({
+        type: 'error',
+        message: 'Error setting up QR scanner. Please use manual check-in.'
+      });
+    }
+  };
+
+  // Process scanned QR code
+  const processQRCode = async (qrData: string) => {
+    try {
+      // Parse QR data - assuming it contains ticket ID or attendee info
+      let ticketId = '';
+      let attendeeId = '';
+      
+      try {
+        // Try parsing as JSON first
+        const qrJson = JSON.parse(qrData);
+        ticketId = qrJson.ticketId || qrJson.id || '';
+        attendeeId = qrJson.attendeeId || '';
+      } catch {
+        // If not JSON, treat as plain ticket ID
+        ticketId = qrData;
+      }
+
+      if (!ticketId) {
+        setScanResult({
+          type: 'error',
+          message: 'Invalid QR code format'
+        });
+        return;
+      }
+
+      // Find attendee by ticket ID or attendee ID
+      const attendee = sessionAttendees.find(a => 
+        a.id === attendeeId || 
+        a.ticketIds?.includes(ticketId) ||
+        a.id === ticketId ||
+        a.email.includes(ticketId) // Fallback for email-based lookup
+      );
+
+      if (!attendee) {
+        setScanResult({
+          type: 'error',
+          message: `No attendee found for this ticket (${ticketId})`
+        });
+        return;
+      }
+
+      // Stop scanner and process check-in
+      stopQRScanner();
+      await handleSessionCheckIn(attendee);
+      
+    } catch (error) {
+      console.error('Error processing QR code:', error);
+      setScanResult({
+        type: 'error',
+        message: 'Error processing QR code. Please try manual check-in.'
+      });
+    }
+  };
+
+  // Helper functions
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatTime = (timeString: string) => {
+    return new Date(`2000/01/01 ${timeString}`).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  // NEW: Session selection handler
+  const handleSessionSelect = (session: EventSession) => {
+    setSelectedSession(session);
+    setShowSessionSelector(false);
+    setActiveTab('overview');
+    
+    // Set up real-time listeners for this session
+    if (permissions.canView && eventId) {
+      setupRealTimeAttendees();
+      setupRealTimeTickets();
+    }
+  };
+
+  // NEW: Update session-specific statistics
+  const updateSessionStats = useCallback((session: EventSession, sessionAttendees: Attendee[], sessionTickets: Ticket[]) => {
+    if (!session) return;
+
+    const totalCapacity = session.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0);
+    const soldTickets = sessionAttendees.length;
+    
+    // Calculate revenue for this session
+    const revenue = sessionAttendees.reduce((sum, attendee) => {
+      // Try individualAmount first (for new individual records)
       if (attendee.individualAmount) {
         return sum + attendee.individualAmount;
-      } else {
-        // Fallback for old group booking records
+      }
+      
+      // Calculate from ticket prices for group bookings or legacy records
+      if (typeof attendee.tickets === 'object') {
         return sum + Object.entries(attendee.tickets).reduce((ticketSum, [ticketName, count]) => {
-          const ticket = eventData.tickets.find(t => t.name === ticketName);
+          const ticket = session.tickets.find(t => t.name === ticketName);
           return ticketSum + (ticket ? ticket.price * Number(count) : 0);
         }, 0);
       }
+      
+      // For legacy single ticket bookings
+      if (typeof attendee.tickets === 'number' && session.tickets.length > 0) {
+        return sum + (session.tickets[0].price * attendee.tickets);
+      }
+      
+      // Fallback: try to get from originalBookingData
+      if (attendee.originalBookingData?.originalTotalAmount) {
+        return sum + attendee.originalBookingData.originalTotalAmount;
+      }
+      
+      return sum;
     }, 0);
 
-    const checkedInCount = attendeesList.filter(attendee => attendee.checkedIn).length;
-    const pendingCheckIn = attendeesList.length - checkedInCount;
+    const checkedInCount = sessionAttendees.filter(attendee => attendee.checkedIn).length;
+    const pendingCheckIn = sessionAttendees.length - checkedInCount;
 
-    setRealTimeStats({
+    setSessionStats({
       totalRevenue: revenue,
       soldTickets,
       availableTickets: totalCapacity - soldTickets,
@@ -279,135 +515,9 @@ const EventDashboard = () => {
       pendingCheckIn,
       lastUpdated: new Date()
     });
-  }, [eventData]);
+  }, []);
 
-  // Real-time attendees fetching
-  const setupRealTimeAttendees = useCallback(() => {
-    if (!eventId || !permissions.canView) return;
-
-    const attendeesRef = collection(db, 'eventAttendees');
-    const attendeesQuery = query(
-      attendeesRef,
-      where('eventId', '==', eventId),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubscribe = onSnapshot(
-      attendeesQuery,
-      (snapshot) => {
-        const attendeesList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Attendee[];
-        
-        setAttendees(attendeesList);
-        updateRealTimeStats(attendeesList, tickets);
-        setLastRefresh(new Date());
-      },
-      (error) => {
-        console.error("Error in real-time attendees listener:", error);
-        setError(error.message);
-      }
-    );
-
-    unsubscribeAttendees.current = unsubscribe;
-    return unsubscribe;
-  }, [eventId, permissions.canView, updateRealTimeStats, tickets]);
-
-  // Real-time tickets fetching
-  const setupRealTimeTickets = useCallback(() => {
-    if (!eventId || !permissions.canView) return;
-
-    const ticketsRef = collection(db, 'tickets');
-    
-    // Create multiple queries to fetch tickets for both events and activities
-    const eventTicketsQuery = query(
-      ticketsRef,
-      where('eventId', '==', eventId)
-    );
-    
-    const activityTicketsQuery = query(
-      ticketsRef,
-      where('activityId', '==', eventId)
-    );
-
-    // Set up listeners for both event and activity tickets
-    const unsubscribeEvent = onSnapshot(
-      eventTicketsQuery,
-      (snapshot) => {
-        let eventTickets = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Ticket[];
-        
-        // Get activity tickets
-        const unsubscribeActivity = onSnapshot(
-          activityTicketsQuery,
-          (activitySnapshot) => {
-            let activityTickets = activitySnapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
-            })) as Ticket[];
-            
-            // Combine and sort all tickets
-            let allTickets = [...eventTickets, ...activityTickets];
-            allTickets.sort((a, b) => {
-              const dateA = new Date(a.createdAt || 0).getTime();
-              const dateB = new Date(b.createdAt || 0).getTime();
-              return dateB - dateA;
-            });
-            
-            setTickets(allTickets);
-            updateRealTimeStats(attendees, allTickets);
-          },
-          (error) => {
-            console.error("Error in activity tickets listener:", error);
-            // If activity query fails, just use event tickets
-            setTickets(eventTickets);
-            updateRealTimeStats(attendees, eventTickets);
-          }
-        );
-        
-        // Store the activity unsubscribe function
-        if (unsubscribeTickets.current) {
-          unsubscribeTickets.current();
-        }
-        unsubscribeTickets.current = unsubscribeActivity;
-      },
-      (error) => {
-        console.error("Error in event tickets listener:", error);
-        // Fallback: try simple query without any where clause and filter manually
-        const allTicketsQuery = query(ticketsRef);
-        
-        const fallbackUnsubscribe = onSnapshot(allTicketsQuery, (snapshot) => {
-          let allTickets = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as Ticket[];
-          
-          // Filter for this event/activity
-          let filteredTickets = allTickets.filter(ticket => 
-            ticket.eventId === eventId || ticket.activityId === eventId
-          );
-          
-          // Sort manually
-          filteredTickets.sort((a, b) => {
-            const dateA = new Date(a.createdAt || 0).getTime();
-            const dateB = new Date(b.createdAt || 0).getTime();
-            return dateB - dateA;
-          });
-          
-          setTickets(filteredTickets);
-          updateRealTimeStats(attendees, filteredTickets);
-        });
-        
-        unsubscribeTickets.current = fallbackUnsubscribe;
-      }
-    );
-
-    return unsubscribeEvent;
-  }, [eventId, permissions.canView, updateRealTimeStats, attendees]);
-
+  // Initialize dashboard
   useEffect(() => {
     if (!eventId) {
       setError('No event ID provided');
@@ -430,37 +540,6 @@ const EventDashboard = () => {
 
     initializeDashboard();
   }, [eventId]);
-
-  // Set up real-time listeners after authorization
-  useEffect(() => {
-    if (permissions.canView && eventId && !loading) {
-      setupRealTimeAttendees();
-      setupRealTimeTickets();
-    }
-
-    // Cleanup on unmount
-    return () => {
-      if (unsubscribeAttendees.current) {
-        unsubscribeAttendees.current();
-      }
-      if (unsubscribeTickets.current) {
-        unsubscribeTickets.current();
-      }
-    };
-  }, [permissions.canView, eventId, loading, setupRealTimeAttendees, setupRealTimeTickets]);
-
-  // Manual refresh function
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await fetchEventData();
-      setLastRefresh(new Date());
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  };
 
   const checkAuthorization = async () => {
     if (!auth.currentUser || !eventId) {
@@ -501,998 +580,1011 @@ const EventDashboard = () => {
 
   const fetchEventData = async () => {
     if (!eventId) return;
-    
+
     try {
-      const eventDoc = await getDoc(doc(db, 'events', eventId));
+      const eventDoc = await getDoc(doc(db, "events", eventId));
       if (eventDoc.exists()) {
-        setEventData({
-          id: eventDoc.id,
-          title: eventDoc.data().title || eventDoc.data().eventTitle,
-          event_image: eventDoc.data().event_image,
-          organizationId: eventDoc.data().organizationId,
-          event_type: eventDoc.data().event_type,
-          time_slots: eventDoc.data().time_slots,
-          tickets: eventDoc.data().tickets,
-          event_venue: eventDoc.data().event_venue,
-          about_event: eventDoc.data().about_event,
-          hosting_club: eventDoc.data().hosting_club,
-          organization_username: eventDoc.data().organization_username,
-          event_category: eventDoc.data().event_category,
-          event_languages: eventDoc.data().event_languages,
-          event_duration: eventDoc.data().event_duration,
-          event_age_limit: eventDoc.data().event_age_limit,
-        });
+        const data = eventDoc.data() as EventData;
+        setEventData({ ...data, id: eventDoc.id });
+        
+        // For session-centric events, show session selector
+        if (data.architecture === 'session-centric' && data.sessions && data.sessions.length > 0) {
+          setShowSessionSelector(true);
+        } else {
+          // For legacy events, set showSessionSelector to false and handle normally
+          setShowSessionSelector(false);
+        }
+      } else {
+        setError("Event not found");
       }
     } catch (err) {
       console.error("Error fetching event data:", err);
+      setError("Failed to load event data");
     }
   };
 
-  // Check-in functionality
-  const handleTicketScan = async (ticketData: string) => {
+  // Set up real-time listeners
+  useEffect(() => {
+    if (permissions.canView && eventId && !loading) {
+      // For session-centric events showing session selector, get all attendees for stats
+      if (eventData?.architecture === 'session-centric' && showSessionSelector) {
+        // Set up basic attendees listener to populate session selector stats
+        setupSessionSelectorAttendees();
+        return;
+      }
+      
+      // For selected session or legacy events, set up full listeners
+      setupRealTimeAttendees();
+      setupRealTimeTickets();
+    }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (unsubscribeAttendees.current) {
+        unsubscribeAttendees.current();
+        unsubscribeAttendees.current = null;
+      }
+      if (unsubscribeTickets.current) {
+        unsubscribeTickets.current();
+        unsubscribeTickets.current = null;
+      }
+    };
+  }, [permissions.canView, eventId, loading, showSessionSelector, selectedSession?.id]);
+
+  // Real-time attendees fetching for session selector
+  const setupSessionSelectorAttendees = useCallback(() => {
+    if (!eventId || !permissions.canView) return;
+
+    // Clean up existing listener
+    if (unsubscribeAttendees.current) {
+      unsubscribeAttendees.current();
+    }
+
+    // Get all attendees for the event to populate session selector stats
+    const attendeesRef = collection(db, 'eventAttendees');
+    const attendeesQuery = query(
+      attendeesRef,
+      where('eventId', '==', eventId),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(
+      attendeesQuery,
+      (snapshot) => {
+        const attendeesList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Attendee[];
+        
+        setAttendees(attendeesList);
+        setLastRefresh(new Date());
+      },
+      (error) => {
+        console.error("Error in session selector attendees listener:", error);
+        setError(`Failed to load attendees: ${error.message}`);
+      }
+    );
+
+    unsubscribeAttendees.current = unsubscribe;
+    return unsubscribe;
+  }, [eventId, permissions.canView]);
+
+  // Real-time attendees fetching
+  const setupRealTimeAttendees = useCallback(() => {
+    if (!eventId || !permissions.canView) return;
+
+    // Clean up existing listener
+    if (unsubscribeAttendees.current) {
+      unsubscribeAttendees.current();
+    }
+
+    const attendeesRef = collection(db, 'eventAttendees');
+    let attendeesQuery;
+
+    // For session-centric events with selected session, filter by session
+    if (selectedSession && eventData?.architecture === 'session-centric') {
+      // Query by sessionId for efficiency, with fallback filters
+      attendeesQuery = query(
+        attendeesRef,
+        where('eventId', '==', eventId),
+        where('sessionId', '==', selectedSession.id),
+        orderBy('createdAt', 'desc')
+      );
+    } else {
+      // For legacy events or when no session selected, get all attendees
+      attendeesQuery = query(
+        attendeesRef,
+        where('eventId', '==', eventId),
+        orderBy('createdAt', 'desc')
+      );
+    }
+
+    const unsubscribe = onSnapshot(
+      attendeesQuery,
+      (snapshot) => {
+        const attendeesList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Attendee[];
+        
+        // For session-centric events, apply additional client-side filtering as a safety net
+        if (selectedSession && eventData?.architecture === 'session-centric') {
+          const sessionAttendeesFiltered = attendeesList.filter(attendee => {
+            // Primary filter: sessionId match (this should be the main filter now)
+            if (attendee.sessionId === selectedSession.id) {
+              return true;
+            }
+            
+            // Fallback filters for backward compatibility with old records
+            if (attendee.selectedSession?.id === selectedSession.id) {
+              return true;
+            }
+            
+            // Final fallback: match by date and time
+            if (attendee.selectedDate === selectedSession.date && 
+                attendee.selectedTimeSlot?.start_time === selectedSession.start_time) {
+              return true;
+            }
+            
+            return false;
+          });
+          
+          console.log(`Session ${selectedSession.id}: Found ${sessionAttendeesFiltered.length} attendees`, {
+            totalQueried: attendeesList.length,
+            sessionFiltered: sessionAttendeesFiltered.length,
+            sessionId: selectedSession.id
+          });
+          
+          setSessionAttendees(sessionAttendeesFiltered);
+          setAttendees(attendeesList); // Keep full list for stats calculation
+          updateSessionStats(selectedSession, sessionAttendeesFiltered, sessionTickets);
+        } else {
+          setAttendees(attendeesList);
+          setSessionAttendees(attendeesList);
+        }
+        
+        setLastRefresh(new Date());
+      },
+      (error) => {
+        console.error("Error in real-time attendees listener:", error);
+        
+        // If the sessionId query fails (e.g., missing index), fallback to basic query
+        if (error.code === 'failed-precondition' && selectedSession && eventData?.architecture === 'session-centric') {
+          console.warn('SessionId query failed, falling back to basic query with client-side filtering');
+          
+          // Fallback: Query all attendees for the event and filter client-side
+          const fallbackQuery = query(
+            attendeesRef,
+            where('eventId', '==', eventId),
+            orderBy('createdAt', 'desc')
+          );
+          
+          const fallbackUnsubscribe = onSnapshot(
+            fallbackQuery,
+            (snapshot) => {
+              const allAttendees = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              })) as Attendee[];
+              
+              // Filter for selected session client-side
+              const sessionAttendees = allAttendees.filter(attendee => {
+                return attendee.sessionId === selectedSession.id ||
+                       attendee.selectedSession?.id === selectedSession.id ||
+                       (attendee.selectedDate === selectedSession.date && 
+                        attendee.selectedTimeSlot?.start_time === selectedSession.start_time);
+              });
+              
+              console.log(`Fallback filtering for session ${selectedSession.id}:`, {
+                total: allAttendees.length,
+                filtered: sessionAttendees.length
+              });
+              
+              setSessionAttendees(sessionAttendees);
+              setAttendees(allAttendees);
+              updateSessionStats(selectedSession, sessionAttendees, sessionTickets);
+              setLastRefresh(new Date());
+            },
+            (fallbackError) => {
+              console.error("Fallback query also failed:", fallbackError);
+              setError(`Database query failed: ${fallbackError.message}`);
+            }
+          );
+          
+          unsubscribeAttendees.current = fallbackUnsubscribe;
+          return;
+        }
+        
+        setError(error.message);
+      }
+    );
+
+    unsubscribeAttendees.current = unsubscribe;
+    return unsubscribe;
+  }, [eventId, permissions.canView, selectedSession, sessionTickets, updateSessionStats, eventData?.architecture]);
+
+  // Real-time tickets fetching
+  const setupRealTimeTickets = useCallback(() => {
+    if (!eventId || !permissions.canView) return;
+
+    // Clean up existing listener
+    if (unsubscribeTickets.current) {
+      unsubscribeTickets.current();
+    }
+
+    const ticketsRef = collection(db, 'tickets');
+    let ticketsQuery;
+
+    // For session-centric events with selected session, filter by session
+    if (selectedSession && eventData?.architecture === 'session-centric') {
+      ticketsQuery = query(
+        ticketsRef,
+        where('eventId', '==', eventId),
+        where('sessionId', '==', selectedSession.id)
+      );
+    } else {
+      // For legacy events or when no session selected, get all tickets
+      ticketsQuery = query(
+        ticketsRef,
+        where('eventId', '==', eventId)
+      );
+    }
+
+    const unsubscribe = onSnapshot(
+      ticketsQuery,
+      (snapshot) => {
+        const ticketsList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Ticket[];
+        
+        // For session-centric events, apply additional client-side filtering as a safety net
+        if (selectedSession && eventData?.architecture === 'session-centric') {
+          const sessionTicketsFiltered = ticketsList.filter(ticket => {
+            // Primary filter: sessionId match
+            if (ticket.sessionId === selectedSession.id) {
+              return true;
+            }
+            
+            // Fallback filters for backward compatibility
+            if (ticket.selectedDate === selectedSession.date && 
+                ticket.selectedTimeSlot?.start_time === selectedSession.start_time) {
+              return true;
+            }
+            
+            return false;
+          });
+          
+          console.log(`Session ${selectedSession.id}: Found ${sessionTicketsFiltered.length} tickets`, {
+            totalQueried: ticketsList.length,
+            sessionFiltered: sessionTicketsFiltered.length
+          });
+          
+          setSessionTickets(sessionTicketsFiltered);
+          setTickets(ticketsList); // Keep full list for stats calculation
+          updateSessionStats(selectedSession, sessionAttendees, sessionTicketsFiltered);
+        } else {
+          setTickets(ticketsList);
+          setSessionTickets(ticketsList);
+        }
+      },
+      (error) => {
+        console.error("Error in real-time tickets listener:", error);
+        
+        // If the sessionId query fails, fallback to basic query
+        if (error.code === 'failed-precondition' && selectedSession && eventData?.architecture === 'session-centric') {
+          console.warn('SessionId ticket query failed, falling back to basic query with client-side filtering');
+          
+          const fallbackQuery = query(
+            ticketsRef,
+            where('eventId', '==', eventId)
+          );
+          
+          const fallbackUnsubscribe = onSnapshot(
+            fallbackQuery,
+            (snapshot) => {
+              const allTickets = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              })) as Ticket[];
+              
+              // Filter for selected session client-side
+              const sessionTickets = allTickets.filter(ticket => {
+                return ticket.sessionId === selectedSession.id ||
+                       (ticket.selectedDate === selectedSession.date && 
+                        ticket.selectedTimeSlot?.start_time === selectedSession.start_time);
+              });
+              
+              console.log(`Fallback ticket filtering for session ${selectedSession.id}:`, {
+                total: allTickets.length,
+                filtered: sessionTickets.length
+              });
+              
+              setSessionTickets(sessionTickets);
+              setTickets(allTickets);
+              updateSessionStats(selectedSession, sessionAttendees, sessionTickets);
+            },
+            (fallbackError) => {
+              console.error("Fallback ticket query also failed:", fallbackError);
+            }
+          );
+          
+          unsubscribeTickets.current = fallbackUnsubscribe;
+          return;
+        }
+      }
+    );
+
+    unsubscribeTickets.current = unsubscribe;
+    return unsubscribe;
+  }, [eventId, permissions.canView, selectedSession, sessionAttendees, updateSessionStats, eventData?.architecture]);
+
+  // Handle manual refresh
+  const handleRefresh = async () => {
+    setRefreshing(true);
     try {
-      // Parse QR code data (assuming it contains ticket ID)
-      const ticketId = ticketData;
-      
-      // Find the ticket
-      const ticket = tickets.find(t => t.id === ticketId || t.ticketNumber === ticketData);
-      if (!ticket) {
-        setScanResult({type: 'error', message: 'Invalid ticket - not found'});
-        return;
-      }
-
-      // Check if already used
-      if (ticket.status === 'used') {
-        setScanResult({type: 'error', message: `Ticket already used at ${ticket.usedAt}`});
-        return;
-      }
-
-      // Check if cancelled or expired
-      if (ticket.status === 'cancelled' || ticket.status === 'expired') {
-        setScanResult({type: 'error', message: `Ticket is ${ticket.status}`});
-        return;
-      }
-
-      // Mark ticket as used
-      await updateDoc(doc(db, 'tickets', ticket.id), {
-        status: 'used',
-        usedAt: new Date().toISOString(),
-        checkedInBy: auth.currentUser?.uid
-      });
-
-      // Mark attendee as checked in
-      // Find attendee by userId (the user who made the booking) or fallback to email
-      const attendee = attendees.find(a => a.userId === ticket.userId) || 
-                       attendees.find(a => a.email === ticket.userEmail);
-      
-      if (attendee) {
-        await updateDoc(doc(db, 'eventAttendees', attendee.id), {
-          checkedIn: true,
-          checkInTime: new Date().toISOString()
-        });
-      }
-
-      setScanResult({
-        type: 'success', 
-        message: `✅ ${ticket.userName} checked in successfully!`
-      });
-
+      await fetchEventData();
+      setLastRefresh(new Date());
     } catch (error) {
-      console.error('Error processing ticket scan:', error);
-      setScanResult({type: 'error', message: 'Error processing ticket'});
+      console.error('Error refreshing data:', error);
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  // Manual check-in functionality
-  const handleManualCheckIn = async (attendee: Attendee) => {
-    if (!attendee || attendee.checkedIn) return;
+  // Handle check-in for session-specific attendee with validation, loading, and undo
+  const handleSessionCheckIn = async (attendee: Attendee) => {
+    if (!permissions.canManageAttendees) {
+      setScanResult({ type: 'error', message: 'You do not have permission to check in attendees' });
+      return;
+    }
 
+    if (!selectedSession) {
+      setScanResult({ type: 'error', message: 'No session selected for check-in' });
+      return;
+    }
+
+    // Validate attendee before check-in
+    if (attendee.checkedIn) {
+      setScanResult({ type: 'info', message: `${attendee.name} is already checked in` });
+      return;
+    }
+
+    if (attendee.status && attendee.status !== 'confirmed') {
+      setScanResult({ type: 'error', message: `Cannot check in ${attendee.name}: Ticket status is ${attendee.status}` });
+      return;
+    }
+
+    // Validate session timing (optional - allow early check-in but warn for late)
+    const sessionStartTime = new Date(`${selectedSession.date} ${selectedSession.start_time}`);
+    const now = new Date();
+    
+    if (now.getTime() > sessionStartTime.getTime() + (3 * 60 * 60 * 1000)) { // 3 hours after start
+      const confirmLate = window.confirm(`This session started ${Math.floor((now.getTime() - sessionStartTime.getTime()) / (1000 * 60 * 60))} hours ago. Continue with check-in?`);
+      if (!confirmLate) return;
+    }
+
+    // Set loading state
+    setCheckInLoading(attendee.id);
+    
     try {
-      // Mark attendee as checked in
-      await updateDoc(doc(db, 'eventAttendees', attendee.id), {
+      const attendeeRef = doc(db, 'eventAttendees', attendee.id);
+      await updateDoc(attendeeRef, {
         checkedIn: true,
         checkInTime: new Date().toISOString(),
         checkInMethod: 'manual',
-        checkedInBy: auth.currentUser?.uid
+        checkedInBy: auth.currentUser?.uid || 'unknown',
+        checkInSessionId: selectedSession.id
       });
 
-      // Also mark their tickets as used
-      const attendeeTickets = tickets.filter(t => 
-        t.userId === attendee.userId || t.userEmail === attendee.email
-      );
-      
-      const ticketUpdatePromises = attendeeTickets
-        .filter(t => t.status === 'active')
-        .map(ticket => 
-          updateDoc(doc(db, 'tickets', ticket.id), {
-            status: 'used',
-            usedAt: new Date().toISOString(),
-            checkInMethod: 'manual',
-            checkedInBy: auth.currentUser?.uid
-          })
-        );
-      
-      await Promise.all(ticketUpdatePromises);
+      // Store for undo functionality
+      setRecentCheckIn({
+        attendee: { ...attendee, checkedIn: true, checkInTime: new Date().toISOString() },
+        timestamp: new Date()
+      });
 
       setScanResult({
-        type: 'success', 
-        message: `✅ ${attendee.name} manually checked in successfully!`
+        type: 'success',
+        message: `${attendee.name} checked in successfully! Undo available for 30 seconds.`
       });
 
-      setSelectedAttendeeForCheckIn(null);
-      setShowManualCheckIn(false);
-      setManualCheckInSearch('');
+      // Clear undo option after 30 seconds
+      setTimeout(() => {
+        setRecentCheckIn(null);
+      }, 30000);
 
+      setTimeout(() => setScanResult(null), 5000);
     } catch (error) {
-      console.error('Error processing manual check-in:', error);
-      setScanResult({type: 'error', message: 'Error processing manual check-in'});
+      console.error('Error checking in attendee:', error);
+      setScanResult({
+        type: 'error',
+        message: 'Failed to check in attendee. Please try again.'
+      });
+      setTimeout(() => setScanResult(null), 5000);
+    } finally {
+      setCheckInLoading(null);
     }
   };
 
-  // Search attendees for manual check-in
-  const searchableAttendees = attendees.filter(attendee => {
-    if (attendee.checkedIn) return false; // Only show non-checked-in attendees
+  // Undo check-in functionality
+  const handleUndoCheckIn = async () => {
+    if (!recentCheckIn || undoLoading) return;
+
+    setUndoLoading(true);
     
-    const searchTerm = manualCheckInSearch.toLowerCase();
-    return searchTerm === '' || 
-      attendee.name.toLowerCase().includes(searchTerm) ||
-      attendee.email.toLowerCase().includes(searchTerm) ||
-      attendee.phone.includes(searchTerm);
-  });
-
-  // Manual attendee addition functionality
-  const handleManualAttendeeAdd = async () => {
-    if (!permissions.canManageAttendees || !auth.currentUser || !eventId) {
-      setManualAttendeeResult({type: 'error', message: 'You do not have permission to add attendees'});
-      return;
-    }
-
-    // Validate form data
-    if (!manualAttendeeData.name.trim() || !manualAttendeeData.email.trim() || 
-        !manualAttendeeData.phone.trim() || !manualAttendeeData.ticketType || 
-        !manualAttendeeData.selectedTimeSlot || !manualAttendeeData.quantity || manualAttendeeData.quantity < 1) {
-      setManualAttendeeResult({type: 'error', message: 'Please fill in all fields including time slot and ensure quantity is at least 1'});
-      return;
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(manualAttendeeData.email)) {
-      setManualAttendeeResult({type: 'error', message: 'Please enter a valid email address'});
-      return;
-    }
-
-    // Basic phone validation
-    const phoneRegex = /^[\+]?[1-9][\d]{1,14}$/;
-    if (!phoneRegex.test(manualAttendeeData.phone.replace(/[\s\-\(\)]/g, ''))) {
-      setManualAttendeeResult({type: 'error', message: 'Please enter a valid phone number'});
-      return;
-    }
-
-    setManualAttendeeLoading(true);
-    setManualAttendeeResult(null);
-
     try {
-              const response = await fetch('/api/manual-attendee-simple', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          eventId,
-          name: manualAttendeeData.name.trim(),
-          email: manualAttendeeData.email.trim(),
-          phone: manualAttendeeData.phone.trim(),
-          ticketType: manualAttendeeData.ticketType,
-          quantity: manualAttendeeData.quantity,
-          hostUserId: auth.currentUser.uid
-        })
+      const attendeeRef = doc(db, 'eventAttendees', recentCheckIn.attendee.id);
+      await updateDoc(attendeeRef, {
+        checkedIn: false,
+        checkInTime: null,
+        checkInMethod: null,
+        checkedInBy: null,
+        checkInSessionId: null
       });
 
-      const result = await response.json();
+      setScanResult({
+        type: 'info',
+        message: `Check-in undone for ${recentCheckIn.attendee.name}`
+      });
 
-      if (response.ok && result.success) {
-        setManualAttendeeResult({
-          type: 'success', 
-          message: result.message || 'Attendee added successfully!'
-        });
-        
-        // Clear the form
-        setManualAttendeeData({
-          name: '',
-          email: '',
-          phone: '',
-          ticketType: '',
-          quantity: 1,
-          selectedTimeSlot: null
-        });
-
-        // Close the form after a delay
-        setTimeout(() => {
-          setShowManualAttendeeForm(false);
-          setManualAttendeeResult(null);
-        }, 3000);
-
-        console.log('Manual attendee added:', result.attendeeData);
-      } else {
-        setManualAttendeeResult({
-          type: 'error', 
-          message: result.error || 'Failed to add attendee'
-        });
-      }
+      setRecentCheckIn(null);
+      setTimeout(() => setScanResult(null), 3000);
     } catch (error) {
-      console.error('Error adding manual attendee:', error);
-      setManualAttendeeResult({
-        type: 'error', 
-        message: 'Network error. Please try again.'
+      console.error('Error undoing check-in:', error);
+      setScanResult({
+        type: 'error',
+        message: 'Failed to undo check-in. Please try again.'
       });
+      setTimeout(() => setScanResult(null), 5000);
     } finally {
-      setManualAttendeeLoading(false);
+      setUndoLoading(false);
     }
   };
 
-  const resetManualAttendeeForm = () => {
-    setManualAttendeeData({
-      name: '',
-      email: '',
-      phone: '',
-      ticketType: '',
-      quantity: 1,
-      selectedTimeSlot: null
-    });
-    setManualAttendeeResult(null);
-    setShowManualAttendeeForm(false);
-  };
-
-
-
-  // Secure ticket management functions
-  const validateTicketData = (ticket: any) => {
-    if (!ticket.name || ticket.name.trim().length < 2) {
-      return 'Ticket name must be at least 2 characters long';
-    }
-    if (!ticket.capacity || parseInt(ticket.capacity) <= 0) {
-      return 'Capacity must be a positive number';
-    }
-    if (!ticket.price || parseFloat(ticket.price) < 0) {
-      return 'Price must be 0 or greater';
-    }
-    if (parseInt(ticket.capacity) > 10000) {
-      return 'Capacity cannot exceed 10,000 for safety reasons';
-    }
-    return null;
-  };
-
-  const calculateSoldTickets = (ticketName: string) => {
-    return attendees.reduce((count, attendee) => {
-      // Handle new individual attendee records
-      if (attendee.canCheckInIndependently && attendee.ticketType === ticketName) {
-        return count + 1;
-      }
-      // Handle old group booking records
-      if (typeof attendee.tickets === 'object') {
-        return count + (attendee.tickets[ticketName] || 0);
-      }
-      return count;
-    }, 0);
-  };
-
-  const handleAddNewTicket = async () => {
-    if (!permissions.canEdit || !eventData) return;
-
-    const validation = validateTicketData(newTicket);
-    if (validation) {
-      setTicketUpdateResult({type: 'error', message: validation});
-      return;
-    }
-
-    // Check for duplicate ticket names
-    const exists = eventData.tickets.some(t => 
-      t.name.toLowerCase() === newTicket.name.trim().toLowerCase()
-    );
-    if (exists) {
-      setTicketUpdateResult({type: 'error', message: 'Ticket type with this name already exists'});
-      return;
-    }
-
-    setTicketUpdating('new');
-    try {
-      const updatedTickets = [...eventData.tickets, {
-        name: newTicket.name.trim(),
-        capacity: parseInt(newTicket.capacity),
-        price: parseFloat(newTicket.price),
-        available_capacity: parseInt(newTicket.capacity)
-      }];
-
-      await updateDoc(doc(db, 'events', eventId!), {
-        tickets: updatedTickets,
-        updatedAt: serverTimestamp()
-      });
-
-      setTicketUpdateResult({
-        type: 'success', 
-        message: `✅ New ticket type "${newTicket.name}" added successfully!`
-      });
-      
-      setNewTicket({ name: '', capacity: '', price: '' });
-      await fetchEventData(); // Refresh data
-
-    } catch (error) {
-      console.error('Error adding new ticket:', error);
-      setTicketUpdateResult({type: 'error', message: 'Failed to add new ticket type'});
-    } finally {
-      setTicketUpdating(null);
-    }
-  };
-
-  const handleUpdateTicketCapacity = async (ticketIndex: number, newCapacity: number) => {
-    if (!permissions.canEdit || !eventData) return;
-
-    const ticket = eventData.tickets[ticketIndex];
-    const soldCount = calculateSoldTickets(ticket.name);
-
-    // Validate new capacity
-    if (newCapacity < soldCount) {
-      setTicketUpdateResult({
-        type: 'error', 
-        message: `Cannot reduce capacity below ${soldCount} (already sold tickets)`
-      });
-      return;
-    }
-
-    if (newCapacity <= 0 || newCapacity > 10000) {
-      setTicketUpdateResult({
-        type: 'error', 
-        message: 'Capacity must be between 1 and 10,000'
-      });
-      return;
-    }
-
-    setTicketUpdating(ticketIndex.toString());
-    try {
-      const updatedTickets = [...eventData.tickets];
-      updatedTickets[ticketIndex] = {
-        ...ticket,
-        capacity: newCapacity,
-        available_capacity: newCapacity - soldCount
-      };
-
-      await updateDoc(doc(db, 'events', eventId!), {
-        tickets: updatedTickets,
-        updatedAt: serverTimestamp()
-      });
-
-      setTicketUpdateResult({
-        type: 'success', 
-        message: `✅ "${ticket.name}" capacity updated to ${newCapacity}`
-      });
-      
-      await fetchEventData(); // Refresh data
-
-    } catch (error) {
-      console.error('Error updating ticket capacity:', error);
-      setTicketUpdateResult({type: 'error', message: 'Failed to update ticket capacity'});
-    } finally {
-      setTicketUpdating(null);
-    }
-  };
-
-  const handleUpdateTicketPrice = async (ticketIndex: number, newPrice: number) => {
-    if (!permissions.canEdit || !eventData) return;
-
-    if (newPrice < 0) {
-      setTicketUpdateResult({type: 'error', message: 'Price cannot be negative'});
-      return;
-    }
-
-    setTicketUpdating(`price-${ticketIndex}`);
-    try {
-      const updatedTickets = [...eventData.tickets];
-      updatedTickets[ticketIndex] = {
-        ...updatedTickets[ticketIndex],
-        price: newPrice
-      };
-
-      await updateDoc(doc(db, 'events', eventId!), {
-        tickets: updatedTickets,
-        updatedAt: serverTimestamp()
-      });
-
-      setTicketUpdateResult({
-        type: 'success', 
-        message: `✅ "${updatedTickets[ticketIndex].name}" price updated to ₹${newPrice}`
-      });
-      
-      await fetchEventData(); // Refresh data
-
-    } catch (error) {
-      console.error('Error updating ticket price:', error);
-      setTicketUpdateResult({type: 'error', message: 'Failed to update ticket price'});
-    } finally {
-      setTicketUpdating(null);
-    }
-  };
-
-  const handleDeleteTicket = async (ticketIndex: number) => {
-    if (!permissions.canDelete || !eventData) return;
-
-    const ticket = eventData.tickets[ticketIndex];
-    const soldCount = calculateSoldTickets(ticket.name);
-
-    if (soldCount > 0) {
-      setTicketUpdateResult({
-        type: 'error', 
-        message: `Cannot delete "${ticket.name}" - ${soldCount} tickets already sold`
-      });
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to delete the "${ticket.name}" ticket type? This action cannot be undone.`)) {
-      return;
-    }
-
-    setTicketUpdating(`delete-${ticketIndex}`);
-    try {
-      const updatedTickets = eventData.tickets.filter((_, index) => index !== ticketIndex);
-
-      await updateDoc(doc(db, 'events', eventId!), {
-        tickets: updatedTickets,
-        updatedAt: serverTimestamp()
-      });
-
-      setTicketUpdateResult({
-        type: 'success', 
-        message: `✅ Ticket type "${ticket.name}" deleted successfully`
-      });
-      
-      await fetchEventData(); // Refresh data
-
-    } catch (error) {
-      console.error('Error deleting ticket:', error);
-      setTicketUpdateResult({type: 'error', message: 'Failed to delete ticket type'});
-    } finally {
-      setTicketUpdating(null);
-    }
-  };
-
-  const filteredAttendees = attendees.filter(attendee => {
-    const matchesSearch = searchTerm === '' || 
-      attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      attendee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      attendee.phone.includes(searchTerm);
-    
-    const matchesFilter = filterStatus === 'all' || 
-      (filterStatus === 'confirmed' && attendee.status === 'confirmed') ||
-      (filterStatus === 'pending' && attendee.status !== 'confirmed') ||
-      (filterStatus === 'checked-in' && attendee.checkedIn) ||
-      (filterStatus === 'not-checked-in' && !attendee.checkedIn);
-    
-    return matchesSearch && matchesFilter;
-  });
-
+  // Handle edit event
   const handleEdit = () => {
     router.push(`/edit-event/${eventId}`);
   };
 
+  // Handle delete event
   const handleDelete = async () => {
-    if (!permissions.canDelete || !eventId || deleteConfirmText !== 'DELETE') return;
+    if (!permissions.canDelete || !eventData) return;
 
-    setLoading(true);
+    if (deleteConfirmText !== eventData.title) {
+      setError('Event title does not match. Please type the exact event title to confirm deletion.');
+      return;
+    }
+
     try {
-      // Delete all attendees first
-      const attendeesRef = collection(db, 'eventAttendees');
-      const attendeesQuery = query(attendeesRef, where('eventId', '==', eventId));
-      const attendeesSnapshot = await getDocs(attendeesQuery);
+      // Delete all related data
+      await deleteDoc(doc(db, "events", eventId!));
       
-      const deletePromises = attendeesSnapshot.docs.map(doc => 
-        deleteDoc(doc.ref)
-      );
-      
-      await Promise.all(deletePromises);
-
-      // Delete all tickets
-      const ticketsRef = collection(db, 'tickets');
-      const ticketsQuery = query(ticketsRef, where('eventId', '==', eventId));
-      const ticketsSnapshot = await getDocs(ticketsQuery);
-      
-      const deleteTicketPromises = ticketsSnapshot.docs.map(doc => 
-        deleteDoc(doc.ref)
-      );
-      
-      await Promise.all(deleteTicketPromises);
-
-      // Delete the event
-      await deleteDoc(doc(db, 'events', eventId));
-      
-      // Redirect to home page
-      router.push('/');
-      router.refresh();
-    } catch (err) {
-      console.error("Error deleting event:", err);
-      setError("Failed to delete event. Please try again.");
+      // Redirect to events list
+      router.push('/events');
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      setError('Failed to delete event. Please try again.');
     }
   };
 
+  // Export attendees data
+  const handleExportAttendees = () => {
+    if (!selectedSession && eventData?.architecture === 'session-centric') {
+      alert('Please select a session first');
+      return;
+    }
+
+    const attendeesToExport = selectedSession ? sessionAttendees : attendees;
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Name,Email,Phone,Ticket Type,Check-in Status,Check-in Time,Registration Date\n"
+      + attendeesToExport.map(attendee => 
+          `"${attendee.name}","${attendee.email}","${attendee.phone}","${attendee.ticketType || 'Standard'}","${attendee.checkedIn ? 'Checked In' : 'Not Checked In'}","${attendee.checkInTime ? new Date(attendee.checkInTime).toLocaleString() : 'N/A'}","${new Date(attendee.createdAt).toLocaleString()}"`
+        ).join("\n");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${eventData?.title}_${selectedSession ? selectedSession.name : 'all'}_attendees.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Update session ticket capacity
+  const handleUpdateSessionTicket = async (ticketIndex: number, field: 'capacity' | 'price', value: number) => {
+    if (!selectedSession || !eventData || !eventData.sessions || !permissions.canEdit) return;
+
+    setTicketUpdating(`${field}-${ticketIndex}`);
+    
+    try {
+      // Find the session in the event data
+      const sessionIndex = eventData.sessions.findIndex(s => s.id === selectedSession.id);
+      if (sessionIndex === -1) {
+        throw new Error('Session not found');
+      }
+
+      // Update the session data
+      const updatedSessions = [...eventData.sessions];
+      const updatedTickets = [...updatedSessions[sessionIndex].tickets];
+      
+      if (field === 'capacity') {
+        const soldCount = sessionAttendees.filter(a => a.ticketType === updatedTickets[ticketIndex].name).length;
+        if (value < soldCount) {
+          setTicketUpdateResult({
+            type: 'error',
+            message: `Cannot reduce capacity below ${soldCount} (already sold tickets)`
+          });
+          return;
+        }
+        updatedTickets[ticketIndex].capacity = value;
+        updatedTickets[ticketIndex].available_capacity = value - soldCount;
+      } else {
+        updatedTickets[ticketIndex].price = value;
+      }
+
+      updatedSessions[sessionIndex].tickets = updatedTickets;
+
+      // Update in database
+      await updateDoc(doc(db, 'events', eventId!), {
+        sessions: updatedSessions,
+        updatedAt: serverTimestamp()
+      });
+
+      setTicketUpdateResult({
+        type: 'success',
+        message: `Ticket ${field} updated successfully!`
+      });
+
+      // Refresh event data
+      await fetchEventData();
+
+    } catch (error) {
+      console.error(`Error updating ticket ${field}:`, error);
+      setTicketUpdateResult({
+        type: 'error',
+        message: `Failed to update ticket ${field}`
+      });
+    } finally {
+      setTicketUpdating(null);
+      setTimeout(() => setTicketUpdateResult(null), 3000);
+    }
+  };
+
+  // Add new ticket type to session
+  const handleAddSessionTicket = async () => {
+    if (!selectedSession || !eventData || !eventData.sessions || !permissions.canEdit) return;
+
+    if (!newTicket.name.trim() || !newTicket.capacity || !newTicket.price) {
+      setTicketUpdateResult({
+        type: 'error',
+        message: 'Please fill in all ticket fields'
+      });
+      return;
+    }
+
+    setTicketUpdating('new');
+
+    try {
+      // Find the session in the event data
+      const sessionIndex = eventData.sessions.findIndex(s => s.id === selectedSession.id);
+      if (sessionIndex === -1) {
+        throw new Error('Session not found');
+      }
+
+      // Check for duplicate ticket names
+      const sessionTickets = eventData.sessions[sessionIndex].tickets;
+      if (sessionTickets.some((t: any) => t.name.toLowerCase() === newTicket.name.trim().toLowerCase())) {
+        setTicketUpdateResult({
+          type: 'error',
+          message: 'Ticket type with this name already exists in this session'
+        });
+        return;
+      }
+
+      // Update the session data
+      const updatedSessions = [...eventData.sessions];
+      updatedSessions[sessionIndex].tickets.push({
+        name: newTicket.name.trim(),
+        capacity: parseInt(newTicket.capacity),
+        price: parseFloat(newTicket.price),
+        available_capacity: parseInt(newTicket.capacity)
+      });
+
+      // Update in database
+      await updateDoc(doc(db, 'events', eventId!), {
+        sessions: updatedSessions,
+        updatedAt: serverTimestamp()
+      });
+
+      setTicketUpdateResult({
+        type: 'success',
+        message: 'New ticket type added successfully!'
+      });
+
+      setNewTicket({ name: '', capacity: '', price: '' });
+      
+      // Refresh event data
+      await fetchEventData();
+
+    } catch (error) {
+      console.error('Error adding new ticket:', error);
+      setTicketUpdateResult({
+        type: 'error',
+        message: 'Failed to add new ticket type'
+      });
+    } finally {
+      setTicketUpdating(null);
+      setTimeout(() => setTicketUpdateResult(null), 3000);
+    }
+  };
+
+  // Loading state
   if (loading) {
     return (
-      <div className={styles.eventDashboard}>
-        <div className={styles.loadingState}>Loading dashboard...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className={styles.eventDashboard}>
-        <div className={styles.errorState}>Error: {error}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.eventDashboard}>
-      {/* Enhanced Header with Event Image */}
-      <div className={styles.dashboardHeader}>
-        <div className={styles.headerContent}>
-          <div className={styles.eventImageSection}>
-            {eventData?.event_image ? (
-              <img 
-                src={eventData.event_image} 
-                alt={eventData.title}
-                className={styles.eventImage}
-              />
-            ) : (
-              <div className={styles.eventImagePlaceholder}>
-                <FaCalendarAlt />
-              </div>
-            )}
-            <div className={styles.liveIndicator}>
-              <span className={styles.liveDot}></span>
-              <span>Live Dashboard</span>
-            </div>
-          </div>
-          
-          <div className={styles.headerLeft}>
-            <div className={styles.titleSection}>
-              <h1 className={styles.title}>
-                {eventData?.title || 'Event Dashboard'}
-              </h1>
-              <span className={styles.roleIndicator}>{permissions.role}</span>
-            </div>
-            
-            <div className={styles.eventMeta}>
-              <div className={styles.metaItem}>
-                <FaCalendarAlt />
-                <span>
-                  {(() => {
-                    const timeSlots = eventData?.time_slots;
-                    if (!timeSlots || timeSlots.length === 0) return 'No dates set';
-                    if (timeSlots.length === 1) return timeSlots[0]?.date || 'Date TBD';
-                    return `${timeSlots.length} sessions`;
-                  })()}
-                </span>
-              </div>
-              <div className={styles.metaItem}>
-                <FaMapMarkerAlt />
-                <span>{eventData?.event_venue}</span>
-              </div>
-              <div className={styles.metaItem}>
-                <FaUsers />
-                <span>{realTimeStats.checkedInCount}/{attendees.length} attended</span>
-              </div>
-              <div className={styles.metaItem}>
-                <FaClock />
-                <span>Updated {lastRefresh.toLocaleTimeString()}</span>
-              </div>
-            </div>
-          </div>
+      <div className={styles.dashboardContainer}>
+        <div className={styles.loadingState}>
+          <div className={styles.spinner}></div>
+          <p>Loading event dashboard...</p>
         </div>
-        
-        <div className={styles.headerActions}>
-          <div className={styles.quickStats}>
-            <div className={styles.quickStatItem}>
-              <span className={styles.quickStatValue}>₹{(realTimeStats.totalRevenue / 1000).toFixed(0)}K</span>
-              <span className={styles.quickStatLabel}>Revenue</span>
-            </div>
-            <div className={styles.quickStatItem}>
-              <span className={styles.quickStatValue}>{Math.round((realTimeStats.soldTickets / realTimeStats.totalCapacity) * 100)}%</span>
-              <span className={styles.quickStatLabel}>Sold</span>
-            </div>
-          </div>
-          
-          <button 
-            onClick={handleRefresh} 
-            className={`${styles.refreshButton} ${refreshing ? styles.spinning : ''}`}
-            disabled={refreshing}
-            title="Refresh dashboard data"
-          >
-            <FaSyncAlt />
-            <span>Refresh</span>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !permissions.canView) {
+    return (
+      <div className={styles.dashboardContainer}>
+        <div className={styles.errorState}>
+          <FaExclamationTriangle />
+          <h2>Access Denied</h2>
+          <p>{error || "You don't have permission to view this dashboard"}</p>
+          <button onClick={() => router.push('/events')} className={styles.backButton}>
+            Back to Events
           </button>
         </div>
       </div>
+    );
+  }
 
-      {/* Enhanced Stats Grid with Animations */}
-      <div className={styles.statsGrid}>
-        <div className={`${styles.statCard} ${styles.revenueCard}`}>
-          <div className={styles.statContent}>
-            <div className={styles.statHeader}>
-              <div className={styles.statIcon}>
-                <FaMoneyBillWave />
-              </div>
-              <div className={styles.statTrend}>
-                <span className={styles.trendUp}>+12%</span>
-              </div>
-            </div>
-            <h3 className={styles.statValue}>₹{realTimeStats.totalRevenue.toLocaleString()}</h3>
-            <p className={styles.statLabel}>Total Revenue</p>
-            <div className={styles.statFooter}>
-              <span className={styles.statSubtext}>
-                Avg: ₹{Math.round(realTimeStats.totalRevenue / (attendees.length || 1))} per attendee
-              </span>
-            </div>
-          </div>
-          <div className={styles.statGlow}></div>
-        </div>
-        
-        <div className={`${styles.statCard} ${styles.ticketCard}`}>
-          <div className={styles.statContent}>
-            <div className={styles.statHeader}>
-              <div className={styles.statIcon}>
-                <FaTicketAlt />
-              </div>
-              <div className={styles.capacityIndicator}>
-                <div className={`${styles.capacityDot} ${
-                  (realTimeStats.soldTickets / realTimeStats.totalCapacity) > 0.8 ? 'high' : 
-                  (realTimeStats.soldTickets / realTimeStats.totalCapacity) > 0.5 ? 'medium' : 'low'
-                }`}></div>
-              </div>
-            </div>
-            <h3 className={styles.statValue}>{realTimeStats.soldTickets}</h3>
-            <p className={styles.statLabel}>Tickets Sold</p>
-            <div className={styles.progressContainer}>
-              <div className={styles.progressBar}>
-                <div 
-                  className={styles.progress}
-                  style={{ 
-                    width: `${(realTimeStats.soldTickets / realTimeStats.totalCapacity) * 100}%` 
-                  }}
-                ></div>
-              </div>
-              <span className={styles.progressText}>
-                {realTimeStats.availableTickets} remaining
-              </span>
+  // Session selector for session-centric events
+  if (showSessionSelector && eventData?.architecture === 'session-centric' && eventData.sessions) {
+    return (
+      <div className={styles.dashboardContainer}>
+        <div className={styles.sessionSelectorContainer}>
+          <div className={styles.sessionSelectorHeader}>
+            <button 
+              onClick={() => router.push('/events')} 
+              className={styles.backButton}
+            >
+              <FaArrowLeft /> Back to Events
+            </button>
+            <div className={styles.eventInfo}>
+              <h1>{eventData.title}</h1>
+              <p className={styles.eventSubtitle}>
+                <FaLayerGroup /> {eventData.sessions.length} Sessions • Select a session to manage
+              </p>
             </div>
           </div>
-          <div className={styles.statGlow}></div>
+
+          <div className={styles.sessionsGrid}>
+            {eventData.sessions.map((session, index) => {
+              // Filter attendees for this specific session
+              const sessionAttendeesList = attendees.filter(attendee => {
+                // Primary filter: sessionId match
+                if (attendee.sessionId === session.id) return true;
+                
+                // Fallback: selectedSession object match
+                if (attendee.selectedSession?.id === session.id) return true;
+                
+                // Final fallback: date and time match for legacy records
+                if (attendee.selectedDate === session.date && 
+                    attendee.selectedTimeSlot?.start_time === session.start_time) return true;
+                
+                return false;
+              });
+
+              const sessionAttendeeCount = sessionAttendeesList.length;
+              const sessionCapacity = session.maxCapacity || session.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0);
+              
+              // Calculate revenue for this session with better error handling
+              const sessionRevenue = sessionAttendeesList.reduce((sum, attendee) => {
+                try {
+                  // Try individualAmount first (for new individual records)
+                  if (attendee.individualAmount && typeof attendee.individualAmount === 'number') {
+                    return sum + attendee.individualAmount;
+                  }
+                  
+                  // Calculate from ticket prices for group bookings or legacy records
+                  if (typeof attendee.tickets === 'object' && attendee.tickets) {
+                    const ticketRevenue = Object.entries(attendee.tickets).reduce((ticketSum, [ticketName, quantity]) => {
+                      const ticket = session.tickets.find(t => t.name === ticketName);
+                      const count = Number(quantity);
+                      return ticketSum + (ticket && !isNaN(count) ? ticket.price * count : 0);
+                    }, 0);
+                    return sum + ticketRevenue;
+                  }
+                  
+                  // For legacy single ticket bookings
+                  if (typeof attendee.tickets === 'number' && session.tickets.length > 0) {
+                    return sum + (session.tickets[0].price * attendee.tickets);
+                  }
+                  
+                  // Fallback: try to get from originalBookingData
+                  if (attendee.originalBookingData?.originalTotalAmount && 
+                      typeof attendee.originalBookingData.originalTotalAmount === 'number') {
+                    return sum + attendee.originalBookingData.originalTotalAmount;
+                  }
+                  
+                  return sum;
+                } catch (error) {
+                  console.warn('Error calculating revenue for attendee:', attendee.id, error);
+                  return sum;
+                }
+              }, 0);
+
+              return (
+                <div
+                  key={session.id}
+                  className={styles.sessionCard}
+                  onClick={() => handleSessionSelect(session)}
+                >
+                  <div className={styles.sessionCardHeader}>
+                    <h3>{session.name}</h3>
+                    <span className={styles.sessionDate}>
+                      {formatDate(session.date)}
+                    </span>
+                  </div>
+                  
+                  <div className={styles.sessionCardContent}>
+                    <div className={styles.sessionTime}>
+                      <FaClock />
+                      <span>{formatTime(session.start_time)} - {formatTime(session.end_time)}</span>
+                    </div>
+                    
+                    {session.venue && session.venue !== eventData.event_venue && (
+                      <div className={styles.sessionVenue}>
+                        <FaMapMarkerAlt />
+                        <span>{session.venue}</span>
+                      </div>
+                    )}
+                    
+                    <div className={styles.sessionStats}>
+                      <div className={styles.statItem}>
+                        <FaUsers />
+                        <span>{sessionAttendeeCount} / {sessionCapacity}</span>
+                        <small>Attendees</small>
+                      </div>
+                      <div className={styles.statItem}>
+                        <FaMoneyBillWave />
+                        <span>₹{sessionRevenue.toLocaleString()}</span>
+                        <small>Revenue</small>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className={styles.sessionCardFooter}>
+                    <span className={styles.manageButton}>
+                      Manage Session <FaChevronRight />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        
-        <div className={`${styles.statCard} ${styles.attendeeCard}`}>
-          <div className={styles.statContent}>
-            <div className={styles.statHeader}>
-              <div className={styles.statIcon}>
-                <FaUserCheck />
-              </div>
-              {realTimeStats.pendingCheckIn > 0 && (
-                <div className={styles.notificationBadge}>
-                  {realTimeStats.pendingCheckIn}
+      </div>
+    );
+  }
+
+  // Main dashboard view (session-specific or legacy)
+  return (
+    <div className={styles.dashboardContainer}>
+      {/* Header */}
+      <div className={styles.dashboardHeader}>
+        <div className={styles.headerTop}>
+          <div className={styles.headerLeft}>
+            {selectedSession ? (
+              <button 
+                onClick={() => setShowSessionSelector(true)} 
+                className={styles.backButton}
+              >
+                <FaArrowLeft /> Back to Sessions
+              </button>
+            ) : (
+              <button 
+                onClick={() => router.push('/events')} 
+                className={styles.backButton}
+              >
+                <FaArrowLeft /> Back to Events
+              </button>
+            )}
+            <div className={styles.eventTitleSection}>
+              <h1>{eventData?.title}</h1>
+              {selectedSession && (
+                <div className={styles.sessionBreadcrumb}>
+                  <FaLayerGroup />
+                  <span>{selectedSession.name}</span>
+                  <span className={styles.sessionDate}>
+                    {formatDate(selectedSession.date)} • {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
+                  </span>
                 </div>
               )}
             </div>
-            <h3 className={styles.statValue}>{realTimeStats.checkedInCount}</h3>
-            <p className={styles.statLabel}>Checked In</p>
-            <div className={styles.statFooter}>
-              <span className={styles.statSubtext}>
-                {realTimeStats.pendingCheckIn} awaiting check-in
-              </span>
-            </div>
           </div>
-          <div className={styles.statGlow}></div>
+          
+          <div className={styles.headerRight}>
+            <button 
+              onClick={handleRefresh}
+              className={`${styles.refreshButton} ${refreshing ? styles.refreshing : ''}`}
+              disabled={refreshing}
+            >
+              <FaSyncAlt />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            <span className={styles.lastUpdated}>
+              Last updated: {lastRefresh.toLocaleTimeString()}
+            </span>
+          </div>
         </div>
-        
-        <div className={`${styles.statCard} ${styles.capacityCard}`}>
-          <div className={styles.statContent}>
-            <div className={styles.statHeader}>
+
+        {/* Session Stats Overview */}
+        {selectedSession && (
+          <div className={styles.statsOverview}>
+            <div className={styles.statCard}>
               <div className={styles.statIcon}>
-                <FaChartBar />
+                <FaMoneyBillWave />
               </div>
-              <div className={styles.liveIndicator}>
-                <span className={styles.liveDot}></span>
+              <div className={styles.statContent}>
+                <h3>₹{(() => {
+                  const totalRevenue = sessionAttendees.reduce((sum, attendee) => {
+                    // Try individualAmount first (for new individual records)
+                    if (attendee.individualAmount) {
+                      return sum + attendee.individualAmount;
+                    }
+                    
+                    // Calculate from ticket prices for group bookings or legacy records
+                    if (typeof attendee.tickets === 'object' && selectedSession) {
+                      return sum + Object.entries(attendee.tickets).reduce((ticketSum, [ticketName, quantity]) => {
+                        const ticket = selectedSession.tickets.find(t => t.name === ticketName);
+                        return ticketSum + (ticket ? ticket.price * Number(quantity) : 0);
+                      }, 0);
+                    }
+                    
+                    // For legacy single ticket bookings
+                    if (typeof attendee.tickets === 'number' && selectedSession && selectedSession.tickets.length > 0) {
+                      return sum + (selectedSession.tickets[0].price * attendee.tickets);
+                    }
+                    
+                    // Fallback: try to get from originalBookingData
+                    if (attendee.originalBookingData?.originalTotalAmount) {
+                      return sum + attendee.originalBookingData.originalTotalAmount;
+                    }
+                    
+                    return sum;
+                  }, 0);
+                  
+                  return totalRevenue.toLocaleString();
+                })()}</h3>
+                <p>Total Revenue</p>
               </div>
             </div>
-            <h3 className={styles.statValue}>
-              {Math.round((realTimeStats.checkedInCount / (attendees.length || 1)) * 100)}%
-            </h3>
-            <p className={styles.statLabel}>Attendance Rate</p>
-            <div className={styles.attendanceChart}>
-              <div className={styles.attendanceBar}>
-                <div 
-                  className={styles.attendanceProgress}
-                  style={{ 
-                    width: `${Math.round((realTimeStats.checkedInCount / (attendees.length || 1)) * 100)}%` 
-                  }}
-                ></div>
+            
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>
+                <FaTicketAlt />
+              </div>
+              <div className={styles.statContent}>
+                <h3>{sessionAttendees.length}</h3>
+                <p>Total Tickets Sold</p>
+              </div>
+            </div>
+            
+            <div className={styles.statCard}>
+              <div className={styles.statIcon}>
+                <FaCheckCircle />
+              </div>
+              <div className={styles.statContent}>
+                <h3>{sessionAttendees.filter(a => a.checkedIn).length}</h3>
+                <p>Checked In</p>
               </div>
             </div>
           </div>
-          <div className={styles.statGlow}></div>
-        </div>
+        )}
       </div>
 
       {/* Navigation Tabs */}
       <div className={styles.tabNavigation}>
-        <button 
-          className={`${styles.tab} ${activeTab === 'overview' ? styles.activeTab : ''}`}
+        <button
+          className={`${styles.tabButton} ${activeTab === 'overview' ? styles.active : ''}`}
           onClick={() => setActiveTab('overview')}
         >
-          <FaEye /> Overview
-          <span className={styles.tabIndicator}></span>
+          <FaChartBar />
+          Overview
         </button>
-        
-        <button 
-          className={`${styles.tab} ${activeTab === 'attendees' ? styles.activeTab : ''}`}
+        <button
+          className={`${styles.tabButton} ${activeTab === 'attendees' ? styles.active : ''}`}
           onClick={() => setActiveTab('attendees')}
-          disabled={!permissions.canManageAttendees}
         >
-          <FaUsers /> Attendees 
-          <span className={styles.tabCount}>({attendees.length})</span>
-          <span className={styles.tabIndicator}></span>
+          <FaUsers />
+          Attendees ({selectedSession ? sessionAttendees.length : attendees.length})
         </button>
-
-        <button 
-          className={`${styles.tab} ${activeTab === 'checkin' ? styles.activeTab : ''}`}
+        <button
+          className={`${styles.tabButton} ${activeTab === 'checkin' ? styles.active : ''}`}
           onClick={() => setActiveTab('checkin')}
-          disabled={!permissions.canManageAttendees}
         >
-          <FaQrcode /> Check-in
-          {realTimeStats.pendingCheckIn > 0 && (
-            <span className={styles.tabCount}>({realTimeStats.pendingCheckIn})</span>
-          )}
-          <span className={styles.tabIndicator}></span>
+          <FaQrcode />
+          Check-in
         </button>
-        
-
-
-        <button 
-          className={`${styles.tab} ${activeTab === 'manage-tickets' ? styles.activeTab : ''}`}
+        <button
+          className={`${styles.tabButton} ${activeTab === 'manage-tickets' ? styles.active : ''}`}
           onClick={() => setActiveTab('manage-tickets')}
-          disabled={!permissions.canEdit}
         >
-          <FaEdit /> Manage Tickets
-          <span className={styles.tabIndicator}></span>
+          <FaTicketAlt />
+          Manage Tickets
         </button>
-
-        <button 
-          className={`${styles.tab} ${activeTab === 'settings' ? styles.activeTab : ''}`}
+        <button
+          className={`${styles.tabButton} ${activeTab === 'settings' ? styles.active : ''}`}
           onClick={() => setActiveTab('settings')}
-          disabled={!permissions.canView}
         >
-          <FaCog /> Settings
-          <span className={styles.tabIndicator}></span>
+          <FaCog />
+          Settings
         </button>
       </div>
 
       {/* Tab Content */}
       <div className={styles.tabContent}>
-        {activeTab === 'overview' && (
+        {activeTab === 'overview' && selectedSession && (
           <div className={styles.overviewTab}>
-            {/* Enhanced Sessions Overview - Session-Centric Architecture */}
-            {eventData?.architecture === 'session-centric' && eventData?.sessions ? (
-              <div className={styles.section}>
-                <div className={styles.sectionHeader}>
-                  <h3>🎯 Sessions Overview</h3>
-                  <p>Session-centric event with {eventData.sessions.length} sessions and {eventData.total_capacity} total capacity</p>
-                </div>
-                <div className={styles.sessionsBreakdown}>
-                  {eventData.sessions.map((session, index) => {
-                    const sessionAttendees = attendees.filter(attendee => 
-                      attendee.selectedTimeSlot?.start_time === session.start_time && 
-                      attendee.selectedTimeSlot?.end_time === session.end_time &&
-                      attendee.selectedDate === session.date
-                    );
-                    const sessionCheckedIn = sessionAttendees.filter(a => a.checkedIn).length;
-                    const sessionDate = new Date(session.date);
-                    const isToday = sessionDate.toDateString() === new Date().toDateString();
-                    const isPast = sessionDate < new Date();
-                    const sessionCapacity = session.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0);
-                    const sessionRevenue = sessionAttendees.reduce((sum, attendee) => {
-                      if (attendee.individualAmount) {
-                        return sum + attendee.individualAmount;
-                      } else if (typeof attendee.tickets === 'object') {
-                        return sum + Object.entries(attendee.tickets).reduce((ticketSum, [ticketName, count]) => {
-                          const ticket = session.tickets.find(t => t.name === ticketName);
-                          return ticketSum + (ticket ? ticket.price * Number(count) : 0);
-                        }, 0);
-                      }
-                      return sum;
-                    }, 0);
-                    
-                    return (
-                      <div key={session.id} className={`${styles.sessionCard} ${isToday ? styles.today : ''} ${isPast ? styles.past : ''}`}>
-                        <div className={styles.sessionHeader}>
-                          <div className={styles.sessionInfo}>
-                            <h4>{session.name}</h4>
-                            <p className={styles.sessionDate}>
-                              {sessionDate.toLocaleDateString('en-US', { 
-                                weekday: 'long', 
-                                month: 'short', 
-                                day: 'numeric' 
-                              })} • {session.start_time} - {session.end_time}
-                            </p>
-                            {session.description && (
-                              <p className={styles.sessionDescription}>{session.description}</p>
-                            )}
-                            {eventData.venue_type === 'per_session' && session.venue && (
-                              <p className={styles.sessionVenue}>📍 {session.venue}</p>
-                            )}
-                          </div>
-                          <div className={styles.sessionBadges}>
-                            {isToday && <span className={styles.todayBadge}>Today</span>}
-                            {isPast && <span className={styles.pastBadge}>Past</span>}
-                          </div>
-                        </div>
-                        
-                        <div className={styles.sessionStats}>
-                          <div className={styles.statItem}>
-                            <span className={styles.statValue}>{sessionAttendees.length}</span>
-                            <span className={styles.statLabel}>Attendees</span>
-                            <span className={styles.statDetail}>of {sessionCapacity} capacity</span>
-                          </div>
-                          <div className={styles.statItem}>
-                            <span className={styles.statValue}>{sessionCheckedIn}</span>
-                            <span className={styles.statLabel}>Checked In</span>
-                            <span className={styles.statDetail}>{sessionAttendees.length > 0 ? Math.round((sessionCheckedIn / sessionAttendees.length) * 100) : 0}%</span>
-                          </div>
-                          <div className={styles.statItem}>
-                            <span className={styles.statValue}>₹{sessionRevenue.toLocaleString()}</span>
-                            <span className={styles.statLabel}>Revenue</span>
-                            <span className={styles.statDetail}>this session</span>
-                          </div>
-                        </div>
-
-                        <div className={styles.sessionProgress}>
-                          <div className={styles.progressSection}>
-                            <span className={styles.progressLabel}>Capacity</span>
-                            <div className={styles.progressBar}>
-                              <div 
-                                className={styles.progress}
-                                style={{ 
-                                  width: `${sessionCapacity > 0 ? (sessionAttendees.length / sessionCapacity) * 100 : 0}%` 
-                                }}
-                              ></div>
-                            </div>
-                            <span className={styles.progressText}>
-                              {sessionCapacity > 0 ? Math.round((sessionAttendees.length / sessionCapacity) * 100) : 0}% full
-                            </span>
-                          </div>
-                          <div className={styles.progressSection}>
-                            <span className={styles.progressLabel}>Check-in Rate</span>
-                            <div className={styles.progressBar}>
-                              <div 
-                                className={styles.progressCheckin}
-                                style={{ 
-                                  width: `${sessionAttendees.length > 0 ? (sessionCheckedIn / sessionAttendees.length) * 100 : 0}%` 
-                                }}
-                              ></div>
-                            </div>
-                            <span className={styles.progressText}>
-                              {sessionAttendees.length > 0 ? Math.round((sessionCheckedIn / sessionAttendees.length) * 100) : 0}% attended
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Session Ticket Breakdown */}
-                        <div className={styles.sessionTickets}>
-                          <h5>Ticket Breakdown</h5>
-                          <div className={styles.ticketList}>
-                            {session.tickets.map((ticket, ticketIndex) => {
-                              const soldCount = sessionAttendees.filter(attendee => 
-                                (attendee.ticketType === ticket.name) || 
-                                (typeof attendee.tickets === 'object' && attendee.tickets[ticket.name])
-                              ).length;
-                              const percentage = (soldCount / ticket.capacity) * 100;
-                              
-                              return (
-                                <div key={ticketIndex} className={styles.ticketItem}>
-                                  <span className={styles.ticketName}>{ticket.name}</span>
-                                  <span className={styles.ticketPrice}>₹{ticket.price}</span>
-                                  <div className={styles.ticketProgress}>
-                                    <div 
-                                      className={styles.ticketProgressBar}
-                                      style={{ width: `${percentage}%` }}
-                                    ></div>
-                                  </div>
-                                  <span className={styles.ticketStats}>{soldCount}/{ticket.capacity}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+            <div className={styles.overviewHeader}>
+              <h2>Session Overview</h2>
+              <div className={styles.sessionInfo}>
+                <span className={styles.sessionDate}>{formatDate(selectedSession.date)}</span>
+                <span className={styles.sessionTime}>
+                  {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
+                </span>
               </div>
-            ) : (
-              /* Legacy Time Slots Overview */
-              eventData?.time_slots && eventData.time_slots.length > 1 && (
-                <div className={styles.section}>
-                  <h3>📅 Sessions Overview</h3>
-                  <div className={styles.timeSlotsBreakdown}>
-                    {eventData.time_slots.map((slot, index) => {
-                      const slotAttendees = attendees.filter(attendee => 
-                        attendee.selectedTimeSlot?.start_time === slot.start_time && 
-                        attendee.selectedTimeSlot?.end_time === slot.end_time &&
-                        attendee.selectedDate === slot.date
-                      );
-                      const slotCheckedIn = slotAttendees.filter(a => a.checkedIn).length;
-                      const slotDate = new Date(slot.date);
-                      const isToday = slotDate.toDateString() === new Date().toDateString();
-                      const isPast = slotDate < new Date();
-                      
-                      return (
-                        <div key={index} className={`${styles.timeSlotCard} ${isToday ? styles.today : ''} ${isPast ? styles.past : ''}`}>
-                          <div className={styles.slotHeader}>
-                            <div className={styles.slotDate}>
-                              <h4>
-                                {slotDate.toLocaleDateString('en-US', { 
-                                  weekday: 'long', 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })}
-                                {isToday && <span className={styles.todayBadge}>Today</span>}
-                                {isPast && <span className={styles.pastBadge}>Past</span>}
-                              </h4>
-                              <p>{slot.start_time} - {slot.end_time}</p>
-                            </div>
-                            <div className={styles.slotStats}>
-                              <span className={styles.attendeeCount}>{slotAttendees.length} attendees</span>
-                              <span className={styles.checkedInCount}>{slotCheckedIn} checked in</span>
-                            </div>
-                          </div>
-                          <div className={styles.slotProgress}>
-                            <div className={styles.progressBar}>
-                              <div 
-                                className={styles.progress}
-                                style={{ 
-                                  width: `${slotAttendees.length > 0 ? (slotCheckedIn / slotAttendees.length) * 100 : 0}%` 
-                                }}
-                              ></div>
-                            </div>
-                            <span className={styles.progressText}>
-                              {slotAttendees.length > 0 ? Math.round((slotCheckedIn / slotAttendees.length) * 100) : 0}% attendance
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )
-            )}
+            </div>
 
-            {/* Ticket Breakdown */}
-            <div className={styles.section}>
-              <h3>Ticket Sales Overview</h3>
+
+
+            {/* Ticket Sales Breakdown - Simple and Clear */}
+            <div className={styles.overviewSection}>
+              <h3>Ticket Sales by Type</h3>
               <div className={styles.ticketBreakdown}>
-                {eventData?.tickets.map((ticket, index) => {
-                  const soldCount = calculateSoldTickets(ticket.name);
+                {selectedSession.tickets.map((ticket, index) => {
+                  const soldCount = sessionAttendees.filter(attendee => 
+                    attendee.ticketType === ticket.name ||
+                    (typeof attendee.tickets === 'object' && attendee.tickets[ticket.name] > 0)
+                  ).length;
+                  const revenue = soldCount * ticket.price;
                   const percentage = (soldCount / ticket.capacity) * 100;
-                  
+
                   return (
-                    <div key={index} className={styles.ticketRow}>
-                      <div className={styles.ticketInfo}>
+                    <div key={index} className={styles.ticketBreakdownCard}>
+                      <div className={styles.ticketHeader}>
                         <h4>{ticket.name}</h4>
-                        <p>₹{ticket.price} • {soldCount}/{ticket.capacity} sold</p>
-                      </div>
-                      <div className={styles.ticketProgress}>
-                        <div 
-                          className={styles.progressBar}
-                          style={{ width: `${percentage}%` }}
-                        ></div>
+                        <span className={styles.ticketPrice}>₹{ticket.price}</span>
                       </div>
                       <div className={styles.ticketStats}>
-                        <span>{Math.round(percentage)}%</span>
+                        <div className={styles.ticketStat}>
+                          <span className={styles.statLabel}>Sold</span>
+                          <span className={styles.statValue}>{soldCount} / {ticket.capacity}</span>
+                          <div className={styles.soldProgressBar}>
+                            <div 
+                              className={styles.soldProgressFill}
+                              style={{ width: `${percentage}%` }}
+                            ></div>
+                          </div>
+                          <span className={styles.soldPercentageText}>{percentage.toFixed(1)}% sold</span>
+                        </div>
+                        <div className={styles.ticketStat}>
+                          <span className={styles.statLabel}>Revenue</span>
+                          <span className={styles.statValue}>₹{revenue.toLocaleString()}</span>
+                        </div>
+                        <div className={styles.ticketStat}>
+                          <span className={styles.statLabel}>Available</span>
+                          <span className={styles.statValue}>{ticket.capacity - soldCount}</span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1500,918 +1592,700 @@ const EventDashboard = () => {
               </div>
             </div>
 
-            {/* Recent Check-ins */}
-            <div className={styles.section}>
-              <h3>Recent Check-ins</h3>
-              <div className={styles.recentBookings}>
-                {attendees.filter(a => a.checkedIn).slice(0, 5).map((attendee) => (
-                  <div key={attendee.id} className={styles.bookingItem}>
-                    <div className={styles.bookingInfo}>
-                      <h4>{attendee.name} ✅</h4>
-                      <p>{attendee.email}</p>
-                    </div>
-                    <div className={styles.bookingTickets}>
-                      {attendee.canCheckInIndependently && attendee.ticketType ? (
-                        <span className={styles.ticketBadge}>
-                          {attendee.ticketType}: 1
-                          {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
-                            <span className={styles.ticketIndex}> (#{attendee.ticketIndex}/{attendee.totalTicketsInBooking})</span>
-                          )}
-                        </span>
-                      ) : typeof attendee.tickets === 'object' ? (
-                        Object.entries(attendee.tickets).map(([type, count]) => (
-                          <span key={type} className={styles.ticketBadge}>
-                            {type}: {count}
-                          </span>
-                        ))
-                      ) : (
-                        <span className={styles.ticketBadge}>
-                          Activity: {attendee.tickets}
-                        </span>
-                      )}
-                    </div>
-                    <div className={styles.bookingTime}>
-                      {attendee.checkInTime ? new Date(attendee.checkInTime).toLocaleString() : 'Not checked in'}
-                    </div>
-                  </div>
-                ))}
+
+          </div>
+        )}
+
+        {/* Attendees Tab - DATA VIEW ONLY with CSV Export */}
+        {activeTab === 'attendees' && (
+          <div className={styles.attendeesTab}>
+            <div className={styles.attendeesHeader}>
+              <h2>Attendees Data ({sessionAttendees.length})</h2>
+              <div className={styles.attendeesActions}>
+                <div className={styles.searchBox}>
+                  <FaSearch />
+                  <input
+                    type="text"
+                    placeholder="Search attendees..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className={styles.filterSelect}
+                >
+                  <option value="all">All Attendees</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="checked-in">Checked In</option>
+                  <option value="not-checked-in">Not Checked In</option>
+                </select>
+                <button 
+                  className={styles.exportButton}
+                  onClick={handleExportAttendees}
+                >
+                  <FaDownload /> Export CSV
+                </button>
               </div>
+            </div>
+
+            {/* Attendee Statistics Summary */}
+            <div className={styles.attendeesSummary}>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryNumber}>{sessionAttendees.length}</span>
+                <span className={styles.summaryLabel}>Total Attendees</span>
+              </div>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryNumber}>
+                  {sessionAttendees.filter(a => a.checkedIn).length}
+                </span>
+                <span className={styles.summaryLabel}>Checked In</span>
+              </div>
+              <div className={styles.summaryCard}>
+                <span className={styles.summaryNumber}>
+                  {sessionAttendees.filter(a => !a.checkedIn).length}
+                </span>
+                <span className={styles.summaryLabel}>Pending</span>
+              </div>
+            </div>
+
+            {/* Attendees Data Table */}
+            <div className={styles.attendeesDataTable}>
+              {sessionAttendees.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <div className={styles.emptyStateIcon}>
+                    <FaUsers />
+                  </div>
+                  <h3>No attendees yet</h3>
+                  <p>Attendees will appear here once they register for this session.</p>
+                  <div className={styles.emptyStateActions}>
+                    <button 
+                      className={styles.emptyStateButton}
+                      onClick={() => setActiveTab('overview')}
+                    >
+                      <FaChartBar /> View Overview
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                sessionAttendees
+                  .filter(attendee => {
+                    const matchesSearch = attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        attendee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        attendee.phone.includes(searchTerm);
+                    
+                    const matchesFilter = filterStatus === 'all' ||
+                                        (filterStatus === 'checked-in' && attendee.checkedIn) ||
+                                        (filterStatus === 'not-checked-in' && !attendee.checkedIn) ||
+                                        (filterStatus === 'confirmed' && attendee.status === 'confirmed');
+                    
+                    return matchesSearch && matchesFilter;
+                  })
+                  .length === 0 ? (
+                    <div className={styles.noResults}>
+                      <div className={styles.noResultsIcon}>
+                        <FaSearch />
+                      </div>
+                      <h3>No attendees match your search</h3>
+                      <p>Try adjusting your search terms or filter settings.</p>
+                      <button 
+                        className={styles.clearFiltersButton}
+                        onClick={() => {
+                          setSearchTerm('');
+                          setFilterStatus('all');
+                        }}
+                      >
+                        Clear Filters
+                      </button>
+                    </div>
+                  ) : (
+                    <div className={styles.dataTableContainer}>
+                      <table className={styles.attendeesTable}>
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Ticket Type</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Booking Date</th>
+                            <th>Check-in Time</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sessionAttendees
+                            .filter(attendee => {
+                              const matchesSearch = attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                                  attendee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                                  attendee.phone.includes(searchTerm);
+                              
+                              const matchesFilter = filterStatus === 'all' ||
+                                                  (filterStatus === 'checked-in' && attendee.checkedIn) ||
+                                                  (filterStatus === 'not-checked-in' && !attendee.checkedIn) ||
+                                                  (filterStatus === 'confirmed' && attendee.status === 'confirmed');
+                              
+                              return matchesSearch && matchesFilter;
+                            })
+                            .map(attendee => (
+                              <tr key={attendee.id} className={attendee.checkedIn ? styles.checkedInRow : styles.pendingRow}>
+                                <td>
+                                  <div className={styles.nameCell}>
+                                    <strong>{attendee.name}</strong>
+                                    {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
+                                      <span className={styles.groupIndicator}>
+                                        #{attendee.ticketIndex} of {attendee.totalTicketsInBooking}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td>{attendee.email}</td>
+                                <td>{attendee.phone}</td>
+                                <td>
+                                  <span className={styles.ticketTypeTag}>
+                                    {attendee.ticketType || 'Standard'}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={styles.amountCell}>
+                                    ₹{(() => {
+                                      // Try individualAmount first
+                                      if (attendee.individualAmount) {
+                                        return attendee.individualAmount.toLocaleString();
+                                      }
+                                      
+                                      // Calculate from ticket prices if selectedSession available
+                                      if (typeof attendee.tickets === 'object' && selectedSession) {
+                                        const calculatedAmount = Object.entries(attendee.tickets).reduce((sum, [ticketName, quantity]) => {
+                                          const ticket = selectedSession.tickets.find(t => t.name === ticketName);
+                                          return sum + (ticket ? ticket.price * Number(quantity) : 0);
+                                        }, 0);
+                                        return calculatedAmount.toLocaleString();
+                                      }
+                                      
+                                      // Legacy single ticket
+                                      if (typeof attendee.tickets === 'number' && selectedSession && selectedSession.tickets.length > 0) {
+                                        const amount = selectedSession.tickets[0].price * attendee.tickets;
+                                        return amount.toLocaleString();
+                                      }
+                                      
+                                      // Fallback
+                                      if (attendee.originalBookingData?.originalTotalAmount) {
+                                        return attendee.originalBookingData.originalTotalAmount.toLocaleString();
+                                      }
+                                      
+                                      return '0';
+                                    })()}
+                                  </span>
+                                </td>
+                                <td>
+                                  {attendee.checkedIn ? (
+                                    <span className={styles.statusCheckedIn}>
+                                      <FaCheckCircle /> Checked In
+                                    </span>
+                                  ) : (
+                                    <span className={styles.statusPending}>
+                                      <FaClock /> Pending
+                                    </span>
+                                  )}
+                                </td>
+                                <td>
+                                  {new Date(attendee.createdAt).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  })}
+                                </td>
+                                                                 <td>
+                                   {attendee.checkedIn && attendee.checkInTime ? (
+                                     <span className={styles.checkInTimeCell}>
+                                       {new Date(attendee.checkInTime).toLocaleString('en-US', {
+                                         month: 'short',
+                                         day: 'numeric',
+                                         hour: '2-digit',
+                                         minute: '2-digit'
+                                       })}
+                                     </span>
+                                   ) : (
+                                     <span className={styles.notCheckedIn}>-</span>
+                                   )}
+                                 </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
             </div>
           </div>
         )}
 
-        {activeTab === 'attendees' && (
-          <div className={styles.attendeesTab}>
-            {/* Search and Filters */}
-            <div className={styles.controls}>
-              <div className={styles.searchBox}>
-                <FaSearch />
-                <input
-                  type="text"
-                  placeholder="Search attendees..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+        {/* Check-in Tab - COMPLETE CHECK-IN MANAGEMENT WITH ATTENDEE INFO */}
+        {activeTab === 'checkin' && (
+          <div className={styles.checkinTab}>
+            <div className={styles.checkinHeader}>
+              <h2>Check-in Management</h2>
+              <div className={styles.checkinActions}>
+                <div className={styles.checkinStats}>
+                  <span className={styles.checkinStat}>
+                    <FaUsers /> {sessionAttendees.filter(a => a.checkedIn).length} / {sessionAttendees.length} checked in
+                  </span>
+                  <span className={styles.checkinStat}>
+                    <FaPercentage /> {sessionAttendees.length > 0 
+                      ? ((sessionAttendees.filter(a => a.checkedIn).length / sessionAttendees.length) * 100).toFixed(1)
+                      : 0}% completion
+                  </span>
+                </div>
+                <button 
+                  className={styles.exportButton}
+                  onClick={handleExportAttendees}
+                >
+                  <FaDownload /> Export List
+                </button>
               </div>
-              <div className={styles.filterBox}>
-                <FaFilter />
-                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)}>
-                  <option value="all">All Status</option>
-                  <option value="confirmed">Confirmed</option>
-                  <option value="pending">Pending</option>
-                  <option value="checked-in">Checked In</option>
-                  <option value="not-checked-in">Not Checked In</option>
-                </select>
+            </div>
+            
+            {scanResult && (
+              <div className={`${styles.scanResult} ${styles[scanResult.type]}`}>
+                {scanResult.type === 'success' && <FaCheckCircle />}
+                {scanResult.type === 'error' && <FaTimesCircle />}
+                {scanResult.type === 'info' && <FaExclamationTriangle />}
+                <span>{scanResult.message}</span>
               </div>
-              <button 
-                className={styles.addAttendeeButton}
-                onClick={() => setShowManualAttendeeForm(true)}
-                disabled={!permissions.canManageAttendees}
-              >
-                <FaUserPlus /> Add Attendee
-              </button>
-              <button className={styles.downloadButton}>
-                <FaDownload /> Export CSV
-              </button>
+            )}
+
+            {/* Undo Check-in Option */}
+            {recentCheckIn && (
+              <div className={styles.undoSection}>
+                <div className={styles.undoCard}>
+                  <div className={styles.undoInfo}>
+                    <span>Just checked in: <strong>{recentCheckIn.attendee.name}</strong></span>
+                    <span className={styles.undoTimer}>
+                      Undo available for {Math.max(0, 30 - Math.floor((Date.now() - recentCheckIn.timestamp.getTime()) / 1000))} seconds
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleUndoCheckIn}
+                    disabled={undoLoading}
+                    className={styles.undoButton}
+                  >
+                    {undoLoading ? (
+                      <>
+                        <FaSyncAlt className={styles.spinning} /> Undoing...
+                      </>
+                    ) : (
+                      <>
+                        <FaArrowLeft /> Undo Check-in
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Check-in Options */}
+            <div className={styles.checkinMethods}>
+              <div className={styles.checkinMethodsHeader}>
+                <h3>Check-in Methods</h3>
+              </div>
+              <div className={styles.checkinOptions}>
+                <button 
+                  className={`${styles.scannerButton} ${scannerActive ? styles.active : ''}`}
+                  onClick={scannerActive ? stopQRScanner : startQRScanner}
+                >
+                  <FaQrcode />
+                  {scannerActive ? 'Stop QR Scanner' : 'Start QR Scanner'}
+                </button>
+                
+                <button 
+                  className={`${styles.manualButton} ${showManualCheckIn ? styles.active : ''}`}
+                  onClick={() => setShowManualCheckIn(!showManualCheckIn)}
+                >
+                  <FaSearch />
+                  Manual Search & Check-in
+                </button>
+              </div>
             </div>
 
-            {/* Attendees Table */}
-            {filteredAttendees.length === 0 ? (
-              <div className={styles.emptyState}>No attendees found matching your criteria.</div>
-            ) : (
-              <div className={styles.tableContainer}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Phone</th>
-                      <th>Tickets</th>
-                      <th>Registration</th>
-                      <th>Check-in Status</th>
-                      <th>Check-in Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredAttendees.map((attendee) => (
-                      <tr key={attendee.id}>
-                        <td>{attendee.name}</td>
-                        <td>{attendee.email}</td>
-                        <td>{attendee.phone}</td>
-                        <td>
-                          {attendee.canCheckInIndependently && attendee.ticketType ? (
-                            <span className={styles.ticketBadge}>
-                              {attendee.ticketType}: 1
-                              {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
-                                <span className={styles.ticketIndex}> (#{attendee.ticketIndex}/{attendee.totalTicketsInBooking})</span>
-                              )}
-                            </span>
-                          ) : typeof attendee.tickets === 'object' ? (
-                            Object.entries(attendee.tickets).map(([type, count]) => (
-                              <span key={type} className={styles.ticketBadge}>
-                                {type}: {count}
-                              </span>
+            {/* QR Scanner Video */}
+            {scannerActive && (
+              <div className={styles.qrScannerContainer}>
+                <div className={styles.scannerFrame}>
+                  <video
+                    ref={videoRef}
+                    className={styles.scannerVideo}
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+                  <div className={styles.scannerOverlay}>
+                    <div className={styles.scannerTarget}></div>
+                    <p>Position QR code within the frame</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Manual Search Check-in */}
+            {showManualCheckIn && (
+              <div className={styles.manualCheckInSection}>
+                <div className={styles.manualCheckInHeader}>
+                  <h3>Search & Check-in Attendees</h3>
+                  <div className={styles.searchBox}>
+                    <FaSearch />
+                    <input
+                      type="text"
+                      placeholder="Search by name, email, or phone..."
+                      value={manualCheckInSearch}
+                      onChange={(e) => setManualCheckInSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <div className={styles.searchResultsContainer}>
+                  {manualCheckInSearch ? (
+                    <div className={styles.searchResults}>
+                      {sessionAttendees
+                        .filter(attendee => 
+                          attendee.name.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
+                          attendee.email.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
+                          attendee.phone.includes(manualCheckInSearch)
+                        )
+                        .length === 0 ? (
+                          <div className={styles.noSearchResults}>
+                            <FaSearch />
+                            <p>No attendees found matching "{manualCheckInSearch}"</p>
+                          </div>
+                        ) : (
+                                                     sessionAttendees
+                             .filter(attendee => 
+                               attendee.name.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
+                               attendee.email.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
+                               attendee.phone.includes(manualCheckInSearch)
+                             )
+                             .map(attendee => (
+                               <div key={attendee.id} className={`${styles.searchResultItem} ${attendee.checkedIn ? styles.alreadyCheckedIn : styles.availableForCheckIn}`}>
+                                 <div className={styles.attendeeInfoDetailed}>
+                                   <div className={styles.attendeeMainInfo}>
+                                     <h4>{attendee.name}</h4>
+                                     {attendee.checkedIn ? (
+                                       <span className={styles.checkedInBadge}>
+                                         <FaCheckCircle /> Already Checked In
+                                       </span>
+                                     ) : (
+                                       <span className={styles.pendingBadge}>
+                                         <FaClock /> Ready to Check In
+                                       </span>
+                                     )}
+                                   </div>
+                                   <div className={styles.attendeeDetailsGrid}>
+                                     <div className={styles.detailItem}>
+                                       <span className={styles.detailLabel}>Email:</span>
+                                       <span className={styles.detailValue}>{attendee.email}</span>
+                                     </div>
+                                     <div className={styles.detailItem}>
+                                       <span className={styles.detailLabel}>Phone:</span>
+                                       <span className={styles.detailValue}>{attendee.phone}</span>
+                                     </div>
+                                     <div className={styles.detailItem}>
+                                       <span className={styles.detailLabel}>Ticket:</span>
+                                       <span className={styles.detailValue}>{attendee.ticketType || 'Standard'}</span>
+                                     </div>
+                                     <div className={styles.detailItem}>
+                                       <span className={styles.detailLabel}>Amount:</span>
+                                       <span className={styles.detailValue}>₹{(attendee.individualAmount || 0).toLocaleString()}</span>
+                                     </div>
+                                     {attendee.checkedIn && attendee.checkInTime && (
+                                       <div className={styles.detailItem}>
+                                         <span className={styles.detailLabel}>Checked in:</span>
+                                         <span className={styles.detailValue}>
+                                           {new Date(attendee.checkInTime).toLocaleString('en-US', {
+                                             month: 'short',
+                                             day: 'numeric',
+                                             hour: '2-digit',
+                                             minute: '2-digit'
+                                           })}
+                                         </span>
+                                       </div>
+                                     )}
+                                   </div>
+                                   <div className={styles.attendeeCheckInActions}>
+                                     {!attendee.checkedIn ? (
+                                       <button
+                                         onClick={() => handleSessionCheckIn(attendee)}
+                                         disabled={checkInLoading === attendee.id}
+                                         className={`${styles.checkInButton} ${checkInLoading === attendee.id ? styles.loading : ''}`}
+                                       >
+                                         {checkInLoading === attendee.id ? (
+                                           <>
+                                             <FaSyncAlt className={styles.spinning} /> Checking In...
+                                           </>
+                                         ) : (
+                                           <>
+                                             <FaUserCheck /> Check In Now
+                                           </>
+                                         )}
+                                       </button>
+                                     ) : (
+                                       <span className={styles.alreadyCheckedInText}>
+                                         <FaCheckCircle /> Checked In
+                                       </span>
+                                     )}
+                                   </div>
+                                 </div>
+                               </div>
                             ))
-                          ) : (
-                            <span className={styles.ticketBadge}>
-                              Activity: {attendee.tickets}
-                            </span>
-                          )}
-                        </td>
-                        <td>{new Date(attendee.createdAt).toLocaleDateString()}</td>
-                        <td>
-                          <span className={`${styles.statusBadge} ${attendee.checkedIn ? styles.confirmed : styles.pending}`}>
-                            {attendee.checkedIn ? (
+                        )}
+                    </div>
+                  ) : (
+                    <div className={styles.noSearchQuery}>
+                      <FaSearch />
+                      <p>Start typing to search for attendees to check in</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Quick Check-in List for Pending Attendees */}
+            {!showManualCheckIn && !scannerActive && (
+              <div className={styles.quickCheckinList}>
+                <h3>Pending Check-ins ({sessionAttendees.filter(a => !a.checkedIn).length})</h3>
+                
+                {sessionAttendees.filter(a => !a.checkedIn).length === 0 ? (
+                  <div className={styles.allCheckedIn}>
+                    <FaCheckCircle />
+                    <h4>All attendees have been checked in!</h4>
+                    <p>Great job! Everyone is accounted for.</p>
+                  </div>
+                ) : (
+                  <div className={styles.pendingAttendeesList}>
+                    {sessionAttendees
+                      .filter(a => !a.checkedIn)
+                      .slice(0, 10) // Show first 10 pending
+                      .map(attendee => (
+                        <div key={attendee.id} className={styles.quickCheckInItem}>
+                          <div className={styles.attendeeQuickInfo}>
+                            <span className={styles.attendeeName}>{attendee.name}</span>
+                            <span className={styles.attendeeTicket}>{attendee.ticketType || 'Standard'}</span>
+                          </div>
+                          <button
+                            onClick={() => handleSessionCheckIn(attendee)}
+                            disabled={checkInLoading === attendee.id}
+                            className={`${styles.quickCheckInButton} ${checkInLoading === attendee.id ? styles.loading : ''}`}
+                          >
+                            {checkInLoading === attendee.id ? (
                               <>
-                                <FaCheckCircle /> Checked In
+                                <FaSyncAlt className={styles.spinning} /> Checking In...
                               </>
                             ) : (
                               <>
-                                <FaClock /> Pending
+                                <FaUserCheck /> Check In
                               </>
                             )}
-                          </span>
-                        </td>
-                        <td>
-                          {attendee.checkInTime ? 
-                            new Date(attendee.checkInTime).toLocaleString() : 
-                            '-'
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          </button>
+                        </div>
+                      ))}
+                    
+                    {sessionAttendees.filter(a => !a.checkedIn).length > 10 && (
+                      <div className={styles.showMorePending}>
+                        <p>+{sessionAttendees.filter(a => !a.checkedIn).length - 10} more pending</p>
+                        <button 
+                          onClick={() => setShowManualCheckIn(true)}
+                          className={styles.showAllButton}
+                        >
+                          View All Pending
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
 
-        {activeTab === 'checkin' && (
-          <div className={styles.checkinTab}>
-            <div className={styles.section}>
-              <h3>Event Check-in</h3>
-              <p>Check in attendees using QR code scanning or manual search</p>
-              
-              <div className={styles.checkInMethods}>
-                <div className={styles.methodCard}>
-                  <div className={styles.methodHeader}>
-                    <FaQrcode />
-                    <h4>QR Code Scanner</h4>
-                  </div>
-                  <p>Scan attendee tickets for quick check-in</p>
-                  <button 
-                    className={styles.scannerButton}
-                    onClick={() => router.push(`/scan-tickets/${eventId}`)}
-                  >
-                    <FaCamera /> Open QR Scanner
-                  </button>
-                </div>
-
-                <div className={styles.methodCard}>
-                  <div className={styles.methodHeader}>
-                    <FaSearch />
-                    <h4>Manual Check-in</h4>
-                  </div>
-                  <p>Search and check in attendees manually</p>
-                  <button 
-                    className={styles.manualButton}
-                    onClick={() => setShowManualCheckIn(true)}
-                  >
-                    <FaUsers /> Manual Check-in
-                  </button>
-                </div>
+        {/* Manage Tickets Tab */}
+        {activeTab === 'manage-tickets' && selectedSession && (
+          <div className={styles.manageTicketsTab}>
+            <h2>Manage Session Tickets</h2>
+            
+            {ticketUpdateResult && (
+              <div className={`${styles.updateResult} ${styles[ticketUpdateResult.type]}`}>
+                {ticketUpdateResult.message}
               </div>
-              
-              {scanResult && (
-                <div className={`${styles.scanResult} ${styles[scanResult.type]}`}>
-                  {scanResult.message}
-                </div>
-              )}
-
-              {/* Quick Stats */}
-              <div className={styles.checkInStats}>
-                <div className={styles.statItem}>
-                  <FaCheckCircle />
-                  <span>{realTimeStats.checkedInCount} Checked In</span>
-                </div>
-                <div className={styles.statItem}>
-                  <FaClock />
-                  <span>{realTimeStats.pendingCheckIn} Pending</span>
-                </div>
-                <div className={styles.statItem}>
-                  <FaUsers />
-                  <span>{Math.round((realTimeStats.checkedInCount / (attendees.length || 1)) * 100)}% Attendance</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Pending Check-ins */}
-            <div className={styles.section}>
-              <h3>Pending Check-ins ({realTimeStats.pendingCheckIn})</h3>
-              <div className={styles.pendingList}>
-                {attendees.filter(a => !a.checkedIn).slice(0, 10).map((attendee) => (
-                  <div key={attendee.id} className={styles.pendingItem}>
-                    <div className={styles.attendeeInfo}>
-                      <h4>{attendee.name}</h4>
-                      <p>{attendee.email}</p>
+            )}
+            
+            <div className={styles.ticketsGrid}>
+              {selectedSession.tickets.map((ticket, index) => (
+                <div key={index} className={styles.ticketManageCard}>
+                  <div className={styles.ticketManageHeader}>
+                    <h3>{ticket.name}</h3>
+                    <span className={styles.ticketPrice}>₹{ticket.price}</span>
+                  </div>
+                  
+                  <div className={styles.ticketManageStats}>
+                    <div className={styles.statRow}>
+                      <span>Capacity:</span>
+                      <span>{ticket.capacity}</span>
                     </div>
-                    <div className={styles.ticketInfo}>
-                      {attendee.canCheckInIndependently && attendee.ticketType ? (
-                        <span className={styles.ticketBadge}>
-                          {attendee.ticketType}: 1
-                          {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
-                            <span className={styles.ticketIndex}> (#{attendee.ticketIndex}/{attendee.totalTicketsInBooking})</span>
-                          )}
-                        </span>
-                      ) : typeof attendee.tickets === 'object' ? (
-                        Object.entries(attendee.tickets).map(([type, count]) => (
-                          <span key={type} className={styles.ticketBadge}>
-                            {type}: {count}
-                          </span>
-                        ))
-                      ) : (
-                        <span className={styles.ticketBadge}>
-                          Activity: {attendee.tickets}
-                        </span>
-                      )}
+                    <div className={styles.statRow}>
+                      <span>Sold:</span>
+                      <span>{ticket.capacity - ticket.available_capacity}</span>
                     </div>
-                    <div className={styles.pendingActions}>
-                      <span className={`${styles.statusBadge} ${styles.pending}`}>
-                        <FaClock /> Pending
-                      </span>
-                      <button 
-                        className={styles.quickCheckInButton}
-                        onClick={() => handleManualCheckIn(attendee)}
-                        title="Quick check-in"
-                      >
-                        <FaUserCheck />
-                      </button>
+                    <div className={styles.statRow}>
+                      <span>Available:</span>
+                      <span>{ticket.available_capacity}</span>
+                    </div>
+                    <div className={styles.statRow}>
+                      <span>Revenue:</span>
+                      <span>₹{((ticket.capacity - ticket.available_capacity) * ticket.price).toLocaleString()}</span>
                     </div>
                   </div>
-                ))}
-              </div>
+                  
+                  <div className={styles.ticketManageActions}>
+                    <button 
+                      className={styles.editTicketButton}
+                      onClick={() => setEditingTicket({...ticket, index})}
+                    >
+                      <FaEdit /> Edit
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
+        {/* Settings Tab - Keep minimal */}
         {activeTab === 'settings' && (
           <div className={styles.settingsTab}>
-            <div className={styles.section}>
+            <h2>Event Settings</h2>
+            
+            <div className={styles.settingsSection}>
               <h3>Event Management</h3>
-              <p>Manage your event settings and configuration</p>
-              
-              <div className={styles.settingsGrid}>
-                {/* Event Actions */}
-                <div className={styles.settingsCard}>
-                  <div className={styles.settingsCardHeader}>
-                    <FaEdit className={styles.settingsIcon} />
-                    <h4>Edit Event</h4>
-                  </div>
-                  <p>Update event details, schedule, tickets, and venue information</p>
-                  <button 
-                    className={styles.settingsButton}
-                    onClick={handleEdit}
-                  >
-                    <FaEdit /> Edit Event Details
-                  </button>
-                </div>
-
-
-
-                {/* Analytics Export */}
-                <div className={styles.settingsCard}>
-                  <div className={styles.settingsCardHeader}>
-                    <FaDownload className={styles.settingsIcon} />
-                    <h4>Export Data</h4>
-                  </div>
-                  <p>Download attendee lists, revenue reports, and analytics</p>
-                  <div className={styles.exportControls}>
-                    <button className={styles.exportButton}>
-                      <FaFileExcel /> Attendees CSV
-                    </button>
-                    <button className={styles.exportButton}>
-                      <FaFilePdf /> Revenue Report
-                    </button>
-                  </div>
-                </div>
-
-
-
-                {/* Event URL & Sharing */}
-                <div className={styles.settingsCard}>
-                  <div className={styles.settingsCardHeader}>
-                    <FaShare className={styles.settingsIcon} />
-                    <h4>Share Event</h4>
-                  </div>
-                  <p>Get shareable links and promotional materials</p>
-                  <div className={styles.shareControls}>
-                    <div className={styles.urlBox}>
-                      <input 
-                        type="text" 
-                        value={`https://zest.com/event-profile/${eventId}`}
-                        readOnly
-                        className={styles.urlInput}
-                      />
-                      <button className={styles.copyButton}>
-                        <FaCopy />
-                      </button>
-                    </div>
-                    <button className={styles.shareButton}>
-                      <FaShare /> Generate QR Code
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Danger Zone */}
-            <div className={styles.section}>
-              <div className={styles.dangerZone}>
-                <h3>⚠️ Danger Zone</h3>
-                <p>These actions cannot be undone. Please proceed with caution.</p>
+              <div className={styles.settingsActions}>
+                <button 
+                  onClick={handleEdit}
+                  className={styles.editEventButton}
+                  disabled={!permissions.canEdit}
+                >
+                  <FaEdit /> Edit Event
+                </button>
                 
-                <div className={styles.dangerActions}>
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className={styles.deleteEventButton}
+                  disabled={!permissions.canDelete}
+                >
+                  <FaTrash /> Delete Event
+                </button>
+              </div>
+            </div>
+
+            {showDeleteConfirm && (
+              <div className={styles.deleteConfirmation}>
+                <h3>⚠️ Delete Event</h3>
+                <p>This action cannot be undone. All attendee data and tickets will be permanently deleted.</p>
+                <p>Type the event title "<strong>{eventData?.title}</strong>" to confirm:</p>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="Enter event title"
+                />
+                <div className={styles.deleteActions}>
                   <button 
-                    className={styles.dangerButton}
-                    onClick={() => setShowDeleteConfirm(true)}
+                    onClick={handleDelete}
+                    className={styles.confirmDeleteButton}
+                    disabled={deleteConfirmText !== eventData?.title}
                   >
-                    <FaTrash /> Delete Event Permanently
+                    Delete Event
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setDeleteConfirmText('');
+                    }}
+                    className={styles.cancelDeleteButton}
+                  >
+                    Cancel
                   </button>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'manage-tickets' && (
-          <div className={styles.manageTicketsTab}>
-            <div className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <h3>Ticket Management</h3>
-                <p>Update ticket capacities, prices, and add new ticket types</p>
-              </div>
-              
-              {ticketUpdateResult && (
-                <div className={`${styles.updateResult} ${styles[ticketUpdateResult.type]}`}>
-                  {ticketUpdateResult.message}
-                </div>
-              )}
-
-              {/* Current Tickets Management */}
-              <div className={styles.currentTickets}>
-                <h4>Current Ticket Types</h4>
-                <div className={styles.ticketManagementList}>
-                  {eventData?.tickets.map((ticket, index) => {
-                    const soldCount = calculateSoldTickets(ticket.name);
-                    const availableCount = ticket.capacity - soldCount;
-                    const salesPercentage = (soldCount / ticket.capacity) * 100;
-                    
-                    return (
-                      <div key={index} className={styles.ticketManagementItem}>
-                        <div className={styles.ticketHeader}>
-                          <div className={styles.ticketInfo}>
-                            <h5>{ticket.name}</h5>
-                            <div className={styles.ticketMetrics}>
-                              <span className={styles.metric}>
-                                <strong>{soldCount}</strong> sold of <strong>{ticket.capacity}</strong>
-                              </span>
-                              <span className={styles.metric}>
-                                <strong>₹{ticket.price}</strong> per ticket
-                              </span>
-                              <span className={`${styles.metric} ${availableCount <= 5 ? styles.lowStock : ''}`}>
-                                <strong>{availableCount}</strong> remaining
-                              </span>
-                            </div>
-                          </div>
-                          <div className={styles.ticketProgress}>
-                            <div className={styles.progressBar}>
-                              <div 
-                                className={styles.progress}
-                                style={{ width: `${Math.min(salesPercentage, 100)}%` }}
-                              ></div>
-                            </div>
-                            <span className={styles.progressText}>
-                              {Math.round(salesPercentage)}% sold
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className={styles.ticketActions}>
-                          <div className={styles.actionGroup}>
-                            <label>Capacity</label>
-                            <div className={styles.capacityInput}>
-                              <input
-                                type="number"
-                                min={soldCount}
-                                max="10000"
-                                defaultValue={ticket.capacity}
-                                onBlur={(e) => {
-                                  const newCapacity = parseInt(e.target.value);
-                                  if (newCapacity !== ticket.capacity && newCapacity >= soldCount) {
-                                    handleUpdateTicketCapacity(index, newCapacity);
-                                  }
-                                }}
-                                disabled={ticketUpdating === index.toString()}
-                              />
-                              {ticketUpdating === index.toString() && (
-                                <span className={styles.updating}>Updating...</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className={styles.actionGroup}>
-                            <label>Price (₹)</label>
-                            <div className={styles.priceInput}>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                defaultValue={ticket.price}
-                                onBlur={(e) => {
-                                  const newPrice = parseFloat(e.target.value);
-                                  if (newPrice !== ticket.price && newPrice >= 0) {
-                                    handleUpdateTicketPrice(index, newPrice);
-                                  }
-                                }}
-                                disabled={ticketUpdating === `price-${index}`}
-                              />
-                              {ticketUpdating === `price-${index}` && (
-                                <span className={styles.updating}>Updating...</span>
-                              )}
-                            </div>
-                          </div>
-
-                          {soldCount === 0 && permissions.canDelete && (
-                            <button
-                              className={styles.deleteTicketButton}
-                              onClick={() => handleDeleteTicket(index)}
-                              disabled={ticketUpdating === `delete-${index}`}
-                              title="Delete ticket type"
-                            >
-                              {ticketUpdating === `delete-${index}` ? (
-                                <FaSyncAlt className={styles.spinning} />
-                              ) : (
-                                <FaTrash />
-                              )}
-                            </button>
-                          )}
-                        </div>
-
-                        {soldCount > 0 && (
-                          <div className={styles.ticketWarning}>
-                            <span>⚠️ Cannot delete - {soldCount} tickets already sold</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Add New Ticket Type */}
-              {permissions.canEdit && (
-                <div className={styles.addNewTicket}>
-                  <h4>Add New Ticket Type</h4>
-                  <div className={styles.newTicketForm}>
-                    <div className={styles.formRow}>
-                      <div className={styles.formGroup}>
-                        <label>Ticket Name</label>
-                        <input
-                          type="text"
-                          placeholder="e.g., VIP, Early Bird, Student"
-                          value={newTicket.name}
-                          onChange={(e) => setNewTicket({...newTicket, name: e.target.value})}
-                          disabled={ticketUpdating === 'new'}
-                        />
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label>Capacity</label>
-                        <input
-                          type="number"
-                          placeholder="100"
-                          min="1"
-                          max="10000"
-                          value={newTicket.capacity}
-                          onChange={(e) => setNewTicket({...newTicket, capacity: e.target.value})}
-                          disabled={ticketUpdating === 'new'}
-                        />
-                      </div>
-
-                      <div className={styles.formGroup}>
-                        <label>Price (₹)</label>
-                        <input
-                          type="number"
-                          placeholder="0"
-                          min="0"
-                          step="0.01"
-                          value={newTicket.price}
-                          onChange={(e) => setNewTicket({...newTicket, price: e.target.value})}
-                          disabled={ticketUpdating === 'new'}
-                        />
-                      </div>
-
-                      <button
-                        className={styles.addTicketButton}
-                        onClick={handleAddNewTicket}
-                        disabled={ticketUpdating === 'new' || !newTicket.name || !newTicket.capacity || !newTicket.price}
-                      >
-                        {ticketUpdating === 'new' ? (
-                          <>
-                            <FaSyncAlt className={styles.spinning} />
-                            Adding...
-                          </>
-                        ) : (
-                          <>
-                            <FaTicketAlt />
-                            Add Ticket
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Ticket Management Guidelines */}
-              <div className={styles.guidelines}>
-                <h4>🛡️ Security Guidelines</h4>
-                <ul>
-                  <li><strong>Capacity Changes:</strong> You cannot reduce capacity below the number of already sold tickets</li>
-                  <li><strong>Price Updates:</strong> Price changes apply to new bookings only - existing tickets retain their original price</li>
-                  <li><strong>Deletion:</strong> Ticket types with existing sales cannot be deleted</li>
-                  <li><strong>Live Updates:</strong> All changes are immediately reflected in booking availability</li>
-                  <li><strong>Audit Trail:</strong> All ticket management actions are logged with timestamps</li>
-                </ul>
-              </div>
-            </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Manual Attendee Addition Modal */}
-      {showManualAttendeeForm && (
+      {/* Ticket Edit Modal */}
+      {editingTicket && (
         <div className={styles.modal}>
           <div className={styles.modalContent}>
             <div className={styles.modalHeader}>
-              <h3>Add Attendee Manually</h3>
+              <h3>Edit Ticket: {editingTicket.name}</h3>
               <button 
                 className={styles.closeButton}
-                onClick={resetManualAttendeeForm}
+                onClick={() => setEditingTicket(null)}
               >
                 <FaTimesCircle />
               </button>
             </div>
             
-            <div className={styles.manualAttendeeFormContent}>
-              <p className={styles.formDescription}>
-                Add an attendee manually. If they already have an account with this phone number, 
-                the ticket will be added to their account. Otherwise, it will be linked when they create an account.
-              </p>
-
-              {manualAttendeeResult && (
-                <div className={`${styles.formResult} ${styles[manualAttendeeResult.type]}`}>
-                  {manualAttendeeResult.message}
-                </div>
-              )}
-
-              <form className={styles.manualAttendeeForm} onSubmit={(e) => e.preventDefault()}>
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="attendeeName">Full Name *</label>
-                    <input
-                      id="attendeeName"
-                      type="text"
-                      placeholder="Enter attendee's full name"
-                      value={manualAttendeeData.name}
-                      onChange={(e) => setManualAttendeeData({...manualAttendeeData, name: e.target.value})}
-                      disabled={manualAttendeeLoading}
-                      required
-                    />
-                  </div>
-
-                  <div className={styles.formGroup}>
-                    <label htmlFor="attendeeEmail">Email Address *</label>
-                    <input
-                      id="attendeeEmail"
-                      type="email"
-                      placeholder="Enter attendee's email"
-                      value={manualAttendeeData.email}
-                      onChange={(e) => setManualAttendeeData({...manualAttendeeData, email: e.target.value})}
-                      disabled={manualAttendeeLoading}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="attendeePhone">Phone Number *</label>
-                    <input
-                      id="attendeePhone"
-                      type="tel"
-                      placeholder="+91XXXXXXXXXX or XXXXXXXXXX"
-                      value={manualAttendeeData.phone}
-                      onChange={(e) => setManualAttendeeData({...manualAttendeeData, phone: e.target.value})}
-                      disabled={manualAttendeeLoading}
-                      required
-                    />
-                    <span className={styles.fieldHint}>
-                      Used to link ticket to their account when they sign up
-                    </span>
-                  </div>
-
-                  <div className={styles.formGroup}>
-                    <label htmlFor="ticketType">Ticket Type *</label>
-                    <select
-                      id="ticketType"
-                      value={manualAttendeeData.ticketType}
-                      onChange={(e) => setManualAttendeeData({...manualAttendeeData, ticketType: e.target.value})}
-                      disabled={manualAttendeeLoading}
-                      required
-                    >
-                      <option value="">Select ticket type</option>
-                      {eventData?.tickets.map((ticket) => {
-                        const soldCount = calculateSoldTickets(ticket.name);
-                        const available = ticket.capacity - soldCount;
-                        return (
-                          <option 
-                            key={ticket.name} 
-                            value={ticket.name}
-                            disabled={available <= 0}
-                          >
-                            {ticket.name} - ₹{ticket.price} {available <= 0 ? '(Sold Out)' : `(${available} left)`}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-
-                  <div className={styles.formGroup}>
-                    <label htmlFor="timeSlot">Time Slot *</label>
-                    <select
-                      id="timeSlot"
-                      value={manualAttendeeData.selectedTimeSlot ? JSON.stringify(manualAttendeeData.selectedTimeSlot) : ''}
-                      onChange={(e) => setManualAttendeeData({...manualAttendeeData, selectedTimeSlot: e.target.value ? JSON.parse(e.target.value) : null})}
-                      disabled={manualAttendeeLoading}
-                      required
-                    >
-                      <option value="">Select time slot</option>
-                      {eventData?.time_slots?.map((slot, index) => {
-                        const slotDate = new Date(slot.date);
-                        const now = new Date();
-                        const isPast = slotDate < now;
-                        return (
-                          <option 
-                            key={index} 
-                            value={JSON.stringify(slot)}
-                            disabled={isPast}
-                          >
-                            {new Date(slot.date).toLocaleDateString('en-US', { 
-                              weekday: 'short', 
-                              month: 'short', 
-                              day: 'numeric' 
-                            })} - {slot.start_time} to {slot.end_time} {isPast ? '(Past)' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <span className={styles.fieldHint}>
-                      Select which session/time slot this attendee will attend
-                    </span>
-                  </div>
-                </div>
-
-                <div className={styles.formRow}>
-                  <div className={styles.formGroup}>
-                    <label htmlFor="quantity">Number of Tickets *</label>
-                    <input
-                      id="quantity"
-                      type="number"
-                      min="1"
-                      max="50"
-                      placeholder="1"
-                      value={manualAttendeeData.quantity}
-                      onChange={(e) => setManualAttendeeData({...manualAttendeeData, quantity: parseInt(e.target.value) || 1})}
-                      disabled={manualAttendeeLoading}
-                      required
-                    />
-                    <span className={styles.fieldHint}>
-                      Maximum 50 tickets per addition
-                    </span>
-                  </div>
-
-                  <div className={styles.formGroup}>
-                    <label>Total Amount</label>
-                    <div className={styles.totalAmountDisplay}>
-                      {manualAttendeeData.ticketType && eventData?.tickets.find(t => t.name === manualAttendeeData.ticketType) ? (
-                        <span className={styles.totalAmount}>
-                          ₹{(eventData.tickets.find(t => t.name === manualAttendeeData.ticketType)!.price * manualAttendeeData.quantity).toLocaleString()}
-                        </span>
-                      ) : (
-                        <span className={styles.totalAmountPlaceholder}>Select ticket type</span>
-                      )}
-                    </div>
-                    <span className={styles.fieldHint}>
-                      {manualAttendeeData.quantity} × ₹{eventData?.tickets.find(t => t.name === manualAttendeeData.ticketType)?.price || 0}
-                    </span>
-                  </div>
-                </div>
-
-                <div className={styles.formInfo}>
-                  <div className={styles.infoBox}>
-                    <FaUsers />
-                    <div>
-                      <h4>How it works:</h4>
-                      <ul>
-                        <li>✅ Check if account exists with phone number</li>
-                        <li>🎫 Generate multiple tickets and QR codes (if quantity {'>'}1)</li>
-                        <li>🔗 Link to existing account OR associate with phone for future linking</li>
-                        <li>📧 Each ticket can be checked in independently via QR scan or manual search</li>
-                        <li>👥 Multiple tickets for same person create individual attendee records</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </form>
-            </div>
-            
-            <div className={styles.modalActions}>
-              <button 
-                className={styles.cancelButton}
-                onClick={resetManualAttendeeForm}
-                disabled={manualAttendeeLoading}
-              >
-                Cancel
-              </button>
-              <button 
-                className={styles.confirmButton}
-                onClick={handleManualAttendeeAdd}
-                disabled={manualAttendeeLoading || !manualAttendeeData.name || !manualAttendeeData.email || !manualAttendeeData.phone || !manualAttendeeData.ticketType || !manualAttendeeData.selectedTimeSlot || !manualAttendeeData.quantity || manualAttendeeData.quantity < 1}
-              >
-                {manualAttendeeLoading ? (
-                  <>
-                    <FaSyncAlt className={styles.spinning} />
-                    Adding Attendee...
-                  </>
-                ) : (
-                  <>
-                    <FaUserPlus />
-                    Add Attendee
-                  </>
+            <div className={styles.editTicketForm}>
+              <div className={styles.formGroup}>
+                <label>Capacity</label>
+                <input
+                  type="number"
+                  defaultValue={editingTicket.capacity}
+                  min={sessionAttendees.filter(a => a.ticketType === editingTicket.name).length}
+                  onBlur={(e) => {
+                    const newCapacity = parseInt(e.target.value);
+                    if (newCapacity !== editingTicket.capacity && newCapacity >= 0) {
+                      handleUpdateSessionTicket(editingTicket.index, 'capacity', newCapacity);
+                    }
+                  }}
+                  disabled={ticketUpdating === `capacity-${editingTicket.index}`}
+                />
+                {ticketUpdating === `capacity-${editingTicket.index}` && (
+                  <span className={styles.updating}>Updating...</span>
                 )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              </div>
 
-      {/* Manual Check-in Modal */}
-      {showManualCheckIn && (
-        <div className={styles.modal}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h3>Manual Check-in</h3>
-              <button 
-                className={styles.closeButton}
-                onClick={() => {
-                  setShowManualCheckIn(false);
-                  setManualCheckInSearch('');
-                  setSelectedAttendeeForCheckIn(null);
-                }}
-              >
-                <FaTimesCircle />
-              </button>
-            </div>
-            
-            <div className={styles.searchContainer}>
-              <div className={styles.searchBox}>
-                <FaSearch />
+              <div className={styles.formGroup}>
+                <label>Price (₹)</label>
                 <input
-                  type="text"
-                  placeholder="Search by name, email, or phone..."
-                  value={manualCheckInSearch}
-                  onChange={(e) => setManualCheckInSearch(e.target.value)}
-                  autoFocus
+                  type="number"
+                  step="0.01"
+                  defaultValue={editingTicket.price}
+                  min="0"
+                  onBlur={(e) => {
+                    const newPrice = parseFloat(e.target.value);
+                    if (newPrice !== editingTicket.price && newPrice >= 0) {
+                      handleUpdateSessionTicket(editingTicket.index, 'price', newPrice);
+                    }
+                  }}
+                  disabled={ticketUpdating === `price-${editingTicket.index}`}
                 />
+                {ticketUpdating === `price-${editingTicket.index}` && (
+                  <span className={styles.updating}>Updating...</span>
+                )}
+              </div>
+
+              <div className={styles.ticketStats}>
+                <p>Sold: {sessionAttendees.filter(a => a.ticketType === editingTicket.name).length}</p>
+                <p>Available: {editingTicket.available_capacity}</p>
               </div>
             </div>
 
-            <div className={styles.attendeeSearchResults}>
-              {manualCheckInSearch && (
-                <div className={styles.searchInfo}>
-                  Found {searchableAttendees.length} attendees awaiting check-in
-                </div>
-              )}
-              
-              {searchableAttendees.slice(0, 10).map((attendee) => (
-                <div key={attendee.id} className={styles.searchResultItem}>
-                  <div className={styles.attendeeDetails}>
-                    <h4>{attendee.name}</h4>
-                    <p>{attendee.email}</p>
-                    <p>{attendee.phone}</p>
-                    <div className={styles.ticketInfo}>
-                      {Object.entries(attendee.tickets).map(([type, count]) => (
-                        <span key={type} className={styles.ticketBadge}>
-                          {type}: {count}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <button 
-                    className={styles.checkInButton}
-                    onClick={() => handleManualCheckIn(attendee)}
-                  >
-                    <FaUserCheck /> Check In
-                  </button>
-                </div>
-              ))}
-
-              {manualCheckInSearch && searchableAttendees.length === 0 && (
-                <div className={styles.noResults}>
-                  <FaUsers />
-                  <p>No attendees found matching "{manualCheckInSearch}"</p>
-                  <span>Try searching by name, email, or phone number</span>
-                </div>
-              )}
-
-              {!manualCheckInSearch && (
-                <div className={styles.searchPlaceholder}>
-                  <FaSearch />
-                  <p>Start typing to search for attendees</p>
-                  <span>{realTimeStats.pendingCheckIn} attendees awaiting check-in</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className={styles.modal}>
-          <div className={styles.modalContent}>
-            <div className={styles.modalHeader}>
-              <h3>⚠️ Delete Event</h3>
-              <button 
-                className={styles.closeButton}
-                onClick={() => setShowDeleteConfirm(false)}
-              >
-                <FaTimesCircle />
-              </button>
-            </div>
-            
-            <div className={styles.deleteConfirmContent}>
-              <div className={styles.warningIcon}>
-                <FaExclamationTriangle />
-              </div>
-              
-              <h4>Are you absolutely sure?</h4>
-              <p>
-                This action <strong>cannot be undone</strong>. This will permanently delete the event 
-                <strong> "{eventData?.title}"</strong> and remove all associated data including:
-              </p>
-              
-              <ul className={styles.deleteList}>
-                <li>All attendee registrations ({attendees.length} attendees)</li>
-                <li>All generated tickets ({tickets.length} tickets)</li>
-                <li>Payment records and transaction history</li>
-                <li>Event analytics and reports</li>
-                <li>All uploaded images and files</li>
-              </ul>
-              
-              <div className={styles.confirmSection}>
-                <p>
-                  Type <code>DELETE</code> below to confirm:
-                </p>
-                <input
-                  type="text"
-                  className={styles.confirmInput}
-                  placeholder="Type DELETE to confirm"
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                />
-              </div>
-            </div>
-            
             <div className={styles.modalActions}>
               <button 
                 className={styles.cancelButton}
-                onClick={() => {
-                  setShowDeleteConfirm(false);
-                  setDeleteConfirmText('');
-                }}
+                onClick={() => setEditingTicket(null)}
               >
-                Cancel
-              </button>
-              <button 
-                className={styles.confirmDeleteButton}
-                onClick={handleDelete}
-                disabled={deleteConfirmText !== 'DELETE' || loading}
-              >
-                {loading ? 'Deleting...' : 'Delete Event Permanently'}
+                Close
               </button>
             </div>
           </div>
