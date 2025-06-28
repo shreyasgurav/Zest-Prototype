@@ -1,7 +1,7 @@
 // 🚀 PRACTICAL IMPLEMENTATION OF IMPROVED EVENT STRUCTURE
 // This shows how to implement the better structure in your existing system
 
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 import { 
   collection, 
   doc, 
@@ -28,7 +28,7 @@ export class NewEventManager {
    * Create event with subcollection structure
    */
   static async createEvent(eventData: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) {
-    const batch = writeBatch(db);
+    const batch = writeBatch(db());
     const eventId = `event_${Date.now()}_${Math.random().toString(36).substring(7)}`;
     
     // 1. Create main event document
@@ -78,7 +78,7 @@ export class NewEventManager {
     ticketTypeId: string;
     userId?: string;
   }) {
-    const batch = writeBatch(db);
+    const batch = writeBatch(db());
     
     // 1. Create ticket first
     const ticketId = await this.createTicket({
@@ -292,7 +292,7 @@ export class StructureMigration {
     if (!oldEventDoc.exists()) throw new Error('Event not found');
     
     const oldEventData = oldEventDoc.data();
-    const batch = writeBatch(db);
+    const batch = writeBatch(db());
     
     // 2. Create new event structure (remove sessions array)
     const newEventData = {
@@ -345,7 +345,7 @@ export class StructureMigration {
     const attendeesQuery = query(attendeesRef, where('eventId', '==', eventId));
     const attendeesSnapshot = await getDocs(attendeesQuery);
     
-    const batch = writeBatch(db);
+    const batch = writeBatch(db());
     
     attendeesSnapshot.docs.forEach((attendeeDoc) => {
       const attendeeData = attendeeDoc.data();
