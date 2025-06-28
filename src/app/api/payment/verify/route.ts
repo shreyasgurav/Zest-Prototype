@@ -396,7 +396,10 @@ export async function POST(request: NextRequest) {
     if (isDuplicate) {
       console.warn('Duplicate payment detected', {
         paymentId: razorpay_payment_id,
-        orderId: razorpay_order_id
+        orderId: razorpay_order_id,
+        timestamp: new Date().toISOString(),
+        userAgent: request.headers.get('user-agent'),
+        ip: request.headers.get('x-forwarded-for') || 'unknown'
       });
 
       // Log security event
@@ -404,11 +407,20 @@ export async function POST(request: NextRequest) {
         razorpay_payment_id,
         razorpay_order_id,
         bookingData?.userId,
-        { bookingType }
+        { 
+          bookingType,
+          attemptedAt: new Date().toISOString(),
+          userAgent: request.headers.get('user-agent'),
+          clientIP: request.headers.get('x-forwarded-for')
+        }
       );
       
       return NextResponse.json(
-        { error: 'Payment has already been processed' },
+        { 
+          error: 'Payment has already been processed',
+          details: 'This payment ID has already been used for a successful booking. If you believe this is an error, please contact support.',
+          paymentId: razorpay_payment_id.slice(-8) // Only show last 8 characters for security
+        },
         { status: 409 }
       );
     }

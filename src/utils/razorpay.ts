@@ -4,6 +4,10 @@ declare global {
   }
 }
 
+// Add global payment processing lock
+let isPaymentProcessing = false;
+let processedPayments = new Set<string>();
+
 export interface PaymentOptions {
   amount: number;
   currency?: string;
@@ -91,6 +95,17 @@ export const verifyPayment = async (
   bookingType: 'event' | 'activity'
 ) => {
   try {
+    // Check if this specific payment is already being processed
+    const paymentKey = `${paymentResponse.razorpay_payment_id}_${paymentResponse.razorpay_order_id}`;
+    
+    if (processedPayments.has(paymentKey)) {
+      console.warn('Payment already processed in this session:', paymentKey);
+      throw new Error('Payment verification already in progress');
+    }
+
+    // Mark payment as being processed
+    processedPayments.add(paymentKey);
+
     const response = await fetch('/api/payment/verify', {
       method: 'POST',
       headers: {
@@ -108,6 +123,10 @@ export const verifyPayment = async (
     const data = await response.json();
     
     if (!response.ok) {
+      // Remove from processed set if verification failed (allow retry for genuine failures)
+      if (response.status !== 409) { // Don't retry if it's a duplicate
+        processedPayments.delete(paymentKey);
+      }
       throw new Error(data.error || 'Payment verification failed');
     }
 
@@ -126,9 +145,19 @@ export const initiateRazorpayPayment = async (
   onError: (error: string) => void
 ) => {
   try {
+    // Prevent multiple simultaneous payment initiations
+    if (isPaymentProcessing) {
+      console.warn('Payment already in progress');
+      onError('Payment already in progress. Please wait.');
+      return;
+    }
+
+    isPaymentProcessing = true;
+
     // Load Razorpay script
     const isLoaded = await loadRazorpayScript();
     if (!isLoaded) {
+      isPaymentProcessing = false;
       throw new Error('Failed to load Razorpay script');
     }
 
@@ -145,10 +174,15 @@ export const initiateRazorpayPayment = async (
       order_id: order.id,
       handler: async (response: RazorpayResponse) => {
         try {
+          console.log('Payment handler called with response:', response);
           const verificationResult = await verifyPayment(response, bookingData, bookingType);
+          
+          // Reset the processing flag only after successful verification
+          isPaymentProcessing = false;
           onSuccess(verificationResult.bookingId);
         } catch (error) {
           console.error('Payment verification failed:', error);
+          isPaymentProcessing = false;
           onError(error instanceof Error ? error.message : 'Payment verification failed');
         }
       },
@@ -162,6 +196,7 @@ export const initiateRazorpayPayment = async (
       },
       modal: {
         ondismiss: () => {
+          isPaymentProcessing = false;
           onError('Payment cancelled by user');
         },
       },
@@ -172,6 +207,7 @@ export const initiateRazorpayPayment = async (
     rzp.open();
   } catch (error) {
     console.error('Error initiating payment:', error);
+    isPaymentProcessing = false;
     onError(error instanceof Error ? error.message : 'Failed to initiate payment');
   }
 }; 
