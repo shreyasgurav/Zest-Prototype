@@ -1,6 +1,6 @@
 import { adminDb } from '@/lib/firebase-admin';
 import { collection, query, where, getDocs, updateDoc, doc, getDoc, writeBatch } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '@/services/firebase';
 
 export type TicketStatus = 'active' | 'used' | 'cancelled' | 'expired';
 
@@ -390,7 +390,7 @@ export async function expireTicketsForPastEvents(): Promise<{ updated: number; e
     const activeTicketsQuery = query(ticketsRef, where('status', '==', 'active'));
     const activeTickets = await getDocs(activeTicketsQuery);
 
-    const batch = writeBatch(db);
+    const batch = writeBatch(db());
     const now = new Date().toISOString();
 
     for (const ticketDoc of activeTickets.docs) {
