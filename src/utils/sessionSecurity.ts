@@ -1,6 +1,5 @@
-import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, setDoc, updateDoc, writeBatch } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { auth, db } from '@/services/firebase';
 import { DashboardSecurity, DashboardPermissions } from './dashboardSecurity';
 
 export interface SessionPermissions {
@@ -49,9 +48,8 @@ export class SessionSecurity {
     sessionId: string, 
     userId: string
   ): Promise<SessionPermissions> {
-    const auth = getAuth();
-    
-    if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    const currentUser = auth().currentUser;
+    if (!currentUser || currentUser.uid !== userId) {
       return this.unauthorizedPermissions();
     }
 
@@ -291,7 +289,7 @@ export class SessionSecurity {
       }
 
       // Deactivate all active assignments for this user/session
-      const batch = writeBatch(db);
+      const batch = writeBatch(db());
       
       snapshot.docs.forEach(doc => {
         batch.update(doc.ref, {
