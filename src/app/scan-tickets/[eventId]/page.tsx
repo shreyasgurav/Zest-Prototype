@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, getFirestore } from 'firebase/firestore';
-import { app } from '@/services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/services/firebase';
 import { 
   FaQrcode, 
   FaCheckCircle, 
@@ -50,8 +50,6 @@ const TicketScannerPage = () => {
   const router = useRouter();
   const params = useParams();
   const eventId = params?.eventId as string;
-  const auth = getAuth();
-  const db = getFirestore(app());
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -84,12 +82,12 @@ const TicketScannerPage = () => {
       setLoading(true);
       
       // First try events collection
-      let eventRef = doc(db, 'events', eventId);
+      let eventRef = doc(db(), 'events', eventId);
       let eventDoc = await getDoc(eventRef);
       
       // If not found, try activities collection
       if (!eventDoc.exists()) {
-        eventRef = doc(db, 'activities', eventId);
+        eventRef = doc(db(), 'activities', eventId);
         eventDoc = await getDoc(eventRef);
       }
 
@@ -222,7 +220,7 @@ const TicketScannerPage = () => {
         },
         body: JSON.stringify({
           ticketNumber,
-          scannerId: auth.currentUser?.uid,
+          scannerId: auth().currentUser?.uid,
           scannerType: 'user', // or 'organization' based on your logic
           eventId
         }),
