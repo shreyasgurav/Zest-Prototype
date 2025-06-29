@@ -30,15 +30,15 @@ export default function EventsPage() {
   const [allEvents, setAllEvents] = useState<EventFilterData[]>([])
   const [filteredEventIds, setFilteredEventIds] = useState<string[]>([])
   const [selectedType, setSelectedType] = useState<string>("all")
-  const [selectedCity, setSelectedCity] = useState<string>("Mumbai")
+  const [selectedCity, setSelectedCity] = useState<string>("All Cities")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Listen for location changes from header
   useEffect(() => {
-    // Get initial city from localStorage
+    // Get initial city from localStorage, but only set it if it's not "All Cities"
     const storedCity = localStorage.getItem('selectedCity');
-    if (storedCity) {
+    if (storedCity && storedCity !== 'All Cities') {
       setSelectedCity(storedCity);
     }
 
@@ -56,18 +56,24 @@ export default function EventsPage() {
 
   // Filter events based on selected city and type
   useEffect(() => {
+    // Don't filter until we have events data
+    if (allEvents.length === 0) {
+      setFilteredEventIds([]);
+      return;
+    }
+
     let filtered = [...allEvents];
 
-    // Filter by city
-    if (selectedCity && selectedCity !== 'All Cities') {
+    // Filter by city - only apply filter if a specific city is selected
+    if (selectedCity && selectedCity !== 'All Cities' && selectedCity.trim() !== '') {
       filtered = filtered.filter(event => {
         const venue = event.event_venue || event.eventVenue || '';
         return venue.toLowerCase().includes(selectedCity.toLowerCase());
       });
     }
 
-    // Filter by category
-    if (selectedType && selectedType !== 'all') {
+    // Filter by category - only apply filter if a specific category is selected
+    if (selectedType && selectedType !== 'all' && selectedType.trim() !== '') {
       filtered = filtered.filter(event => {
         const categories = event.event_categories || event.eventCategories || [];
         return categories.some(category => 
@@ -182,6 +188,20 @@ export default function EventsPage() {
               <span>{type.label}</span>
             </button>
           ))}
+          
+          {/* Show clear filters button when filters are active */}
+          {(selectedType !== 'all' || (selectedCity && selectedCity !== 'All Cities')) && (
+            <button
+              onClick={() => {
+                setSelectedCity('All Cities');
+                setSelectedType('all');
+                localStorage.removeItem('selectedCity');
+              }}
+              className={styles.clearFiltersButton}
+            >
+              Clear All Filters
+            </button>
+          )}
         </div>
 
         {/* Content Section */}
@@ -226,10 +246,12 @@ export default function EventsPage() {
               onClick={() => {
                 setSelectedCity('All Cities');
                 setSelectedType('all');
+                // Clear localStorage to prevent auto-filtering on refresh
+                localStorage.removeItem('selectedCity');
               }}
               className={styles.resetFiltersButton}
             >
-              Reset Filters
+              Show All Events
             </button>
           </div>
         )}

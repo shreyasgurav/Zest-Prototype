@@ -14,6 +14,7 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { ContentSharingSecurity } from '@/utils/contentSharingSecurity';
 import styles from './ActivityDashboard.module.css';
 import { FaEdit, FaTrash } from 'react-icons/fa';
 
@@ -70,7 +71,76 @@ const ActivityDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'editor' | 'viewer' | 'unauthorized'>('unauthorized');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
+
+  // Helper function to check creator's pages for shared access
+  const checkCreatorPagesForSharedAccess = async (creatorUserId: string, userId: string) => {
+    try {
+      console.log('🔍 Looking for activity creator\'s pages:', creatorUserId);
+
+      // Collections to check for pages owned by the creator
+      const collectionsToCheck = [
+        { name: 'Artists', type: 'artist' as const },
+        { name: 'Organizations', type: 'organization' as const },
+        { name: 'Venues', type: 'venue' as const }
+      ];
+
+      let highestRole: 'owner' | 'admin' | 'editor' | 'viewer' | 'unauthorized' = 'unauthorized';
+      let hasAccess = false;
+
+      for (const collectionInfo of collectionsToCheck) {
+        try {
+          console.log(`🔍 Checking ${collectionInfo.name} collection for creator's pages`);
+          
+          // Query for pages owned by the creator
+          const pagesQuery = query(
+            collection(db(), collectionInfo.name),
+            where('ownerId', '==', creatorUserId)
+          );
+
+          const pagesSnapshot = await getDocs(pagesQuery);
+          console.log(`📄 Found ${pagesSnapshot.size} ${collectionInfo.type} pages owned by creator`);
+
+          for (const pageDoc of pagesSnapshot.docs) {
+            const pageId = pageDoc.id;
+            console.log(`🎯 Checking shared access to ${collectionInfo.type} page: ${pageId}`);
+
+            try {
+              // Check if current user has shared access to this page
+              const permissions = await ContentSharingSecurity.verifyContentAccess(
+                collectionInfo.type,
+                pageId,
+                userId
+              );
+
+              if (permissions.canView && permissions.role !== 'unauthorized') {
+                console.log(`✅ Found shared access to ${collectionInfo.type} page ${pageId}:`, { role: permissions.role });
+                hasAccess = true;
+                
+                // Keep the highest role found
+                const roleHierarchy: Record<string, number> = { 'unauthorized': 0, 'viewer': 1, 'editor': 2, 'admin': 3, 'owner': 4 };
+                if (roleHierarchy[permissions.role] > roleHierarchy[highestRole]) {
+                  highestRole = permissions.role as 'owner' | 'admin' | 'editor' | 'viewer' | 'unauthorized';
+                }
+              }
+            } catch (pageError) {
+              console.log(`❌ Error checking access to ${collectionInfo.type} page ${pageId}:`, pageError);
+            }
+          }
+        } catch (collectionError) {
+          console.log(`❌ Error checking ${collectionInfo.name} collection:`, collectionError);
+        }
+      }
+
+      console.log('🏁 Final shared access result for activity:', { role: highestRole, canView: hasAccess });
+      return { canView: hasAccess, role: highestRole };
+
+    } catch (error) {
+      console.error('❌ Error checking creator pages for shared access:', error);
+      return { canView: false, role: 'unauthorized' };
+    }
+  };
 
   useEffect(() => {
     if (!activityId) {
@@ -87,6 +157,7 @@ const ActivityDashboard = () => {
   const checkAuthorization = async () => {
     if (!auth.currentUser || !activityId) {
       setIsAuthorized(false);
+      setUserRole('unauthorized');
       return;
     }
 
@@ -94,11 +165,77 @@ const ActivityDashboard = () => {
       const activityDoc = await getDoc(doc(db(), 'activities', activityId));
       if (activityDoc.exists()) {
         const activityData = activityDoc.data();
-        setIsAuthorized(activityData.organizationId === auth.currentUser.uid);
+        
+        // Check direct ownership first
+        if (activityData.organizationId === auth.currentUser.uid) {
+          console.log('✅ User owns the activity directly');
+          setIsAuthorized(true);
+          setUserRole('owner');
+          return;
+        }
+
+        // Check for shared access permissions
+        console.log('🔍 Checking shared access for activity:', { activityId, userId: auth.currentUser.uid, organizationId: activityData.organizationId });
+        
+        // Try to determine content type from organizationId format
+        let contentType: 'artist' | 'organization' | 'venue' | null = null;
+        let contentId = activityData.organizationId;
+
+        if (contentId.startsWith('artist_')) {
+          contentType = 'artist';
+        } else if (contentId.startsWith('organization_')) {
+          contentType = 'organization';
+        } else if (contentId.startsWith('venue_')) {
+          contentType = 'venue';
+        }
+
+        if (contentType) {
+          console.log('🎯 Checking content access:', { contentType, contentId });
+          
+          const permissions = await ContentSharingSecurity.verifyContentAccess(
+            contentType, 
+            contentId, 
+            auth.currentUser.uid
+          );
+          
+          if (permissions.canView && permissions.role !== 'unauthorized') {
+            console.log('✅ User has shared access:', { role: permissions.role, canEdit: permissions.canEdit });
+            setIsAuthorized(true);
+            setUserRole(permissions.role);
+            return;
+          }
+        } else {
+          // OrganizationId is a user ID, not a content ID
+          // Check if the activity creator has any artist/organization/venue pages that the current user has access to
+          console.log('🔍 OrganizationId is a user ID, checking creator\'s pages for shared access');
+          
+          try {
+            const creatorUserId = activityData.organizationId;
+            const hasSharedAccess = await checkCreatorPagesForSharedAccess(creatorUserId, auth.currentUser.uid);
+            
+            if (hasSharedAccess.canView) {
+              console.log('✅ User has shared access via creator\'s pages:', { role: hasSharedAccess.role });
+              setIsAuthorized(true);
+              setUserRole(hasSharedAccess.role as 'owner' | 'admin' | 'editor' | 'viewer' | 'unauthorized');
+              return;
+            }
+          } catch (sharedAccessError) {
+            console.log('❌ Error checking shared access:', sharedAccessError);
+          }
+        }
+
+        // No access found
+        console.log('❌ No access found for activity');
+        setIsAuthorized(false);
+        setUserRole('unauthorized');
+      } else {
+        setIsAuthorized(false);
+        setUserRole('unauthorized');
       }
     } catch (err) {
       console.error("Error checking authorization:", err);
       setIsAuthorized(false);
+      setUserRole('unauthorized');
     }
   };
 
@@ -217,20 +354,32 @@ const ActivityDashboard = () => {
       <h1 className={styles.title}>{activityData?.name || 'Activity Dashboard'}</h1>
         {isAuthorized && (
           <div className={styles.actionButtons}>
-            <button 
-              onClick={handleEdit}
-              className={styles.editButton}
-              title="Edit Activity"
-            >
-              <FaEdit /> Edit Activity
-            </button>
-            <button 
-              onClick={() => setShowDeleteConfirm(true)}
-              className={styles.deleteButton}
-              title="Delete Activity"
-            >
-              <FaTrash /> Delete Activity
-            </button>
+            {/* Show edit button for editors and above */}
+            {(userRole === 'owner' || userRole === 'admin' || userRole === 'editor') && (
+              <button 
+                onClick={handleEdit}
+                className={styles.editButton}
+                title="Edit Activity"
+              >
+                <FaEdit /> Edit Activity
+              </button>
+            )}
+            {/* Show delete button only for owners and admins */}
+            {(userRole === 'owner' || userRole === 'admin') && (
+              <button 
+                onClick={() => setShowDeleteConfirm(true)}
+                className={styles.deleteButton}
+                title="Delete Activity"
+              >
+                <FaTrash /> Delete Activity
+              </button>
+            )}
+            {/* Show role indicator for shared access */}
+            {userRole !== 'owner' && (
+              <div className={styles.roleIndicator}>
+                <span>👁️ Viewing as {userRole}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -319,6 +319,27 @@
     transform: scale(1.05);
     box-shadow: 0 15px 20px -3px rgba(147, 51, 234, 0.35);
   }
+
+  /* Clear Filters Button */
+  .clearFiltersButton {
+    padding: 0.75rem 1.5rem;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 9999px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(4px);
+    font-size: 0.875rem;
+  }
+
+  .clearFiltersButton:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    transform: scale(1.05);
+    color: #f87171;
+  }
   
   /* Animations */
   @keyframes fadeIn {

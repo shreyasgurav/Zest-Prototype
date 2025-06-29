@@ -14,12 +14,14 @@ import {
 } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { toast } from "react-toastify";
-import { FaCamera, FaTimes, FaPlus, FaMusic, FaUser, FaAt, FaMapMarkerAlt, FaTag, FaEdit, FaPhone } from 'react-icons/fa';
+import { FaCamera, FaTimes, FaPlus, FaMusic, FaUser, FaAt, FaMapMarkerAlt, FaTag, FaEdit, FaPhone, FaShare } from 'react-icons/fa';
 import ArtistProfileSkeleton from "./ArtistProfileSkeleton";
 import DashboardSection from '../Dashboard/DashboardSection/DashboardSection';
 import PhotoUpload from '../PhotoUpload/PhotoUpload';
 import LocationPicker from '../LocationPicker/LocationPicker';
+import ContentSharingManager from '../ContentSharingManager/ContentSharingManager';
 import { getUserOwnedPages } from '../../utils/authHelpers';
+import { ContentSharingSecurity } from '@/utils/contentSharingSecurity';
 import { useRouter } from 'next/navigation';
 import styles from "./ArtistProfile.module.css";
 
@@ -60,6 +62,11 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [userPermissions, setUserPermissions] = useState<{
+    canEdit: boolean;
+    canManage: boolean;
+    role: string;
+  }>({ canEdit: false, canManage: false, role: 'viewer' });
   
   const [name, setName] = useState<string>("");
   const [newName, setNewName] = useState<string>("");
@@ -82,6 +89,9 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
   const [showPhotoModal, setShowPhotoModal] = useState<boolean>(false);
   const [showPhotoUpload, setShowPhotoUpload] = useState<boolean>(false);
   const [currentPhotoType, setCurrentPhotoType] = useState<'profile' | 'banner'>('profile');
+  
+  // Content sharing state
+  const [showSharingModal, setShowSharingModal] = useState<boolean>(false);
 
   const fetchArtistData = async (pageId: string) => {
     console.log("Fetching artist data for page:", pageId);
@@ -221,40 +231,82 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
       
       if (user && isSubscribed) {
         try {
-          // Load owned artist pages
-          const ownedPages = await getUserOwnedPages(user.uid);
-          setOwnedArtistPages(ownedPages.artists);
+          // Check if there's a specific artist page to load
+          const sessionSelectedPageId = typeof window !== 'undefined' ? 
+            sessionStorage.getItem('selectedArtistPageId') : null;
           
-          if (ownedPages.artists.length > 0) {
-            // Check if there's a specific artist page to load
-            const sessionSelectedPageId = typeof window !== 'undefined' ? 
-              sessionStorage.getItem('selectedArtistPageId') : null;
+          // Priority: prop selectedPageId > session storage
+          const pageIdToUse = selectedPageId || sessionSelectedPageId;
+          
+          if (pageIdToUse) {
+            // Specific page requested - check access and load directly
+            console.log(`🎵 Loading specific artist page: ${pageIdToUse}`);
             
-            let pageToLoad = ownedPages.artists[0]; // Default to first page
+            // Verify access to this specific page
+            const permissions = await ContentSharingSecurity.verifyContentAccess('artist', pageIdToUse, user.uid);
             
-            // Priority: prop selectedPageId > session storage > first page
-            const pageIdToUse = selectedPageId || sessionSelectedPageId;
-            
-            if (pageIdToUse) {
-              const selectedPage = ownedPages.artists.find(page => page.uid === pageIdToUse);
-              if (selectedPage) {
-                pageToLoad = selectedPage;
-              }
-              // Clear the session selection after using it
+            if (permissions.canView && permissions.role !== 'unauthorized') {
+              console.log(`🔓 Access granted to artist page: ${pageIdToUse} with role: ${permissions.role}`);
+              
+              // Set user permissions for this page
+              setUserPermissions({
+                canEdit: permissions.canEdit,
+                canManage: permissions.canManage,
+                role: permissions.role
+              });
+              
+              setCurrentArtistPageId(pageIdToUse);
+              await fetchArtistData(pageIdToUse);
+              
+              // Clear session selection after using it
               if (sessionSelectedPageId) {
                 sessionStorage.removeItem('selectedArtistPageId');
               }
+            } else {
+              console.log(`🚫 Access denied to artist page: ${pageIdToUse}`);
+              setError("You don't have permission to access this artist page.");
+              setLoading(false);
             }
-            
-            setCurrentArtistPageId(pageToLoad.uid);
-            await fetchArtistData(pageToLoad.uid);
           } else {
-            // No artist pages found
-            setError("No artist pages found. Please create an artist page first.");
-            setLoading(false);
+            // No specific page requested - load owned pages
+            console.log("🎵 Loading owned artist pages");
+            const ownedPages = await getUserOwnedPages(user.uid);
+            setOwnedArtistPages(ownedPages.artists);
+            
+            if (ownedPages.artists.length > 0) {
+              const pageToLoad = ownedPages.artists[0]; // Default to first page
+              
+              // Set owner permissions
+              setUserPermissions({
+                canEdit: true,
+                canManage: true,
+                role: 'owner'
+              });
+              
+              setCurrentArtistPageId(pageToLoad.uid);
+              await fetchArtistData(pageToLoad.uid);
+            } else {
+              // No owned artist pages - check if user has shared access to any artist pages
+              const sharedContent = await ContentSharingSecurity.getUserSharedContent(user.uid);
+              
+              if (sharedContent.artists.length > 0) {
+                // User has shared access to artist pages, but no specific page selected
+                setError("Please select an artist page from your dropdown menu.");
+                setLoading(false);
+              } else {
+                // No artist pages found at all
+                setError("No artist pages found. Please create an artist page first.");
+                setLoading(false);
+              }
+            }
           }
+          
+          // Always load owned pages for page switching functionality
+          const ownedPages = await getUserOwnedPages(user.uid);
+          setOwnedArtistPages(ownedPages.artists);
+          
         } catch (err) {
-          console.error("Error loading owned pages:", err);
+          console.error("Error loading artist pages:", err);
           setError("Failed to load artist pages");
           setLoading(false);
         }
@@ -432,8 +484,8 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
         {/* Banner Background */}
         <div 
           className={styles.bannerBackground}
-          onClick={handleBannerClick} 
-          style={{ cursor: 'pointer' }}
+          onClick={userPermissions.canEdit ? handleBannerClick : undefined} 
+          style={{ cursor: userPermissions.canEdit ? 'pointer' : 'default' }}
         >
           {bannerImage ? (
             <img
@@ -449,10 +501,12 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
           <div className={styles.bannerOverlay} />
           
           {/* Edit Banner Button */}
-          <div className={styles.bannerEditHover}>
-            <FaCamera className={styles.editIcon} />
-            <span>Edit Banner</span>
-          </div>
+          {userPermissions.canEdit && (
+            <div className={styles.bannerEditHover}>
+              <FaCamera className={styles.editIcon} />
+              <span>Edit Banner</span>
+            </div>
+          )}
         </div>
 
         {/* Artist Info at Bottom of Banner */}
@@ -461,8 +515,8 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
             {/* Large Avatar */}
             <div 
               className={styles.avatarContainer}
-              onClick={handleProfilePhotoClick}
-              style={{ cursor: 'pointer' }}
+              onClick={userPermissions.canEdit ? handleProfilePhotoClick : undefined}
+              style={{ cursor: userPermissions.canEdit ? 'pointer' : 'default' }}
             >
               {photoURL ? (
                 <img 
@@ -477,9 +531,11 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
               )}
               
               {/* Edit Avatar Overlay */}
-              <div className={styles.avatarEditOverlay}>
-                <FaCamera className={styles.avatarEditIcon} />
-              </div>
+              {userPermissions.canEdit && (
+                <div className={styles.avatarEditOverlay}>
+                  <FaCamera className={styles.avatarEditIcon} />
+                </div>
+              )}
             </div>
 
             {/* Artist Details */}
@@ -512,15 +568,27 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
         )}
 
         {/* Edit Profile Button */}
-                  {!editMode && (
+        {!editMode && (
           <div className={styles.profileButtonsContainer}>
-            <button 
-              onClick={() => setEditMode(true)}
-              className={styles.editProfileButton}
-            >
-              Edit Profile
-            </button>
-                          <button 
+            {userPermissions.canEdit && (
+              <button 
+                onClick={() => setEditMode(true)}
+                className={styles.editProfileButton}
+              >
+                Edit Profile
+              </button>
+            )}
+            {userPermissions.canManage && (
+              <button 
+                onClick={() => setShowSharingModal(true)}
+                className={styles.shareButton}
+              >
+                <FaShare className={styles.shareIcon} />
+                Share Access
+              </button>
+            )}
+            {userPermissions.canEdit && (
+              <button 
                 onClick={() => {
                   // Navigate to create page with artist context
                   if (currentArtistPageId) {
@@ -533,6 +601,12 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
               >
                 Create
               </button>
+            )}
+            {!userPermissions.canEdit && (
+              <div className={styles.viewerBadge}>
+                <span>👁️ Viewing as {userPermissions.role}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -719,6 +793,16 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Content Sharing Modal */}
+      {showSharingModal && currentArtistPageId && (
+        <ContentSharingManager
+          contentType="artist"
+          contentId={currentArtistPageId}
+          contentName={name || 'Artist Page'}
+          onClose={() => setShowSharingModal(false)}
+        />
       )}
 
                   <div className={styles.artistDashboardSection}>

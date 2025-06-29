@@ -6,6 +6,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/services/firebase';
 import { checkPageOwnership, getUserOwnedPages } from '../../utils/authHelpers';
+import { ContentSharingSecurity } from '@/utils/contentSharingSecurity';
 import RoleGuardNotification from './RoleGuardNotification';
 
 interface RoleGuardProps {
@@ -56,25 +57,73 @@ const RoleGuard: React.FC<RoleGuardProps> = ({ children, allowedRole, redirectPa
             if (pageId) {
               // Check ownership of specific page
               hasAccess = ownedPages.artists.some(artist => artist.uid === pageId);
+              
+              // If not owned, check for shared access
+              if (!hasAccess) {
+                const sharedPermissions = await ContentSharingSecurity.verifyContentAccess('artist', pageId, user.uid);
+                hasAccess = sharedPermissions.canView && sharedPermissions.role !== 'unauthorized';
+                
+                if (hasAccess) {
+                  console.log(`🔓 Shared access granted for artist page: ${pageId} with role: ${sharedPermissions.role}`);
+                }
+              }
             } else {
-              // No specific page, check if user owns any artist pages
+              // No specific page, check if user owns any artist pages or has shared access
               hasAccess = ownedPages.artists.length > 0;
+              
+              if (!hasAccess) {
+                // Check if user has shared access to any artist pages
+                const sharedContent = await ContentSharingSecurity.getUserSharedContent(user.uid);
+                hasAccess = sharedContent.artists.length > 0;
+              }
             }
           } else if (allowedRole === 'organization') {
             if (pageId) {
               // Check ownership of specific page
               hasAccess = ownedPages.organizations.some(org => org.uid === pageId);
+              
+              // If not owned, check for shared access
+              if (!hasAccess) {
+                const sharedPermissions = await ContentSharingSecurity.verifyContentAccess('organization', pageId, user.uid);
+                hasAccess = sharedPermissions.canView && sharedPermissions.role !== 'unauthorized';
+                
+                if (hasAccess) {
+                  console.log(`🔓 Shared access granted for organization page: ${pageId} with role: ${sharedPermissions.role}`);
+                }
+              }
             } else {
-              // No specific page, check if user owns any organization pages
+              // No specific page, check if user owns any organization pages or has shared access
               hasAccess = ownedPages.organizations.length > 0;
+              
+              if (!hasAccess) {
+                // Check if user has shared access to any organization pages
+                const sharedContent = await ContentSharingSecurity.getUserSharedContent(user.uid);
+                hasAccess = sharedContent.organizations.length > 0;
+              }
             }
           } else if (allowedRole === 'venue') {
             if (pageId) {
               // Check ownership of specific page
               hasAccess = ownedPages.venues.some(venue => venue.uid === pageId);
+              
+              // If not owned, check for shared access
+              if (!hasAccess) {
+                const sharedPermissions = await ContentSharingSecurity.verifyContentAccess('venue', pageId, user.uid);
+                hasAccess = sharedPermissions.canView && sharedPermissions.role !== 'unauthorized';
+                
+                if (hasAccess) {
+                  console.log(`🔓 Shared access granted for venue page: ${pageId} with role: ${sharedPermissions.role}`);
+                }
+              }
             } else {
-              // No specific page, check if user owns any venue pages
+              // No specific page, check if user owns any venue pages or has shared access
               hasAccess = ownedPages.venues.length > 0;
+              
+              if (!hasAccess) {
+                // Check if user has shared access to any venue pages
+                const sharedContent = await ContentSharingSecurity.getUserSharedContent(user.uid);
+                hasAccess = sharedContent.venues.length > 0;
+              }
             }
           }
 

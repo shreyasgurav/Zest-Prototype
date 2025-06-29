@@ -245,4 +245,22 @@
   .cancelDeleteButton {
     width: 100%;
   }
+}
+
+/* Role Indicator for Shared Access */
+.roleIndicator {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 20px;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.roleIndicator span {
+  color: #60a5fa;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 } 

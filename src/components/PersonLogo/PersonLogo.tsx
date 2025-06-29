@@ -3,8 +3,9 @@ import { auth, db } from '@/services/firebase';
 import { signOut, User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt, FaBuilding, FaMicrophone, FaMapMarkerAlt, FaPlus } from 'react-icons/fa';
+import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt, FaBuilding, FaMicrophone, FaMapMarkerAlt, FaPlus, FaShareAlt } from 'react-icons/fa';
 import { getUserOwnedPages, ArtistData, OrganizationData, VenueData, clearAllSessions } from '../../utils/authHelpers';
+import { ContentSharingSecurity } from '@/utils/contentSharingSecurity';
 import styles from "./PersonLogo.module.css";
 
 interface UserData {
@@ -27,6 +28,13 @@ function PersonLogo() {
         organizations: OrganizationData[];
         venues: VenueData[];
     }>({ artists: [], organizations: [], venues: [] });
+    const [sharedPages, setSharedPages] = useState<{
+        artists: Array<{ uid: string; name: string; role: string }>;
+        organizations: Array<{ uid: string; name: string; role: string }>;
+        venues: Array<{ uid: string; name: string; role: string }>;
+        events: Array<{ uid: string; name: string; role: string }>;
+        activities: Array<{ uid: string; name: string; role: string }>;
+    }>({ artists: [], organizations: [], venues: [], events: [], activities: [] });
     const dropdownRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
 
@@ -39,13 +47,15 @@ function PersonLogo() {
                 try {
                     // Load the user's personal profile data
                     const userDoc = await getDoc(doc(db(), "Users", currentUser.uid));
+                    let personalData: UserData;
+                    
                     if (userDoc.exists()) {
-                        const personalData = userDoc.data() as UserData;
+                        personalData = userDoc.data() as UserData;
                         console.log('👤 Loaded personal user data:', personalData);
                         setUserData(personalData);
                     } else {
                         // Fallback to Firebase Auth data for personal profile
-                        const personalData = {
+                        personalData = {
                             name: currentUser.displayName || currentUser.phoneNumber || 'User',
                             username: currentUser.email?.split('@')[0] || currentUser.phoneNumber?.replace(/\D/g, '') || 'user',
                             photoURL: currentUser.photoURL || undefined,
@@ -56,10 +66,46 @@ function PersonLogo() {
                         setUserData(personalData);
                     }
                     
+                    // Auto-accept any pending invitations for this user's phone number
+                    const userPhone = personalData.phone || currentUser.phoneNumber;
+                    if (userPhone) {
+                        console.log('👤 Checking for pending invitations for phone:', userPhone);
+                        
+                        try {
+                            const pendingInvitations = await ContentSharingSecurity.getUserPendingInvitations(userPhone);
+                            console.log('👤 Found pending invitations:', pendingInvitations);
+                            
+                            // Auto-accept all pending invitations
+                            let acceptedAny = false;
+                            for (const invitation of pendingInvitations) {
+                                if (invitation.id) {
+                                    const result = await ContentSharingSecurity.acceptInvitation(
+                                        invitation.id,
+                                        currentUser.uid,
+                                        personalData.name || currentUser.displayName || 'User'
+                                    );
+                                    if (result.success) {
+                                        console.log('👤 Auto-accepted invitation:', invitation.id);
+                                        acceptedAny = true;
+                                    }
+                                }
+                            }
+                            
+                        } catch (error) {
+                            console.error('Error processing pending invitations:', error);
+                        }
+                    }
+                    
                     // Load all pages the user owns (for pages section)
                     const pages = await getUserOwnedPages(currentUser.uid);
                     setOwnedPages(pages);
                     console.log('👤 Loaded owned pages:', pages);
+                    
+                    // Load shared pages (pages where user has been given access)
+                    // This will include any newly accepted invitations
+                    const shared = await ContentSharingSecurity.getUserSharedContent(currentUser.uid);
+                    setSharedPages(shared);
+                    console.log('👤 Loaded shared pages:', shared);
                 } catch (error) {
                     console.error("Error fetching user data:", error);
                     // Fallback to Firebase Auth data
@@ -76,6 +122,7 @@ function PersonLogo() {
             } else {
                 setUserData(null);
                 setOwnedPages({ artists: [], organizations: [], venues: [] });
+                setSharedPages({ artists: [], organizations: [], venues: [], events: [], activities: [] });
             }
         });
         return () => unsubscribe();
@@ -304,6 +351,64 @@ function PersonLogo() {
                                 <span>{venue.name || 'Unnamed Venue'}</span>
                             </div>
                         ))}
+                        
+                        {/* Shared Pages Section */}
+                        {(sharedPages.artists.length > 0 || sharedPages.organizations.length > 0 || sharedPages.venues.length > 0) && (
+                            <>
+                                <div className={styles.sharedPagesHeader}>
+                                    <FaShareAlt className={styles.sharedIcon} />
+                                    <span>Shared with me</span>
+                                </div>
+                                
+                                {/* Shared Artist Pages */}
+                                {sharedPages.artists.map((artist) => (
+                                    <div 
+                                        key={`shared-artist-${artist.uid}`} 
+                                        className={`${styles.pageItem} ${styles.sharedPageItem}`}
+                                        onClick={() => { 
+                                            setShowDropdown(false); 
+                                            router.push(`/artist?page=${artist.uid}`);
+                                        }}
+                                    >
+                                        <FaMicrophone className={styles.pageIcon} />
+                                        <span>{artist.name}</span>
+                                        <span className={styles.roleTag}>{artist.role}</span>
+                                    </div>
+                                ))}
+                                
+                                {/* Shared Organization Pages */}
+                                {sharedPages.organizations.map((org) => (
+                                    <div 
+                                        key={`shared-org-${org.uid}`} 
+                                        className={`${styles.pageItem} ${styles.sharedPageItem}`}
+                                        onClick={() => { 
+                                            setShowDropdown(false); 
+                                            router.push(`/organisation?page=${org.uid}`);
+                                        }}
+                                    >
+                                        <FaBuilding className={styles.pageIcon} />
+                                        <span>{org.name}</span>
+                                        <span className={styles.roleTag}>{org.role}</span>
+                                    </div>
+                                ))}
+                                
+                                {/* Shared Venue Pages */}
+                                {sharedPages.venues.map((venue) => (
+                                    <div 
+                                        key={`shared-venue-${venue.uid}`} 
+                                        className={`${styles.pageItem} ${styles.sharedPageItem}`}
+                                        onClick={() => { 
+                                            setShowDropdown(false); 
+                                            router.push(`/venue?page=${venue.uid}`);
+                                        }}
+                                    >
+                                        <FaMapMarkerAlt className={styles.pageIcon} />
+                                        <span>{venue.name}</span>
+                                        <span className={styles.roleTag}>{venue.role}</span>
+                                    </div>
+                                ))}
+                            </>
+                        )}
                         
                         {/* Create New Page Option */}
                         <div className={styles.pageItem} onClick={handleCreateNewPage}>

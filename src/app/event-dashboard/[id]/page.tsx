@@ -266,11 +266,11 @@ const EventDashboard = () => {
   // Remove complex analytics state - keep it simple
   const [showBasicStats, setShowBasicStats] = useState(true);
 
-  // Check QR scanner support on mount
+  // Check QR scanner support without accessing camera
   useEffect(() => {
-    const checkQRSupport = async () => {
+    const checkQRSupport = () => {
       try {
-        // FIXED: Better browser detection and QR support checking
+        // FIXED: Check browser support without accessing camera
         const userAgent = navigator.userAgent.toLowerCase();
         const isSafari = /safari/.test(userAgent) && !/chrome/.test(userAgent);
         const isFirefox = /firefox/.test(userAgent);
@@ -280,27 +280,19 @@ const EventDashboard = () => {
 
         console.log('Browser detection:', { isSafari, isFirefox, isChrome, isEdge, isMobile });
 
-        // Check camera access first
-        let hasCamera = false;
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          stream.getTracks().forEach(track => track.stop()); // Clean up test stream
-          hasCamera = true;
-        } catch (cameraError) {
-          console.log('Camera access denied or not available:', cameraError);
-          hasCamera = false;
-        }
-
-        if (!hasCamera) {
-          console.log('❌ No camera access - QR scanning disabled');
+        // Check if MediaDevices API is available (don't access camera yet)
+        const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        
+        if (!hasMediaDevices) {
+          console.log('❌ MediaDevices API not available - QR scanning disabled');
           setQrScannerSupported(false);
           return;
         }
 
-        // Check BarcodeDetector API support
+        // Check BarcodeDetector API support (preferred method)
         if ('BarcodeDetector' in window) {
           try {
-            // Test if BarcodeDetector actually works
+            // Test if BarcodeDetector can be instantiated
             const barcodeDetector = new (window as any).BarcodeDetector({
               formats: ['qr_code']
             });
@@ -322,7 +314,9 @@ const EventDashboard = () => {
             console.log('📱 Browser does not support BarcodeDetector API');
           }
           
-          setQrScannerSupported(false);
+          // For browsers without BarcodeDetector, still allow QR scanning attempt
+          // The camera check will happen when user actually tries to scan
+          setQrScannerSupported(hasMediaDevices);
         }
       } catch (error) {
         console.log('❌ QR scanner support check failed:', error);
@@ -339,26 +333,14 @@ const EventDashboard = () => {
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
-    if (!qrScannerSupported) {
-      let message = 'QR scanning not supported on this browser. ';
-      if (isSafari && isMac) {
-        message += 'Safari on Mac has limited QR support. Try using Chrome or use manual check-in instead.';
-      } else {
-        message += 'Use manual check-in instead.';
-      }
-      
-      setScanResult({
-        type: 'info',
-        message
-      });
-      
-      // Auto-show manual check-in for better UX
-      setShowManualCheckIn(true);
-      return;
-    }
+    // Show loading state
+    setScanResult({
+      type: 'info',
+      message: 'Requesting camera access...'
+    });
 
     try {
-      // Try different camera constraints for better compatibility
+      // Check camera access first (only when user wants to scan)
       let stream;
       try {
         // First try with back camera (mobile)
@@ -370,14 +352,42 @@ const EventDashboard = () => {
           }
         });
       } catch (backCameraError) {
-        // Fallback to any available camera
         console.log('Back camera not available, trying any camera:', backCameraError);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          }
+        try {
+          // Fallback to any available camera
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            }
+          });
+        } catch (anyCameraError) {
+          console.log('No camera available:', anyCameraError);
+          throw anyCameraError;
+        }
+      }
+
+      // Check if we have a valid stream
+      if (!stream) {
+        throw new Error('No camera stream available');
+      }
+
+      // For browsers without BarcodeDetector, warn user but still allow manual entry
+      if (!('BarcodeDetector' in window)) {
+        let message = 'Camera started, but automatic QR scanning not supported on this browser. ';
+        if (isSafari && isMac) {
+          message += 'Safari on Mac has limited QR support. You can see the camera but please use manual check-in below.';
+        } else {
+          message += 'Please use manual QR input or manual check-in below.';
+        }
+        
+        setScanResult({
+          type: 'info',
+          message
         });
+        
+        // Auto-show manual check-in for better UX
+        setShowManualCheckIn(true);
       }
       
       setCameraStream(stream);
@@ -388,13 +398,17 @@ const EventDashboard = () => {
       }
       
       setScannerActive(true);
-      setScanResult({
-        type: 'info',
-        message: isMac ? 'QR scanner started. If scanning doesn\'t work, use manual check-in below.' : 'QR scanner started. Point camera at attendee QR code.'
-      });
-
-      // Start scanning for QR codes
-      startBarcodeDetection(stream);
+      
+      // Only start barcode detection if supported
+      if ('BarcodeDetector' in window) {
+        setScanResult({
+          type: 'info',
+          message: isMac ? 'QR scanner started. If scanning doesn\'t work, use manual check-in below.' : 'QR scanner started. Point camera at attendee QR code.'
+        });
+        
+        // Start scanning for QR codes
+        startBarcodeDetection(stream);
+      }
       
     } catch (error) {
       console.error('Error starting camera:', error);
@@ -402,11 +416,13 @@ const EventDashboard = () => {
       let errorMessage = 'Could not access camera. ';
       if (error instanceof DOMException) {
         if (error.name === 'NotAllowedError') {
-          errorMessage += 'Please allow camera permissions in your browser settings and refresh the page.';
+          errorMessage += 'Please allow camera permissions and try again.';
         } else if (error.name === 'NotFoundError') {
           errorMessage += 'No camera found on this device.';
+        } else if (error.name === 'NotReadableError') {
+          errorMessage += 'Camera is being used by another application.';
         } else {
-          errorMessage += 'Please use manual check-in instead.';
+          errorMessage += 'Camera error occurred.';
         }
       } else if (isMac && isSafari) {
         errorMessage += 'Safari on Mac may have camera issues. Try Chrome or use manual check-in.';
@@ -421,6 +437,9 @@ const EventDashboard = () => {
       
       // Auto-show manual check-in as fallback
       setShowManualCheckIn(true);
+      
+      // Update QR support status based on actual camera access
+      setQrScannerSupported(false);
     }
   };
 
@@ -667,6 +686,33 @@ const EventDashboard = () => {
       setupRealTimeTickets();
     }
   };
+
+  // Calculate live ticket statistics for a specific ticket type
+  const calculateLiveTicketStats = useCallback((ticketName: string, ticketCapacity: number, ticketPrice: number) => {
+    const soldCount = sessionAttendees.filter(attendee => {
+      // Check direct ticket type
+      if (attendee.ticketType === ticketName) return true;
+      
+      // Check for multi-ticket bookings
+      if (typeof attendee.tickets === 'object' && attendee.tickets[ticketName] > 0) {
+        return true;
+      }
+      
+      return false;
+    }).length;
+
+    const availableCount = Math.max(0, ticketCapacity - soldCount);
+    const revenue = soldCount * ticketPrice;
+    const soldPercentage = ticketCapacity > 0 ? (soldCount / ticketCapacity) * 100 : 0;
+    
+    return {
+      sold: soldCount,
+      available: availableCount,
+      revenue,
+      percentage: soldPercentage,
+      capacity: ticketCapacity
+    };
+  }, [sessionAttendees]);
 
   // NEW: Update session-specific statistics
   const updateSessionStats = useCallback((session: EventSession, sessionAttendees: Attendee[], sessionTickets: Ticket[]) => {
@@ -1744,77 +1790,90 @@ const EventDashboard = () => {
           </div>
         </div>
 
-        {/* Session Stats Overview */}
-        {selectedSession && (
-          <div className={styles.statsOverview}>
-            <div className={styles.statCard}>
-              <div className={styles.statIcon}>
+      {/* Modern Stats Cards */}
+      {selectedSession && (
+        <div className={styles.statsGrid}>
+          <div className={styles.statCard}>
+            <div className={styles.statContent}>
+              <div className={`${styles.statIcon} ${styles.revenue}`}>
                 <FaMoneyBillWave />
               </div>
-              <div className={styles.statContent}>
-                <h3>₹{calculateSessionRevenue(sessionAttendees, selectedSession || undefined).toLocaleString()}</h3>
-                <p>Total Revenue</p>
-              </div>
-            </div>
-            
-            <div className={styles.statCard}>
-              <div className={styles.statIcon}>
-                <FaTicketAlt />
-              </div>
-              <div className={styles.statContent}>
-                <h3>{sessionAttendees.length}</h3>
-                <p>Total Tickets Sold</p>
-              </div>
-            </div>
-            
-            <div className={styles.statCard}>
-              <div className={styles.statIcon}>
-                <FaCheckCircle />
-              </div>
-              <div className={styles.statContent}>
-                <h3>{sessionAttendees.filter(a => a.checkedIn).length}</h3>
-                <p>Checked In</p>
+              <div className={styles.statData}>
+                <div className={styles.statValue}>₹{calculateSessionRevenue(sessionAttendees, selectedSession || undefined).toLocaleString()}</div>
+                <div className={styles.statLabel}>Total Revenue</div>
               </div>
             </div>
           </div>
-        )}
+          
+          <div className={styles.statCard}>
+            <div className={styles.statContent}>
+              <div className={`${styles.statIcon} ${styles.attendees}`}>
+                <FaTicketAlt />
+              </div>
+              <div className={styles.statData}>
+                <div className={styles.statValue}>{sessionAttendees.length}</div>
+                <div className={styles.statLabel}>Total Attendees</div>
+              </div>
+            </div>
+          </div>
+          
+          <div className={styles.statCard}>
+            <div className={styles.statContent}>
+              <div className={`${styles.statIcon} ${styles.checkedIn}`}>
+                <FaCheckCircle />
+              </div>
+              <div className={styles.statData}>
+                <div className={styles.statValue}>{sessionAttendees.filter(a => a.checkedIn).length}</div>
+                <div className={styles.statLabel}>Checked In</div>
+              </div>
+            </div>
+          </div>
+          
+          <div className={styles.statCard}>
+            <div className={styles.statContent}>
+              <div className={`${styles.statIcon} ${styles.capacity}`}>
+                <FaUsers />
+              </div>
+              <div className={styles.statData}>
+                <div className={styles.statValue}>{Math.round((sessionAttendees.length / (selectedSession?.tickets.reduce((sum, t) => sum + t.capacity, 0) || 1)) * 100)}%</div>
+                <div className={styles.statLabel}>Capacity Used</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
 
-      {/* Navigation Tabs */}
+      {/* Modern Navigation Tabs */}
       <div className={styles.tabNavigation}>
         <button
-          className={`${styles.tabButton} ${activeTab === 'overview' ? styles.active : ''}`}
+          className={`${styles.tab} ${activeTab === 'overview' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('overview')}
         >
-          <FaChartBar />
           Overview
         </button>
         <button
-          className={`${styles.tabButton} ${activeTab === 'attendees' ? styles.active : ''}`}
+          className={`${styles.tab} ${activeTab === 'attendees' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('attendees')}
         >
-          <FaUsers />
           Attendees ({selectedSession ? sessionAttendees.length : attendees.length})
         </button>
         <button
-          className={`${styles.tabButton} ${activeTab === 'checkin' ? styles.active : ''}`}
+          className={`${styles.tab} ${activeTab === 'checkin' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('checkin')}
         >
-          <FaQrcode />
           Check-in
         </button>
         <button
-          className={`${styles.tabButton} ${activeTab === 'manage-tickets' ? styles.active : ''}`}
+          className={`${styles.tab} ${activeTab === 'manage-tickets' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('manage-tickets')}
         >
-          <FaTicketAlt />
           Manage Tickets
         </button>
         <button
-          className={`${styles.tabButton} ${activeTab === 'settings' ? styles.active : ''}`}
+          className={`${styles.tab} ${activeTab === 'settings' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('settings')}
         >
-          <FaCog />
           Settings
         </button>
       </div>
@@ -2395,10 +2454,11 @@ const EventDashboard = () => {
           </div>
         )}
 
-        {/* Manage Tickets Tab */}
+        {/* Manage Tickets Tab - LIVE DATA */}
         {activeTab === 'manage-tickets' && selectedSession && (
           <div className={styles.manageTicketsTab}>
             <h2>Manage Session Tickets</h2>
+            <p className="text-gray-400 text-sm mb-6">Real-time ticket availability and sales data</p>
             
             {ticketUpdateResult && (
               <div className={`${styles.updateResult} ${styles[ticketUpdateResult.type]}`}>
@@ -2407,42 +2467,94 @@ const EventDashboard = () => {
             )}
             
             <div className={styles.ticketsGrid}>
-              {selectedSession.tickets.map((ticket, index) => (
-                <div key={index} className={styles.ticketManageCard}>
-                  <div className={styles.ticketManageHeader}>
-                    <h3>{ticket.name}</h3>
-                    <span className={styles.ticketPrice}>₹{ticket.price}</span>
+              {selectedSession.tickets.map((ticket, index) => {
+                const liveStats = calculateLiveTicketStats(ticket.name, ticket.capacity, ticket.price);
+                const isLowStock = liveStats.available <= 5 && liveStats.available > 0;
+                const isSoldOut = liveStats.available === 0;
+                
+                return (
+                  <div key={index} className={styles.ticketManageCard}>
+                    <div className={styles.ticketManageHeader}>
+                      <div>
+                        <h3>{ticket.name}</h3>
+                        {isSoldOut && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400 mt-1">
+                            SOLD OUT
+                          </span>
+                        )}
+                        {isLowStock && !isSoldOut && (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 mt-1">
+                            LOW STOCK
+                          </span>
+                        )}
+                      </div>
+                      <span className={styles.ticketPrice}>₹{ticket.price.toLocaleString()}</span>
+                    </div>
+                    
+                    <div className={styles.ticketManageStats}>
+                      <div className={styles.statRow}>
+                        <span>Total Capacity:</span>
+                        <span className="font-semibold">{liveStats.capacity}</span>
+                      </div>
+                      <div className={styles.statRow}>
+                        <span>Tickets Sold:</span>
+                        <span className="font-semibold text-blue-400">{liveStats.sold}</span>
+                      </div>
+                      <div className={styles.statRow}>
+                        <span>Available Now:</span>
+                        <span className={`font-semibold ${
+                          isSoldOut ? 'text-red-400' : 
+                          isLowStock ? 'text-yellow-400' : 
+                          'text-green-400'
+                        }`}>
+                          {liveStats.available}
+                        </span>
+                      </div>
+                      <div className={styles.statRow}>
+                        <span>Sold Percentage:</span>
+                        <span className="font-semibold">{liveStats.percentage.toFixed(1)}%</span>
+                      </div>
+                      <div className={styles.statRow}>
+                        <span>Revenue Generated:</span>
+                        <span className="font-semibold text-green-400">₹{liveStats.revenue.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="mt-4">
+                      <div className="flex justify-between text-sm text-gray-400 mb-1">
+                        <span>Sales Progress</span>
+                        <span>{liveStats.percentage.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div 
+                          className={`h-2 rounded-full transition-all duration-500 ${
+                            isSoldOut ? 'bg-red-500' :
+                            isLowStock ? 'bg-yellow-500' :
+                            'bg-blue-500'
+                          }`}
+                          style={{ width: `${Math.min(liveStats.percentage, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                    
+                    <div className={styles.ticketManageActions}>
+                      <button 
+                        className={styles.editTicketButton}
+                        onClick={() => setEditingTicket({...ticket, index})}
+                      >
+                        <FaEdit /> Edit Ticket
+                      </button>
+                    </div>
                   </div>
-                  
-                  <div className={styles.ticketManageStats}>
-                    <div className={styles.statRow}>
-                      <span>Capacity:</span>
-                      <span>{ticket.capacity}</span>
-                    </div>
-                    <div className={styles.statRow}>
-                      <span>Sold:</span>
-                      <span>{ticket.capacity - ticket.available_capacity}</span>
-                    </div>
-                    <div className={styles.statRow}>
-                      <span>Available:</span>
-                      <span>{ticket.available_capacity}</span>
-                    </div>
-                    <div className={styles.statRow}>
-                      <span>Revenue:</span>
-                      <span>₹{((ticket.capacity - ticket.available_capacity) * ticket.price).toLocaleString()}</span>
-                    </div>
-                  </div>
-                  
-                  <div className={styles.ticketManageActions}>
-                    <button 
-                      className={styles.editTicketButton}
-                      onClick={() => setEditingTicket({...ticket, index})}
-                    >
-                      <FaEdit /> Edit
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+            
+            {/* Live Update Indicator */}
+            <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-400">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span>Live data • Last updated: {new Date().toLocaleTimeString()}</span>
             </div>
           </div>
         )}
@@ -2525,21 +2637,34 @@ const EventDashboard = () => {
             <div className={styles.editTicketForm}>
               <div className={styles.formGroup}>
                 <label>Capacity</label>
-                <input
-                  type="number"
-                  defaultValue={editingTicket.capacity}
-                  min={sessionAttendees.filter(a => a.ticketType === editingTicket.name).length}
-                  onBlur={(e) => {
-                    const newCapacity = parseInt(e.target.value);
-                    if (newCapacity !== editingTicket.capacity && newCapacity >= 0) {
-                      handleUpdateSessionTicket(editingTicket.index, 'capacity', newCapacity);
-                    }
-                  }}
-                  disabled={ticketUpdating === `capacity-${editingTicket.index}`}
-                />
-                {ticketUpdating === `capacity-${editingTicket.index}` && (
-                  <span className={styles.updating}>Updating...</span>
-                )}
+                {(() => {
+                  const soldTickets = calculateLiveTicketStats(editingTicket.name, editingTicket.capacity, editingTicket.price).sold;
+                  return (
+                    <>
+                      <input
+                        type="number"
+                        defaultValue={editingTicket.capacity}
+                        min={soldTickets}
+                        onBlur={(e) => {
+                          const newCapacity = parseInt(e.target.value);
+                          if (newCapacity !== editingTicket.capacity && newCapacity >= soldTickets) {
+                            handleUpdateSessionTicket(editingTicket.index, 'capacity', newCapacity);
+                          } else if (newCapacity < soldTickets) {
+                            e.target.value = editingTicket.capacity.toString();
+                            alert(`Cannot set capacity below ${soldTickets} (number of tickets already sold)`);
+                          }
+                        }}
+                        disabled={ticketUpdating === `capacity-${editingTicket.index}`}
+                      />
+                      <p className="text-xs text-gray-400 mt-1">
+                        Minimum: {soldTickets} (tickets already sold)
+                      </p>
+                      {ticketUpdating === `capacity-${editingTicket.index}` && (
+                        <span className={styles.updating}>Updating...</span>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div className={styles.formGroup}>
@@ -2562,10 +2687,39 @@ const EventDashboard = () => {
                 )}
               </div>
 
-              <div className={styles.ticketStats}>
-                <p>Sold: {sessionAttendees.filter(a => a.ticketType === editingTicket.name).length}</p>
-                <p>Available: {editingTicket.available_capacity}</p>
-              </div>
+              {(() => {
+                const modalLiveStats = calculateLiveTicketStats(editingTicket.name, editingTicket.capacity, editingTicket.price);
+                return (
+                  <div className={styles.ticketStats}>
+                    <div className="grid grid-cols-2 gap-4 p-4 bg-gray-800 rounded-lg">
+                      <div>
+                        <p className="text-sm text-gray-400">Tickets Sold</p>
+                        <p className="text-lg font-semibold text-blue-400">{modalLiveStats.sold}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-400">Available Now</p>
+                        <p className="text-lg font-semibold text-green-400">{modalLiveStats.available}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-400">Sales Progress</p>
+                        <p className="text-lg font-semibold">{modalLiveStats.percentage.toFixed(1)}%</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-400">Revenue</p>
+                        <p className="text-lg font-semibold text-green-400">₹{modalLiveStats.revenue.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div 
+                          className="h-2 rounded-full bg-blue-500 transition-all duration-500"
+                          style={{ width: `${Math.min(modalLiveStats.percentage, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             <div className={styles.modalActions}>

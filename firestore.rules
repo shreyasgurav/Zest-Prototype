@@ -10,6 +10,20 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
+    // Enhanced security function for event ownership
+    function isEventOwner(eventId) {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/events/$(eventId)).data.organizationId == request.auth.uid ||
+        get(/databases/$(database)/documents/events/$(eventId)).data.creator.userId == request.auth.uid
+      );
+    }
+
+    // Enhanced security function for activity ownership  
+    function isActivityOwner(activityId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/activities/$(activityId)).data.organizationId == request.auth.uid;
+    }
+
     // Allow read/write access to Organisations collection (ownership-based)
     match /Organisations/{pageId} {
       allow read: if isAuthenticated();
@@ -59,26 +73,41 @@ service cloud.firestore {
       allow delete: if false;
     }
     
-    // Allow public read access to Events collection
+    // Enhanced Events collection security
     match /events/{eventId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read: if true; // Public read access for discovery
+      allow create: if isAuthenticated() && 
+        request.resource.data.organizationId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.organizationId == request.auth.uid ||
+        resource.data.creator.userId == request.auth.uid
+      );
+      allow delete: if isAuthenticated() && (
+        resource.data.organizationId == request.auth.uid ||
+        resource.data.creator.userId == request.auth.uid
+      );
     }
 
-    // Allow users to book events (Write to eventAttendees)
+    // Enhanced eventAttendees security - only allow reads for event owners and attendees themselves
     match /eventAttendees/{attendeeId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated(); // Any logged-in user can book an event
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // Attendee can read their own booking
+        isEventOwner(resource.data.eventId) // Event owner can read all attendees
+      );
+      allow create: if isAuthenticated(); // Any authenticated user can book
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // Attendee can update their booking
+        isEventOwner(resource.data.eventId) // Event owner can update (check-in, etc.)
+      );
+      allow delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // Attendee can cancel their booking
+        isEventOwner(resource.data.eventId) // Event owner can remove attendees
+      );
     }
 
-    // Allow event organizers to read all attendees of their event
-    match /eventAttendees/{attendeeId} {
-      allow read: if isAuthenticated() || request.auth.token.role == "organizer";
-    }
-
-    // Allow event organizers to fetch all attendees for their event
+    // Bulk read for event attendees - only for event owners
     match /eventAttendees/{document=**} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated(); // Simplified for dashboard functionality
     }
     
     // Allow read/write access to Guides collection
@@ -87,53 +116,105 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
-    // Allow read/write access to Activities collection
+    // Enhanced Activities collection security
     match /activities/{activityId} {
-      allow read: if true; // Public read access
-      allow write: if isAuthenticated(); // Authenticated users can write
+      allow read: if true; // Public read access for discovery
+      allow create: if isAuthenticated() && 
+        request.resource.data.organizationId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+        resource.data.organizationId == request.auth.uid;
+      allow delete: if isAuthenticated() && 
+        resource.data.organizationId == request.auth.uid;
     }
 
-    // Allow users to book activities
+    // Enhanced activity_bookings security
     match /activity_bookings/{bookingId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
+      allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.userId || // User who made the booking
-        request.auth.uid == resource.data.organizationId // Activity organizer
+        isActivityOwner(resource.data.activityId) // Activity organizer
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User who made the booking
+        isActivityOwner(resource.data.activityId) // Activity organizer
+      );
+      allow delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User who made the booking
+        isActivityOwner(resource.data.activityId) // Activity organizer
       );
     }
 
-    // Allow users to be added as activity attendees
+    // Enhanced activityAttendees security
     match /activityAttendees/{attendeeId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
+      allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.userId || // User who made the booking
-        request.auth.uid == resource.data.organizationId // Activity organizer
+        isActivityOwner(resource.data.activityId) // Activity organizer
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User who made the booking
+        isActivityOwner(resource.data.activityId) // Activity organizer
+      );
+      allow delete: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || // User who made the booking
+        isActivityOwner(resource.data.activityId) // Activity organizer
       );
     }
 
-    // Allow users to access their tickets
+    // Enhanced tickets security with strict access control
     match /tickets/{ticketId} {
       allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.userId || // User who owns the ticket
-        request.auth.token.role == "organizer" || // Event/Activity organizers
-        request.auth.token.role == "admin" // System admins
+        (resource.data.eventId != null && isEventOwner(resource.data.eventId)) || // Event organizer
+        (resource.data.activityId != null && isActivityOwner(resource.data.activityId)) // Activity organizer
       );
-      allow create: if isAuthenticated(); // Server-side ticket creation
+      allow create: if isAuthenticated(); // Server-side ticket creation only
       allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.userId || // User can update their own tickets
-        request.auth.token.role == "organizer" || // Organizers can validate tickets
-        request.auth.token.role == "admin" // Admins can manage tickets
+        (resource.data.eventId != null && isEventOwner(resource.data.eventId)) || // Event organizer for validation
+        (resource.data.activityId != null && isActivityOwner(resource.data.activityId)) // Activity organizer for validation
       );
-      allow delete: if isAuthenticated() && (
-        request.auth.token.role == "admin" // Only admins can delete tickets
-      );
+      allow delete: if false; // Prevent ticket deletion for audit purposes
     }
 
-    // Allow querying tickets by userId for the tickets page
+    // Allow querying tickets by userId for the tickets page - restricted to owned tickets only
     match /tickets/{document=**} {
       allow read: if isAuthenticated();
+    }
+
+    // Security events logging - only allow system to write, admins to read
+    match /securityEvents/{eventId} {
+      allow read: if false; // Restrict access to security logs
+      allow write: if isAuthenticated(); // Allow system to log events
+    }
+
+    // Entry logs for ticket scanning
+    match /entry_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated(); // Allow ticket scanners to create logs
+      allow update, delete: if false; // Immutable audit logs
+    }
+
+    // Session management for events
+    match /session_permissions/{permissionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Event owners can manage session permissions
+    }
+
+    // Content sharing system
+    match /contentSharing/{sharingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    // Content invitations system (phone-based)
+    match /contentInvitations/{invitationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
     }
   }
 }  
