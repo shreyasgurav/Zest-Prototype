@@ -344,18 +344,26 @@ export class ContentSharingSecurity {
         return { success: false, error: resourceCheck.error };
       }
 
-      // 5. Verify the sharer has permission to share
+      // 5. Verify the sharer has permission to share - ONLY OWNERS CAN SHARE
       const sharerPermissions = await this.verifyContentAccess(contentType, contentId, sharedByUserId);
       
-      if (!sharerPermissions.canManage && sharerPermissions.role !== 'owner') {
+      // 🚨 ENHANCED: Only page owners can grant access to others
+      if (sharerPermissions.role !== 'owner') {
         await this.logSecurityEvent({
           type: 'access_denied',
           userId: sharedByUserId,
           contentType,
           contentId,
-          details: { reason: 'Insufficient sharing permissions', role: sharerPermissions.role }
+          details: { 
+            reason: 'Only page owners can grant access to others', 
+            userRole: sharerPermissions.role,
+            requiredRole: 'owner'
+          }
         });
-        return { success: false, error: 'You do not have permission to share this content' };
+        return { 
+          success: false, 
+          error: 'Only page owners can grant access to others. You have ' + sharerPermissions.role + ' access.' 
+        };
       }
 
       // 6. Validate permission level

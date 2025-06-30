@@ -1020,4 +1020,53 @@ export async function checkPageOwnership(userId: string, pageType: 'artist' | 'o
     console.error("Error checking page ownership:", error);
     return false;
   }
+}
+
+/**
+ * Centralized profile completion check
+ * This ensures consistent validation across the entire app
+ */
+export function isProfileComplete(userData: any): boolean {
+  if (!userData) return false;
+  
+  // Required fields for complete user profile
+  const requiredFields = ['name', 'username', 'contactEmail', 'phone'];
+  
+  return requiredFields.every(field => {
+    const value = userData[field];
+    return value && typeof value === 'string' && value.trim().length > 0;
+  });
+}
+
+/**
+ * Get missing profile fields for debugging
+ */
+export function getMissingProfileFields(userData: any): string[] {
+  if (!userData) return ['name', 'username', 'contactEmail', 'phone'];
+  
+  const requiredFields = ['name', 'username', 'contactEmail', 'phone'];
+  
+  return requiredFields.filter(field => {
+    const value = userData[field];
+    return !value || typeof value !== 'string' || value.trim().length === 0;
+  });
+}
+
+/**
+ * Profile completion status with details
+ */
+export function getProfileCompletionStatus(userData: any): {
+  isComplete: boolean;
+  missingFields: string[];
+  completionPercentage: number;
+} {
+  const missingFields = getMissingProfileFields(userData);
+  const totalFields = 4; // name, username, contactEmail, phone
+  const completedFields = totalFields - missingFields.length;
+  
+  return {
+    isComplete: missingFields.length === 0,
+    missingFields,
+    completionPercentage: Math.round((completedFields / totalFields) * 100)
+  };
 } 

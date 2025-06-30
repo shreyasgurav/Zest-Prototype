@@ -203,6 +203,22 @@ function UserProfile() {
       const user = auth().currentUser;
       if (!user || !userDetails) return;
       
+      // Validate required fields
+      if (!formData.name.trim()) {
+        toast.error("Name is required");
+        return;
+      }
+      
+      if (!formData.contactEmail.trim()) {
+        toast.error("Contact email is required");
+        return;
+      }
+      
+      if (!formData.username.trim()) {
+        toast.error("Username is required");
+        return;
+      }
+      
       // Check username availability
       if (formData.username && formData.username.length >= 3) {
         const isAvailable = await checkUsernameAvailability(formData.username);
@@ -222,6 +238,7 @@ function UserProfile() {
         username: formData.username.toLowerCase(),
         bio: formData.bio,
         contactEmail: formData.contactEmail,
+        email: formData.contactEmail, // Ensure email field is updated for booking compatibility
         updatedAt: new Date().toISOString(),
         providers: {
           ...(userDetails.providers || {}),
@@ -233,13 +250,16 @@ function UserProfile() {
       await updateDoc(userRef, userData);
       
       // Update local state with the new data
-      setUserDetails({ 
+      const updatedUserDetails = { 
         ...userDetails,
         name: formData.name,
         username: formData.username.toLowerCase(),
         bio: formData.bio,
-        contactEmail: formData.contactEmail
-      });
+        contactEmail: formData.contactEmail,
+        email: formData.contactEmail
+      };
+      
+      setUserDetails(updatedUserDetails);
       
       setIsEditing(false);
       toast.success("Profile updated successfully!");
@@ -285,7 +305,10 @@ function UserProfile() {
                 {isEditing ? (
                   <div className={styles.editProfileContainer}>
                     <div className={styles.inputGroup}>
-                      <label>Name:</label>
+                      <label>
+                        Name: 
+                        <span className={styles.requiredIndicator}>*</span>
+                      </label>
                       <input
                         type="text"
                         value={formData.name}
@@ -295,7 +318,10 @@ function UserProfile() {
                       />
                     </div>
                     <div className={styles.inputGroup}>
-                      <label>Username:</label>
+                      <label>
+                        Username: 
+                        <span className={styles.requiredIndicator}>*</span>
+                      </label>
                       <div className={styles.usernameInputContainer}>
                         <span className={styles.usernameAtSymbol}>@</span>
                         <input
@@ -310,7 +336,10 @@ function UserProfile() {
                       {usernameError && <span className={styles.error}>{usernameError}</span>}
                     </div>
                     <div className={styles.inputGroup}>
-                      <label>Bio:</label>
+                      <label>
+                        Bio: 
+                        <span className={styles.optionalIndicator}>(optional)</span>
+                      </label>
                       <textarea
                         value={formData.bio}
                         onChange={(e) => setFormData({...formData, bio: e.target.value})}
@@ -322,15 +351,33 @@ function UserProfile() {
                       <span className={styles.helperText}>{formData.bio.length}/200 characters</span>
                     </div>
                     <div className={styles.inputGroup}>
-                      <label>Contact Email:</label>
+                      <label>
+                        Contact Email: 
+                        <span className={styles.requiredIndicator}>*</span>
+                      </label>
                       <input
                         type="email"
                         value={formData.contactEmail}
                         onChange={(e) => setFormData({...formData, contactEmail: e.target.value})}
                         className={styles.profileInput}
-                        placeholder="Enter contact email (optional)"
+                        placeholder="Enter contact email"
                       />
                       <span className={styles.helperText}>Public contact email for others to reach you</span>
+                    </div>
+                    <div className={styles.inputGroup}>
+                      <label>
+                        Phone Number: 
+                        <span className={styles.requiredIndicator}>*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        value={userDetails.phone}
+                        className={`${styles.profileInput} ${styles.disabledInput}`}
+                        placeholder="Phone number (verified)"
+                        disabled
+                        readOnly
+                      />
+                      <span className={styles.helperText}>✅ Already verified during login</span>
                     </div>
                     <div className={styles.buttonGroup}>
                       <button 

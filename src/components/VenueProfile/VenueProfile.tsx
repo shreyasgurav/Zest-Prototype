@@ -14,13 +14,12 @@ import {
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from '@/services/firebase';
 import { toast } from "react-toastify";
-import { FaCamera, FaTimes } from 'react-icons/fa';
+import { FaCamera, FaTimes, FaPlus, FaMusic } from 'react-icons/fa';
 import VenueProfileSkeleton from "./VenueProfileSkeleton";
 import DashboardSection from '../Dashboard/DashboardSection/DashboardSection';
 import PhotoUpload from '../PhotoUpload/PhotoUpload';
 import { getUserOwnedPages } from '../../utils/authHelpers';
 import { useRouter } from 'next/navigation';
-import { FaPlus, FaMusic } from 'react-icons/fa';
 import styles from "./VenueProfile.module.css";
 
 interface VenueData {
@@ -499,6 +498,14 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
               >
                 Edit Profile
               </button>
+              {username && (
+                <button 
+                  onClick={() => window.open(`/venue/${username}`, '_blank')}
+                  className={styles.viewPublicButton}
+                >
+                  View Public Page
+                </button>
+              )}
               <button 
                 onClick={() => {
                   // Navigate to create page with venue context
@@ -677,9 +684,16 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
         </div>
       )}
 
-                  <div className={styles.venueDashboardSection}>
-              <DashboardSection pageId={currentVenuePageId || undefined} pageType="venue" />
-            </div>
+      {/* Events & Activities Dashboard Section */}
+      <div className={styles.ownedEventsSection}>
+        <div className={styles.sectionHeader}>
+          <h3>🏟️ Events & Activities</h3>
+          <p>Manage your created events and collaborated events</p>
+        </div>
+        <div className={styles.venueDashboardSection}>
+          <DashboardSection pageId={currentVenuePageId || undefined} pageType="venue" />
+        </div>
+      </div>
     </div>
   );
 };

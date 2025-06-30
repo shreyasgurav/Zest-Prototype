@@ -6,6 +6,7 @@ import { db } from '@/services/firebase';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { isOrganizationSession } from '@/utils/authHelpers';
+import { EventContentCollaborationService, EventContentCollaboration } from '@/utils/eventContentCollaboration';
 import styles from './EventProfile.module.css';
 import { FaBookmark, FaCalendarAlt, FaMapMarkerAlt, FaLanguage, FaClock, FaUsers, FaInfo, FaTicketAlt, FaRupeeSign } from 'react-icons/fa';
 import EventProfileSkeleton from './EventProfileSkeleton';
@@ -68,6 +69,24 @@ const GUIDE_OPTIONS: GuideOption[] = [
   { id: 'alcohol', label: 'Alcohol allowed?', placeholder: 'e.g., Yes/No or details' },
 ];
 
+interface CreatorProfile {
+  photoURL?: string;
+  profileImage?: string;
+  name: string;
+  username: string;
+  type: 'artist' | 'organisation' | 'venue';
+  pageId: string;
+}
+
+interface Attendee {
+  id: string;
+  tickets?: Record<string, number>;
+  eventId: string;
+  sessionId?: string;
+  ticketType?: string;
+  canCheckInIndependently?: boolean;
+}
+
 interface EventData {
   id: string;
   title: string;
@@ -110,21 +129,7 @@ interface EventData {
     username: string;
     userId: string;
   };
-}
-
-interface CreatorProfile {
-  photoURL?: string;
-  profileImage?: string;
-  name: string;
-}
-
-interface Attendee {
-  id: string;
-  tickets?: Record<string, number>;
-  eventId: string;
-  sessionId?: string;
-  ticketType?: string;
-  canCheckInIndependently?: boolean;
+  collaborations?: EventContentCollaboration[];
 }
 
 function EventProfile() {
@@ -139,6 +144,9 @@ function EventProfile() {
   const [isOrganization, setIsOrganization] = useState<boolean>(false);
   const [profileLoading, setProfileLoading] = useState<boolean>(true);
   const [creatorProfile, setCreatorProfile] = useState<CreatorProfile | null>(null);
+  const [collaborations, setCollaborations] = useState<EventContentCollaboration[]>([]);
+  const [allCreatorProfiles, setAllCreatorProfiles] = useState<CreatorProfile[]>([]);
+  const [showCollaboratorsPopup, setShowCollaboratorsPopup] = useState(false);
   const [ticketAvailability, setTicketAvailability] = useState<TicketType[]>([]);
 
   useEffect(() => {
@@ -322,6 +330,17 @@ function EventProfile() {
   };
 
   const getCreatorDisplayName = () => {
+    if (allCreatorProfiles.length > 0) {
+      if (allCreatorProfiles.length === 1) {
+        return allCreatorProfiles[0].name;
+      } else if (allCreatorProfiles.length === 2) {
+        return `${allCreatorProfiles[0].name} and ${allCreatorProfiles[1].name}`;
+      } else {
+        return `${allCreatorProfiles[0].name}, ${allCreatorProfiles[1].name} and ${allCreatorProfiles.length - 2} other${allCreatorProfiles.length - 2 === 1 ? '' : 's'}`;
+      }
+    }
+    
+    // Fallback for legacy events
     if (event?.creator) {
       return event.creator.name;
     }
@@ -456,7 +475,8 @@ function EventProfile() {
             total_capacity: data.total_capacity || 0,
             
             event_guides: data.event_guides || {},
-            creator: data.creator || null
+            creator: data.creator || null,
+            collaborations: data.collaborations || []
           };
           
           setEvent(eventData);
@@ -464,7 +484,11 @@ function EventProfile() {
           // Calculate ticket availability
           await calculateTicketAvailability(eventData);
           
-          // Fetch creator profile if creator exists
+          // Fetch collaborations and all creator profiles
+          const eventCollaborations = await fetchCollaborations(eventData.id);
+          await fetchAllCreatorProfiles(eventData, eventCollaborations);
+          
+          // Fetch creator profile if creator exists (for backward compatibility)
           if (eventData.creator) {
             fetchCreatorProfile(eventData.creator);
           }
@@ -514,7 +538,10 @@ function EventProfile() {
         setCreatorProfile({
           photoURL: data.photoURL || data.profileImage || '',
           profileImage: data.profileImage || data.photoURL || '',
-          name: data.name || creator.name
+          name: data.name || creator.name,
+          username: data.username || creator.username,
+          type: creator.type,
+          pageId: creator.pageId
         });
       }
     } catch (error) {
@@ -522,11 +549,128 @@ function EventProfile() {
     }
   };
 
+  const fetchCollaborations = async (eventId: string) => {
+    try {
+      const eventCollaborations = await EventContentCollaborationService.getEventCollaborations(eventId);
+      setCollaborations(eventCollaborations);
+      return eventCollaborations;
+    } catch (error) {
+      console.error('Error fetching collaborations:', error);
+      return [];
+    }
+  };
+
+  const fetchAllCreatorProfiles = async (event: EventData, collaborations: EventContentCollaboration[]) => {
+    try {
+      const profiles: CreatorProfile[] = [];
+      
+      // Add main creator if exists
+      if (event.creator) {
+        try {
+          let collectionName = '';
+          switch (event.creator.type) {
+            case 'artist':
+              collectionName = 'Artists';
+              break;
+            case 'organisation':
+              collectionName = 'Organisations';
+              break;
+            case 'venue':
+              collectionName = 'Venues';
+              break;
+            default:
+              return;
+          }
+          
+          const creatorDoc = doc(db(), collectionName, event.creator.pageId);
+          const creatorSnapshot = await getDoc(creatorDoc);
+          
+          if (creatorSnapshot.exists()) {
+            const data = creatorSnapshot.data();
+            profiles.push({
+              photoURL: data.photoURL || data.profileImage || '',
+              profileImage: data.profileImage || data.photoURL || '',
+              name: data.name || event.creator.name,
+              username: data.username || event.creator.username,
+              type: event.creator.type,
+              pageId: event.creator.pageId
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching main creator profile:', error);
+        }
+      }
+      
+      // Add collaborator profiles
+      for (const collaboration of collaborations) {
+        try {
+          let collectionName = '';
+          switch (collaboration.collaboratorPageType) {
+            case 'artist':
+              collectionName = 'Artists';
+              break;
+            case 'organization':
+              collectionName = 'Organisations';
+              break;
+            case 'venue':
+              collectionName = 'Venues';
+              break;
+            default:
+              continue;
+          }
+          
+          const collaboratorDoc = doc(db(), collectionName, collaboration.collaboratorPageId);
+          const collaboratorSnapshot = await getDoc(collaboratorDoc);
+          
+          if (collaboratorSnapshot.exists()) {
+            const data = collaboratorSnapshot.data();
+            profiles.push({
+              photoURL: data.photoURL || data.profileImage || '',
+              profileImage: data.profileImage || data.photoURL || '',
+              name: data.name || collaboration.collaboratorPageName,
+              username: data.username || collaboration.collaboratorPageUsername,
+              type: collaboration.collaboratorPageType === 'organization' ? 'organisation' : collaboration.collaboratorPageType,
+              pageId: collaboration.collaboratorPageId
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching collaborator profile:', error);
+        }
+      }
+      
+      setAllCreatorProfiles(profiles);
+    } catch (error) {
+      console.error('Error fetching all creator profiles:', error);
+    }
+  };
+
   const handleCreatorClick = (e: React.MouseEvent) => {
     e.preventDefault();
     
-    if (event?.creator) {
-      // Use creator information for new events
+    // If we have multiple creators, show the popup
+    if (allCreatorProfiles.length > 1) {
+      setShowCollaboratorsPopup(true);
+      return;
+    }
+    
+    // Single creator navigation
+    if (allCreatorProfiles.length === 1) {
+      const creator = allCreatorProfiles[0];
+      switch (creator.type) {
+        case 'artist':
+          router.push(`/artist/${creator.username}`);
+          break;
+        case 'organisation':
+          router.push(`/organisation/${creator.username}`);
+          break;
+        case 'venue':
+          router.push(`/venue/${creator.username}`);
+          break;
+        default:
+          console.warn('Unknown creator type:', creator.type);
+      }
+    } else if (event?.creator) {
+      // Fallback to legacy navigation
       const { type, username } = event.creator;
       switch (type) {
         case 'artist':
@@ -544,6 +688,23 @@ function EventProfile() {
     } else if (event?.organization_username) {
       // Fallback to legacy organization link for old events
       router.push(`/organisation/${event.organization_username}`);
+    }
+  };
+
+  const handleCollaboratorClick = (creator: CreatorProfile) => {
+    setShowCollaboratorsPopup(false);
+    switch (creator.type) {
+      case 'artist':
+        router.push(`/artist/${creator.username}`);
+        break;
+      case 'organisation':
+        router.push(`/organisation/${creator.username}`);
+        break;
+      case 'venue':
+        router.push(`/venue/${creator.username}`);
+        break;
+      default:
+        console.warn('Unknown creator type:', creator.type);
     }
   };
 
@@ -583,7 +744,36 @@ function EventProfile() {
             >
               <div className={styles.creatorInfo}>
                 By 
-                {creatorProfile && (creatorProfile.photoURL || creatorProfile.profileImage) && (
+                {allCreatorProfiles.length > 0 ? (
+                  <div className={styles.creatorAvatars}>
+                    {allCreatorProfiles.slice(0, 3).map((creator, index) => (
+                      <div 
+                        key={creator.pageId}
+                        className={styles.creatorAvatar}
+                        style={{ zIndex: allCreatorProfiles.length - index }}
+                      >
+                        {(creator.photoURL || creator.profileImage) ? (
+                          <img 
+                            src={creator.photoURL || creator.profileImage} 
+                            alt={creator.name}
+                            className={styles.creatorProfileImage}
+                          />
+                        ) : (
+                          <div className={styles.defaultAvatar}>
+                            {creator.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {allCreatorProfiles.length > 3 && (
+                      <div className={styles.creatorAvatar} style={{ zIndex: 0 }}>
+                        <div className={styles.moreCount}>
+                          +{allCreatorProfiles.length - 3}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : creatorProfile && (creatorProfile.photoURL || creatorProfile.profileImage) && (
                   <div className={styles.creatorAvatar}>
                     <img 
                       src={creatorProfile.photoURL || creatorProfile.profileImage} 
@@ -592,7 +782,9 @@ function EventProfile() {
                     />
                   </div>
                 )}
-                <span className={styles.organizationLink}>{getCreatorDisplayName()}</span>
+                <span className={`${styles.organizationLink} ${allCreatorProfiles.length > 1 ? styles.clickableText : ''}`}>
+                  {getCreatorDisplayName()}
+                </span>
               </div>
             </div>
             
@@ -684,6 +876,53 @@ function EventProfile() {
           </button>
         )}
       </div>
+      
+      {/* Collaborators Popup */}
+      {showCollaboratorsPopup && (
+        <div className={styles.popupOverlay} onClick={() => setShowCollaboratorsPopup(false)}>
+          <div className={styles.popupContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.popupHeader}>
+              <h3>Event Creators & Collaborators</h3>
+              <button 
+                className={styles.popupCloseButton}
+                onClick={() => setShowCollaboratorsPopup(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className={styles.collaboratorsList}>
+              {allCreatorProfiles.map((creator, index) => (
+                <div 
+                  key={creator.pageId}
+                  className={styles.collaboratorItem}
+                  onClick={() => handleCollaboratorClick(creator)}
+                >
+                  <div className={styles.collaboratorAvatar}>
+                    {(creator.photoURL || creator.profileImage) ? (
+                      <img 
+                        src={creator.photoURL || creator.profileImage} 
+                        alt={creator.name}
+                        className={styles.collaboratorProfileImage}
+                      />
+                    ) : (
+                      <div className={styles.collaboratorDefaultAvatar}>
+                        {creator.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                  <div className={styles.collaboratorInfo}>
+                    <span className={styles.collaboratorName}>{creator.name}</span>
+                    <span className={styles.collaboratorType}>
+                      {index === 0 ? 'Creator' : 'Collaborator'} • {creator.type.charAt(0).toUpperCase() + creator.type.slice(1)}
+                    </span>
+                  </div>
+                  <div className={styles.collaboratorArrow}>→</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

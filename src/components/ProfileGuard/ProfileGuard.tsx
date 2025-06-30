@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/services/firebase';
+import { isProfileComplete as checkProfileComplete, getMissingProfileFields } from '@/utils/authHelpers';
 
 interface ProfileGuardProps {
   children: React.ReactNode;
@@ -70,20 +71,16 @@ const ProfileGuard: React.FC<ProfileGuardProps> = ({ children }) => {
         
         if (userSnap.exists()) {
           const userData = userSnap.data();
-          // Profile completion check: name, username, phone, and contactEmail
-          // All these fields are required for complete profile
-          const hasCompleteProfile = userData.name && userData.username && userData.phone && userData.contactEmail;
+          
+          // Use centralized profile completion check
+          const hasCompleteProfile = checkProfileComplete(userData);
           
           setIsProfileComplete(hasCompleteProfile);
           
           if (!hasCompleteProfile) {
+            const missingFields = getMissingProfileFields(userData);
             console.log("🚫 Incomplete profile detected, redirecting to login...");
-            console.log("Profile check:", {
-              name: !!userData.name,
-              username: !!userData.username,
-              phone: !!userData.phone,
-              contactEmail: !!userData.contactEmail
-            });
+            console.log("Profile check - Missing fields:", missingFields);
             router.push('/login');
           }
         } else {

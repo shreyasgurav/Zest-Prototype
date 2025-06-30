@@ -14,12 +14,27 @@ import {
   deleteDoc,
   onSnapshot,
   updateDoc,
-  serverTimestamp
+  serverTimestamp,
+  limit
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import styles from './EventDashboard.module.css';
 import { DashboardSecurity, DashboardPermissions } from '@/utils/dashboardSecurity';
 import { getTicketDisplayStatus, expireTicketsForPastEvents } from '@/utils/ticketValidator';
+import EventSharingManager from '@/components/EventSharingManager/EventSharingManager';
+import EventCollaborationManager from '@/components/EventCollaborationManager/EventCollaborationManager';
+import { 
+  safeDivision, 
+  calculateCheckInRate, 
+  calculateRevenue, 
+  formatDate, 
+  formatTime, 
+  calculateTicketStats, 
+  filterAttendees, 
+  exportAttendeesToCSV, 
+  validateCheckInEligibility, 
+  getEmptyStateMessage 
+} from '@/utils/dashboardHelpers';
 import { 
   FaEdit, 
   FaTrash, 
@@ -53,7 +68,11 @@ import {
   FaArrowLeft,
   FaLayerGroup,
   FaChevronRight,
-  FaPercentage
+  FaPercentage,
+  FaHandshake,
+  FaStop,
+  FaChevronLeft,
+  FaChevronDown
 } from 'react-icons/fa';
 
 interface TimeSlot {
@@ -202,7 +221,7 @@ const EventDashboard = () => {
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'attendees' | 'checkin' | 'settings' | 'manage-tickets'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'attendees' | 'checkin' | 'settings' | 'manage-tickets' | 'collaborations'>('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'confirmed' | 'pending' | 'checked-in' | 'not-checked-in'>('all');
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -246,6 +265,9 @@ const EventDashboard = () => {
   const [ticketUpdating, setTicketUpdating] = useState<string | null>(null);
   const [ticketUpdateResult, setTicketUpdateResult] = useState<{type: 'success' | 'error' | 'info', message: string} | null>(null);
   
+  // Event sharing state
+  const [showEventSharing, setShowEventSharing] = useState(false);
+  
   // Manual attendee addition state
   const [showManualAttendeeForm, setShowManualAttendeeForm] = useState(false);
   const [manualAttendeeData, setManualAttendeeData] = useState({
@@ -265,6 +287,13 @@ const EventDashboard = () => {
 
   // Remove complex analytics state - keep it simple
   const [showBasicStats, setShowBasicStats] = useState(true);
+
+  // Simple pagination for large events
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize] = useState(50); // Fixed page size for simplicity
+  const [totalAttendees, setTotalAttendees] = useState(0);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const [showPagination, setShowPagination] = useState(false);
 
   // Check QR scanner support without accessing camera
   useEffect(() => {
@@ -334,10 +363,10 @@ const EventDashboard = () => {
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
     // Show loading state
-    setScanResult({
-      type: 'info',
+      setScanResult({
+        type: 'info',
       message: 'Requesting camera access...'
-    });
+      });
 
     try {
       // Check camera access first (only when user wants to scan)
@@ -355,12 +384,12 @@ const EventDashboard = () => {
         console.log('Back camera not available, trying any camera:', backCameraError);
         try {
           // Fallback to any available camera
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 }
-            }
-          });
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        });
         } catch (anyCameraError) {
           console.log('No camera available:', anyCameraError);
           throw anyCameraError;
@@ -401,13 +430,13 @@ const EventDashboard = () => {
       
       // Only start barcode detection if supported
       if ('BarcodeDetector' in window) {
-        setScanResult({
-          type: 'info',
-          message: isMac ? 'QR scanner started. If scanning doesn\'t work, use manual check-in below.' : 'QR scanner started. Point camera at attendee QR code.'
-        });
-        
-        // Start scanning for QR codes
-        startBarcodeDetection(stream);
+      setScanResult({
+        type: 'info',
+        message: isMac ? 'QR scanner started. If scanning doesn\'t work, use manual check-in below.' : 'QR scanner started. Point camera at attendee QR code.'
+      });
+
+      // Start scanning for QR codes
+      startBarcodeDetection(stream);
       }
       
     } catch (error) {
@@ -605,23 +634,7 @@ const EventDashboard = () => {
     }
   };
 
-  // Helper functions
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (timeString: string) => {
-    return new Date(`2000/01/01 ${timeString}`).toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
-  };
+  // Helper functions now imported from dashboardHelpers for safety
 
   // FIXED: Standardized revenue calculation function
   const calculateAttendeeRevenue = (attendee: Attendee, sessionContext?: EventSession): number => {
@@ -849,34 +862,6 @@ const EventDashboard = () => {
     }
   };
 
-  // Set up real-time listeners
-  useEffect(() => {
-    if (permissions.canView && eventId && !loading) {
-      // For session-centric events showing session selector, get all attendees for stats
-      if (eventData?.architecture === 'session-centric' && showSessionSelector) {
-        // Set up basic attendees listener to populate session selector stats
-        setupSessionSelectorAttendees();
-        return;
-      }
-      
-      // For selected session or legacy events, set up full listeners
-      setupRealTimeAttendees();
-      setupRealTimeTickets();
-    }
-
-    // Cleanup on unmount or when dependencies change
-    return () => {
-      if (unsubscribeAttendees.current) {
-        unsubscribeAttendees.current();
-        unsubscribeAttendees.current = null;
-      }
-      if (unsubscribeTickets.current) {
-        unsubscribeTickets.current();
-        unsubscribeTickets.current = null;
-      }
-    };
-  }, [permissions.canView, eventId, loading, showSessionSelector, selectedSession?.id]);
-
   // Real-time attendees fetching for session selector
   const setupSessionSelectorAttendees = useCallback(() => {
     if (!eventId || !permissions.canView) return;
@@ -915,13 +900,15 @@ const EventDashboard = () => {
     return unsubscribe;
   }, [eventId, permissions.canView]);
 
-  // Real-time attendees fetching
+  // Real-time attendees fetching - FIXED: Memory leak and dependency issues
   const setupRealTimeAttendees = useCallback(() => {
     if (!eventId || !permissions.canView) return;
 
-    // Clean up existing listener
+    // Clean up existing listener FIRST
     if (unsubscribeAttendees.current) {
+      console.log('🧹 Cleaning up existing attendees listener');
       unsubscribeAttendees.current();
+      unsubscribeAttendees.current = null;
     }
 
     const attendeesRef = collection(db(), 'eventAttendees');
@@ -983,7 +970,9 @@ const EventDashboard = () => {
           
           setSessionAttendees(sessionAttendeesFiltered);
           setAttendees(attendeesList); // Keep full list for stats calculation
-          updateSessionStats(selectedSession, sessionAttendeesFiltered, sessionTickets);
+          if (typeof updateSessionStats === 'function') {
+            updateSessionStats(selectedSession, sessionAttendeesFiltered, sessionTickets);
+          }
         } else {
           setAttendees(attendeesList);
           setSessionAttendees(attendeesList);
@@ -1028,7 +1017,9 @@ const EventDashboard = () => {
               
               setSessionAttendees(sessionAttendees);
               setAttendees(allAttendees);
-              updateSessionStats(selectedSession, sessionAttendees, sessionTickets);
+              if (typeof updateSessionStats === 'function') {
+                updateSessionStats(selectedSession, sessionAttendees, sessionTickets);
+              }
               setLastRefresh(new Date());
             },
             (fallbackError) => {
@@ -1047,15 +1038,17 @@ const EventDashboard = () => {
 
     unsubscribeAttendees.current = unsubscribe;
     return unsubscribe;
-  }, [eventId, permissions.canView, selectedSession, sessionTickets, updateSessionStats, eventData?.architecture]);
+  }, [eventId, permissions.canView, selectedSession?.id, eventData?.architecture]); // FIXED: Reduced dependencies
 
-  // Real-time tickets fetching
+  // Real-time tickets fetching - FIXED: Memory leak and dependency issues
   const setupRealTimeTickets = useCallback(() => {
     if (!eventId || !permissions.canView) return;
 
-    // Clean up existing listener
+    // Clean up existing listener FIRST
     if (unsubscribeTickets.current) {
+      console.log('🧹 Cleaning up existing tickets listener');
       unsubscribeTickets.current();
+      unsubscribeTickets.current = null;
     }
 
     const ticketsRef = collection(db(), 'tickets');
@@ -1108,7 +1101,9 @@ const EventDashboard = () => {
           
           setSessionTickets(sessionTicketsFiltered);
           setTickets(ticketsList); // Keep full list for stats calculation
-          updateSessionStats(selectedSession, sessionAttendees, sessionTicketsFiltered);
+          if (typeof updateSessionStats === 'function') {
+            updateSessionStats(selectedSession, sessionAttendees, sessionTicketsFiltered);
+          }
         } else {
           setTickets(ticketsList);
           setSessionTickets(ticketsList);
@@ -1148,7 +1143,9 @@ const EventDashboard = () => {
               
               setSessionTickets(sessionTickets);
               setTickets(allTickets);
-              updateSessionStats(selectedSession, sessionAttendees, sessionTickets);
+              if (typeof updateSessionStats === 'function') {
+                updateSessionStats(selectedSession, sessionAttendees, sessionTickets);
+              }
             },
             (fallbackError) => {
               console.error("Fallback ticket query also failed:", fallbackError);
@@ -1163,7 +1160,7 @@ const EventDashboard = () => {
 
     unsubscribeTickets.current = unsubscribe;
     return unsubscribe;
-  }, [eventId, permissions.canView, selectedSession, sessionAttendees, updateSessionStats, eventData?.architecture]);
+  }, [eventId, permissions.canView, selectedSession?.id, eventData?.architecture]); // FIXED: Reduced dependencies
 
   // Handle manual refresh
   const handleRefresh = async () => {
@@ -1175,6 +1172,73 @@ const EventDashboard = () => {
       console.error('Error refreshing data:', error);
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // Simple pagination for large events (simplified version)
+  const loadAttendeesPaginated = useCallback(async (page: number = 1) => {
+    if (!eventId || !permissions.canView) return;
+
+    try {
+      setLoadingPage(true);
+
+      const attendeesRef = collection(db(), 'eventAttendees');
+      let attendeesQuery;
+
+      // For session-centric events with selected session, filter by session
+      if (selectedSession && eventData?.architecture === 'session-centric') {
+        attendeesQuery = query(
+          attendeesRef,
+          where('eventId', '==', eventId),
+          where('sessionId', '==', selectedSession.id),
+          orderBy('createdAt', 'desc'),
+          limit(pageSize)
+        );
+      } else {
+        // For legacy events or when no session selected
+        attendeesQuery = query(
+          attendeesRef,
+          where('eventId', '==', eventId),
+          orderBy('createdAt', 'desc'),
+          limit(pageSize)
+        );
+      }
+
+      const snapshot = await getDocs(attendeesQuery);
+      const attendeesList = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Attendee[];
+
+      // Update attendees data
+      setSessionAttendees(attendeesList);
+      if (!selectedSession) {
+        setAttendees(attendeesList);
+      }
+
+      // Show pagination if we have more attendees than page size
+      setShowPagination(attendeesList.length >= pageSize);
+      setTotalAttendees(attendeesList.length);
+
+      console.log(`📊 Loaded page ${page}: ${attendeesList.length} attendees`);
+
+    } catch (error) {
+      console.error('❌ Error loading attendees:', error);
+    } finally {
+      setLoadingPage(false);
+    }
+  }, [eventId, permissions.canView, selectedSession?.id, pageSize, eventData?.architecture]);
+
+  // Simple pagination controls
+  const handleNextPage = () => {
+    setCurrentPage(prev => prev + 1);
+    loadAttendeesPaginated(currentPage + 1);
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(prev => prev - 1);
+      loadAttendeesPaginated(currentPage - 1);
     }
   };
 
@@ -1190,14 +1254,13 @@ const EventDashboard = () => {
       return;
     }
 
-    // Validate attendee before check-in
-    if (attendee.checkedIn) {
-      setScanResult({ type: 'info', message: `${attendee.name} is already checked in` });
-      return;
-    }
-
-    if (attendee.status && attendee.status !== 'confirmed') {
-      setScanResult({ type: 'error', message: `Cannot check in ${attendee.name}: Ticket status is ${attendee.status}` });
+    // Validate attendee before check-in using helper function
+    const validation = validateCheckInEligibility(attendee);
+    if (!validation.canCheckIn) {
+      setScanResult({ 
+        type: validation.reason?.includes('status') ? 'error' : 'info', 
+        message: `Cannot check in ${attendee.name}: ${validation.reason}` 
+      });
       return;
     }
 
@@ -1463,7 +1526,7 @@ const EventDashboard = () => {
     }
   };
 
-  // Export attendees data
+  // Export attendees data using safe helper function
   const handleExportAttendees = () => {
     if (!selectedSession && eventData?.architecture === 'session-centric') {
       alert('Please select a session first');
@@ -1471,19 +1534,10 @@ const EventDashboard = () => {
     }
 
     const attendeesToExport = selectedSession ? sessionAttendees : attendees;
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "Name,Email,Phone,Ticket Type,Check-in Status,Check-in Time,Registration Date\n"
-      + attendeesToExport.map(attendee => 
-          `"${attendee.name}","${attendee.email}","${attendee.phone}","${attendee.ticketType || 'Standard'}","${attendee.checkedIn ? 'Checked In' : 'Not Checked In'}","${attendee.checkInTime ? new Date(attendee.checkInTime).toLocaleString() : 'N/A'}","${new Date(attendee.createdAt).toLocaleString()}"`
-        ).join("\n");
+    const eventTitle = eventData?.title || 'Event';
+    const sessionName = selectedSession ? selectedSession.name : 'all';
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `${eventData?.title}_${selectedSession ? selectedSession.name : 'all'}_attendees.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    exportAttendeesToCSV(attendeesToExport, eventTitle, sessionName);
   };
 
   // Update session ticket capacity
@@ -1613,6 +1667,37 @@ const EventDashboard = () => {
       setTimeout(() => setTicketUpdateResult(null), 3000);
     }
   };
+
+  // CRITICAL: Effect to setup real-time data with proper cleanup - NOW AFTER FUNCTION DECLARATIONS
+  useEffect(() => {
+    if (eventData && permissions.canView) {
+      console.log('🚀 Setting up real-time listeners for:', { eventId, selectedSession: selectedSession?.id });
+      setupRealTimeAttendees();
+      setupRealTimeTickets();
+    }
+
+    // CRITICAL: Cleanup listeners on unmount or dependency changes
+    return () => {
+      console.log('🧹 Component cleanup: removing all listeners');
+      if (unsubscribeAttendees.current) {
+        unsubscribeAttendees.current();
+        unsubscribeAttendees.current = null;
+      }
+      if (unsubscribeTickets.current) {
+        unsubscribeTickets.current();
+        unsubscribeTickets.current = null;
+      }
+    };
+  }, [setupRealTimeAttendees, setupRealTimeTickets, eventData, permissions.canView]);
+
+  // Additional cleanup on session change to prevent stale listeners
+  useEffect(() => {
+    if (selectedSession) {
+      console.log(`🔄 Session changed to: ${selectedSession.id}, refreshing listeners`);
+      setupRealTimeAttendees();
+      setupRealTimeTickets();
+    }
+  }, [selectedSession?.id, setupRealTimeAttendees, setupRealTimeTickets]);
 
   // Loading state
   if (loading) {
@@ -1791,9 +1876,9 @@ const EventDashboard = () => {
         </div>
 
       {/* Modern Stats Cards */}
-      {selectedSession && (
+        {selectedSession && (
         <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
+            <div className={styles.statCard}>
             <div className={styles.statContent}>
               <div className={`${styles.statIcon} ${styles.revenue}`}>
                 <FaMoneyBillWave />
@@ -1802,10 +1887,10 @@ const EventDashboard = () => {
                 <div className={styles.statValue}>₹{calculateSessionRevenue(sessionAttendees, selectedSession || undefined).toLocaleString()}</div>
                 <div className={styles.statLabel}>Total Revenue</div>
               </div>
+              </div>
             </div>
-          </div>
-          
-          <div className={styles.statCard}>
+            
+            <div className={styles.statCard}>
             <div className={styles.statContent}>
               <div className={`${styles.statIcon} ${styles.attendees}`}>
                 <FaTicketAlt />
@@ -1814,10 +1899,10 @@ const EventDashboard = () => {
                 <div className={styles.statValue}>{sessionAttendees.length}</div>
                 <div className={styles.statLabel}>Total Attendees</div>
               </div>
+              </div>
             </div>
-          </div>
-          
-          <div className={styles.statCard}>
+            
+            <div className={styles.statCard}>
             <div className={styles.statContent}>
               <div className={`${styles.statIcon} ${styles.checkedIn}`}>
                 <FaCheckCircle />
@@ -1830,18 +1915,35 @@ const EventDashboard = () => {
           </div>
           
           <div className={styles.statCard}>
-            <div className={styles.statContent}>
+              <div className={styles.statContent}>
               <div className={`${styles.statIcon} ${styles.capacity}`}>
                 <FaUsers />
               </div>
               <div className={styles.statData}>
-                <div className={styles.statValue}>{Math.round((sessionAttendees.length / (selectedSession?.tickets.reduce((sum, t) => sum + t.capacity, 0) || 1)) * 100)}%</div>
+                <div className={styles.statValue}>
+                  {/* FIXED: Division by zero bug - safe calculation */}
+                  {(() => {
+                    const totalAttendees = sessionAttendees.length;
+                    const totalCapacity = selectedSession?.tickets.reduce((sum, t) => sum + t.capacity, 0) || 0;
+                    
+                    if (totalCapacity === 0) {
+                      return '0%'; // No capacity defined
+                    }
+                    
+                    if (totalAttendees === 0) {
+                      return '0%'; // No attendees yet
+                    }
+                    
+                    const percentage = Math.round((totalAttendees / totalCapacity) * 100);
+                    return `${Math.min(percentage, 100)}%`; // Cap at 100%
+                  })()}
+                </div>
                 <div className={styles.statLabel}>Capacity Used</div>
+              </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
 
       {/* Modern Navigation Tabs */}
@@ -1869,6 +1971,12 @@ const EventDashboard = () => {
           onClick={() => setActiveTab('manage-tickets')}
         >
           Manage Tickets
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'collaborations' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('collaborations')}
+        >
+          <FaHandshake /> Collaborations
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'settings' ? styles.activeTab : ''}`}
@@ -2473,10 +2581,10 @@ const EventDashboard = () => {
                 const isSoldOut = liveStats.available === 0;
                 
                 return (
-                  <div key={index} className={styles.ticketManageCard}>
-                    <div className={styles.ticketManageHeader}>
+                <div key={index} className={styles.ticketManageCard}>
+                  <div className={styles.ticketManageHeader}>
                       <div>
-                        <h3>{ticket.name}</h3>
+                    <h3>{ticket.name}</h3>
                         {isSoldOut && (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400 mt-1">
                             SOLD OUT
@@ -2489,18 +2597,18 @@ const EventDashboard = () => {
                         )}
                       </div>
                       <span className={styles.ticketPrice}>₹{ticket.price.toLocaleString()}</span>
-                    </div>
-                    
-                    <div className={styles.ticketManageStats}>
-                      <div className={styles.statRow}>
+                  </div>
+                  
+                  <div className={styles.ticketManageStats}>
+                    <div className={styles.statRow}>
                         <span>Total Capacity:</span>
                         <span className="font-semibold">{liveStats.capacity}</span>
-                      </div>
-                      <div className={styles.statRow}>
+                    </div>
+                    <div className={styles.statRow}>
                         <span>Tickets Sold:</span>
                         <span className="font-semibold text-blue-400">{liveStats.sold}</span>
-                      </div>
-                      <div className={styles.statRow}>
+                    </div>
+                    <div className={styles.statRow}>
                         <span>Available Now:</span>
                         <span className={`font-semibold ${
                           isSoldOut ? 'text-red-400' : 
@@ -2509,8 +2617,8 @@ const EventDashboard = () => {
                         }`}>
                           {liveStats.available}
                         </span>
-                      </div>
-                      <div className={styles.statRow}>
+                    </div>
+                    <div className={styles.statRow}>
                         <span>Sold Percentage:</span>
                         <span className="font-semibold">{liveStats.percentage.toFixed(1)}%</span>
                       </div>
@@ -2535,18 +2643,18 @@ const EventDashboard = () => {
                           }`}
                           style={{ width: `${Math.min(liveStats.percentage, 100)}%` }}
                         ></div>
-                      </div>
-                    </div>
-                    
-                    <div className={styles.ticketManageActions}>
-                      <button 
-                        className={styles.editTicketButton}
-                        onClick={() => setEditingTicket({...ticket, index})}
-                      >
-                        <FaEdit /> Edit Ticket
-                      </button>
                     </div>
                   </div>
+                  
+                  <div className={styles.ticketManageActions}>
+                    <button 
+                      className={styles.editTicketButton}
+                      onClick={() => setEditingTicket({...ticket, index})}
+                    >
+                        <FaEdit /> Edit Ticket
+                    </button>
+                  </div>
+                </div>
                 );
               })}
             </div>
@@ -2556,6 +2664,29 @@ const EventDashboard = () => {
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span>Live data • Last updated: {new Date().toLocaleTimeString()}</span>
             </div>
+          </div>
+        )}
+
+        {/* Collaborations Tab */}
+        {activeTab === 'collaborations' && eventData && (
+          <div className={styles.collaborationsTab}>
+            <div className={styles.collaborationsHeader}>
+              <h2>Event Collaborations</h2>
+              <p className={styles.collaborationsDescription}>
+                Invite other pages to collaborate on this event. When they accept, the event will appear on their public profile with a "COLLAB" badge.
+              </p>
+            </div>
+            
+            <EventCollaborationManager
+              eventId={eventId!}
+              eventTitle={eventData.title}
+              eventImage={eventData.event_image}
+              canManageCollaborations={permissions.canEdit || permissions.role === 'owner'}
+              onCollaborationChange={() => {
+                // Optionally refresh data or show notification
+                console.log('Collaboration changed for event:', eventId);
+              }}
+            />
           </div>
         )}
 
@@ -2581,6 +2712,27 @@ const EventDashboard = () => {
                   disabled={!permissions.canDelete}
                 >
                   <FaTrash /> Delete Event
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.settingsSection}>
+              <h3>Session Check-in Access</h3>
+              <p className={styles.settingsDescription}>
+                Grant check-in access to users via phone number
+              </p>
+              {!selectedSession && (
+                <p className={styles.settingsWarning}>
+                  <FaExclamationTriangle /> Please select a session first to manage check-in access
+                </p>
+              )}
+              <div className={styles.settingsActions}>
+                <button 
+                  onClick={() => setShowEventSharing(true)}
+                  className={styles.shareEventButton}
+                  disabled={permissions.role === 'unauthorized' || !selectedSession}
+                >
+                  <FaUserCheck /> Manage Check-in Access
                 </button>
               </div>
             </div>
@@ -2641,27 +2793,27 @@ const EventDashboard = () => {
                   const soldTickets = calculateLiveTicketStats(editingTicket.name, editingTicket.capacity, editingTicket.price).sold;
                   return (
                     <>
-                      <input
-                        type="number"
-                        defaultValue={editingTicket.capacity}
+                <input
+                  type="number"
+                  defaultValue={editingTicket.capacity}
                         min={soldTickets}
-                        onBlur={(e) => {
-                          const newCapacity = parseInt(e.target.value);
+                  onBlur={(e) => {
+                    const newCapacity = parseInt(e.target.value);
                           if (newCapacity !== editingTicket.capacity && newCapacity >= soldTickets) {
-                            handleUpdateSessionTicket(editingTicket.index, 'capacity', newCapacity);
+                      handleUpdateSessionTicket(editingTicket.index, 'capacity', newCapacity);
                           } else if (newCapacity < soldTickets) {
                             e.target.value = editingTicket.capacity.toString();
                             alert(`Cannot set capacity below ${soldTickets} (number of tickets already sold)`);
-                          }
-                        }}
-                        disabled={ticketUpdating === `capacity-${editingTicket.index}`}
-                      />
+                    }
+                  }}
+                  disabled={ticketUpdating === `capacity-${editingTicket.index}`}
+                />
                       <p className="text-xs text-gray-400 mt-1">
                         Minimum: {soldTickets} (tickets already sold)
                       </p>
-                      {ticketUpdating === `capacity-${editingTicket.index}` && (
-                        <span className={styles.updating}>Updating...</span>
-                      )}
+                {ticketUpdating === `capacity-${editingTicket.index}` && (
+                  <span className={styles.updating}>Updating...</span>
+                )}
                     </>
                   );
                 })()}
@@ -2690,12 +2842,12 @@ const EventDashboard = () => {
               {(() => {
                 const modalLiveStats = calculateLiveTicketStats(editingTicket.name, editingTicket.capacity, editingTicket.price);
                 return (
-                  <div className={styles.ticketStats}>
+              <div className={styles.ticketStats}>
                     <div className="grid grid-cols-2 gap-4 p-4 bg-gray-800 rounded-lg">
                       <div>
                         <p className="text-sm text-gray-400">Tickets Sold</p>
                         <p className="text-lg font-semibold text-blue-400">{modalLiveStats.sold}</p>
-                      </div>
+              </div>
                       <div>
                         <p className="text-sm text-gray-400">Available Now</p>
                         <p className="text-lg font-semibold text-green-400">{modalLiveStats.available}</p>
@@ -2732,6 +2884,17 @@ const EventDashboard = () => {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Event Sharing Manager */}
+      {showEventSharing && eventData && selectedSession && (
+        <EventSharingManager
+          eventId={eventId!}
+          eventTitle={eventData.title || 'Event'}
+          sessionId={selectedSession.id}
+          sessionName={selectedSession.name}
+          onClose={() => setShowEventSharing(false)}
+        />
       )}
     </div>
   );

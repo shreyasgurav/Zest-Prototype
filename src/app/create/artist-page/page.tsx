@@ -136,6 +136,14 @@ const CreateArtistPage: React.FC = () => {
       toast.success('Artist page created successfully!');
       console.log('Artist page created:', artistData);
       
+      // Show success with public page info
+      setTimeout(() => {
+        toast.success(
+          `🎉 Your artist page is live! Visit your public page at /artist/${artistData.username}`, 
+          { autoClose: 8000 }
+        );
+      }, 1000);
+      
       // Set session to indicate we're switching to artist mode
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('authType', 'artist');

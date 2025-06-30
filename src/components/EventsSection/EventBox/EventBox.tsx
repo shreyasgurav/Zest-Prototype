@@ -9,6 +9,8 @@ import styles from './EventBox.module.css';
 
 interface EventBoxProps {
   eventId: string;
+  isCollaboration?: boolean;
+  collaboratorPageName?: string;
 }
 
 interface Event {
@@ -37,7 +39,7 @@ interface Event {
   createdAt?: any;
 }
 
-export default function EventBox({ eventId }: EventBoxProps) {
+export default function EventBox({ eventId, isCollaboration = false, collaboratorPageName }: EventBoxProps) {
   const router = useRouter();
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
@@ -210,6 +212,13 @@ export default function EventBox({ eventId }: EventBoxProps) {
             </div>
           )}
 
+          {/* COLLAB Badge - NEW */}
+          {isCollaboration && (
+            <div className={styles.collabBadge}>
+              COLLAB
+            </div>
+          )}
+
           {/* Event Type Badge */}
           <div className={`${styles.eventTypeBadge} ${styles[getEventTypeColor(displayEventType)]}`}>
             {getEventTypeIcon(displayEventType)}
@@ -221,6 +230,13 @@ export default function EventBox({ eventId }: EventBoxProps) {
         <div className={styles.eventBoxInfo}>
           {/* Title */}
           <h3>{truncateText(eventTitle, 20)}</h3>
+
+          {/* Collaboration Indicator - NEW */}
+          {isCollaboration && collaboratorPageName && (
+            <div className={styles.collaborationInfo}>
+              🤝 Collaborating with {collaboratorPageName}
+            </div>
+          )}
 
           {/* Date & Time */}
           <div className={styles.infoRow}>

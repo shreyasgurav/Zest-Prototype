@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getFirestore, doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { EventContentCollaborationService } from '@/utils/eventContentCollaboration';
 import styles from './PublicOrganisationProfile.module.css';
 import EventBox from '@/components/EventsSection/EventBox/EventBox';
 
@@ -20,6 +21,7 @@ const PublicOrganisationProfile = () => {
   const username = params?.username as string | undefined;
   const [orgDetails, setOrgDetails] = useState<OrganisationData | null>(null);
   const [eventIds, setEventIds] = useState<string[]>([]);
+  const [collaboratedEventIds, setCollaboratedEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,9 +73,19 @@ const PublicOrganisationProfile = () => {
           index === self.findIndex(d => d.id === doc.id)
         );
         
-        // Just get the IDs, let EventBox fetch its own data
-        const eventIds = uniqueEventDocs.map(doc => doc.id);
-        setEventIds(eventIds);
+        // Get owned event IDs
+        const ownedIds = uniqueEventDocs.map(doc => doc.id);
+        
+        // Get collaborated event IDs
+        const collaboratedIds = await EventContentCollaborationService.getCollaboratedEvents(
+          orgDoc.id, 
+          'organization'
+        );
+        
+        // Combine owned and collaborated events (remove duplicates)
+        const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
+        setEventIds(allEventIds);
+        setCollaboratedEventIds(collaboratedIds);
 
         setError(null);
       } catch (err) {
@@ -170,7 +182,12 @@ const PublicOrganisationProfile = () => {
         ) : (
           <div className={styles.eventsGrid}>
             {eventIds.map((eventId) => (
-              <EventBox key={eventId} eventId={eventId} />
+              <EventBox 
+                key={eventId} 
+                eventId={eventId}
+                isCollaboration={collaboratedEventIds.includes(eventId)}
+                collaboratorPageName={collaboratedEventIds.includes(eventId) ? orgDetails?.name : undefined}
+              />
             ))}
           </div>
         )}

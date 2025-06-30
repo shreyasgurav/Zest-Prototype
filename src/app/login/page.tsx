@@ -16,7 +16,7 @@ import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } fro
 import { toast } from "react-toastify"
 import PhoneInput from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
-import { handleAuthenticationFlow, clearAllSessions } from '../../utils/authHelpers'
+import { handleAuthenticationFlow, clearAllSessions, isProfileComplete, getMissingProfileFields } from '../../utils/authHelpers'
 import styles from "./login.module.css"
 
 // Extend Window interface for reCAPTCHA
@@ -65,6 +65,49 @@ export default function LoginPage() {
     window.addEventListener("mousemove", handleMouseMove)
     return () => window.removeEventListener("mousemove", handleMouseMove)
   }, [])
+
+  // Prevent page navigation and scrolling when showing profile completion form
+  useEffect(() => {
+    if (showPostLoginForm) {
+      // Disable body scroll
+      document.body.style.overflow = 'hidden'
+      
+      // Prevent browser back button
+      const handlePopState = (e: PopStateEvent) => {
+        e.preventDefault()
+        window.history.pushState(null, '', window.location.pathname)
+        toast.warning("Please complete your profile to continue")
+      }
+      
+      // Prevent keyboard shortcuts that might navigate away
+      const handleKeyDown = (e: KeyboardEvent) => {
+        // Prevent Ctrl+W, Ctrl+T, Alt+Left, Alt+Right, etc.
+        if (
+          (e.ctrlKey && (e.key === 'w' || e.key === 't')) ||
+          (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) ||
+          e.key === 'F5' ||
+          (e.ctrlKey && e.key === 'r')
+        ) {
+          e.preventDefault()
+          toast.warning("Please complete your profile first")
+        }
+      }
+      
+      // Add event listeners
+      window.addEventListener('popstate', handlePopState)
+      window.addEventListener('keydown', handleKeyDown)
+      
+      // Push a state to prevent going back
+      window.history.pushState(null, '', window.location.pathname)
+      
+      return () => {
+        // Cleanup
+        document.body.style.overflow = 'unset'
+        window.removeEventListener('popstate', handlePopState)
+        window.removeEventListener('keydown', handleKeyDown)
+      }
+    }
+  }, [showPostLoginForm])
 
   // Check authentication state
   useEffect(() => {
@@ -177,20 +220,18 @@ export default function LoginPage() {
       
       if (userSnap.exists()) {
         const userData = userSnap.data()
-        // Updated profile completion check: name, username, and contactEmail
-        // Phone is automatically captured from authentication
-        if (userData.username && userData.name && userData.contactEmail) {
+        
+        // Use centralized profile completion check
+        if (isProfileComplete(userData)) {
           console.log("✅ User has complete profile, redirecting to profile...")
           router.push("/profile")
           return
         } else {
           // User exists but profile is incomplete
+          const missingFields = getMissingProfileFields(userData);
           console.log("📝 User exists but profile incomplete, showing form...")
-          console.log("Profile check:", {
-            name: !!userData.name,
-            username: !!userData.username,
-            contactEmail: !!userData.contactEmail
-          });
+          console.log("Profile check - Missing fields:", missingFields);
+          
           setCurrentUser(user)
           setFormData({
             name: userData.name || user.displayName || "",
@@ -419,6 +460,15 @@ export default function LoginPage() {
         updatedAt: new Date().toISOString(),
       }
 
+      // Verify profile will be complete after update
+      if (!isProfileComplete({ ...updateData })) {
+        const missingFields = getMissingProfileFields({ ...updateData });
+        console.error("❌ Profile would still be incomplete after update:", missingFields);
+        toast.error("Please fill in all required fields");
+        setIsSubmitting(false);
+        return;
+      }
+
       const userSnap = await getDoc(userRef)
       if (userSnap.exists()) {
         await updateDoc(userRef, updateData)
@@ -431,6 +481,7 @@ export default function LoginPage() {
         })
       }
 
+      console.log("✅ Profile completed successfully!");
       toast.success("Profile completed successfully!")
       router.push("/profile")
     } catch (error) {
@@ -459,89 +510,132 @@ export default function LoginPage() {
 
   if (showPostLoginForm) {
     return (
-      <div className={styles.container}>
-        {/* Animated Background */}
-        <div className={styles.backgroundAnimation}>
-          <div
-            className={styles.mouseFollower}
-            style={{
-              left: mousePosition.x,
-              top: mousePosition.y,
-            }}
-          />
-          <div className={styles.gradientOrb1} />
-          <div className={styles.gradientOrb2} />
-          <div className={styles.gradientOrb3} />
-        </div>
+      <>
+        {/* Modal Overlay to prevent page switching */}
+        <div className={styles.modalOverlay} />
+        
+        {/* Profile Completion Modal */}
+        <div className={styles.profileCompletionModal}>
+          <div className={styles.modalContainer}>
+            {/* Animated Background */}
+            <div className={styles.backgroundAnimation}>
+              <div
+                className={styles.mouseFollower}
+                style={{
+                  left: mousePosition.x,
+                  top: mousePosition.y,
+                }}
+              />
+              <div className={styles.gradientOrb1} />
+              <div className={styles.gradientOrb2} />
+              <div className={styles.gradientOrb3} />
+            </div>
 
-        <div className={styles.content}>
-          <div className={styles.card}>
-            <button onClick={handleBackToHome} className={styles.backToHome}>
-              <ArrowLeft size={16} />
-              Back
-            </button>
+            <div className={styles.modalContent}>
+              <div className={styles.profileCard}>
+                {/* Header with lock icon */}
+                <div className={styles.cardContent}>
+                  <div className={styles.header}>
+                    <div className={styles.lockBadge}>
+                      🔒 Profile Required
+                    </div>
+                    <h1 className={styles.title}>Complete Your Profile</h1>
+                    <p className={styles.subtitle}>
+                      Please complete your profile to continue using Zest. 
+                      You cannot access other pages until this is completed.
+                    </p>
+                  </div>
 
-            <div className={styles.cardContent}>
-              <div className={styles.header}>
-                <h1 className={styles.title}>Complete Your Profile</h1>
-                <p className={styles.subtitle}>Just a few more details to get started</p>
+                  <form onSubmit={handleSubmit} className={styles.profileForm}>
+                    <div className={styles.inputGrid}>
+                      <div className={styles.inputGroup}>
+                        <label className={styles.inputLabel}>Full Name *</label>
+                        <input
+                          type="text"
+                          value={formData.name}
+                          onChange={(e) => handleInputChange('name', e.target.value)}
+                          className={styles.profileInput}
+                          placeholder="Enter your full name"
+                          autoComplete="name"
+                        />
+                        {errors.name && (
+                          <span className={styles.error}>{errors.name}</span>
+                        )}
+                      </div>
+
+                      <div className={styles.inputGroup}>
+                        <label className={styles.inputLabel}>Username *</label>
+                        <input
+                          type="text"
+                          value={formData.username}
+                          onChange={(e) => handleInputChange('username', e.target.value.toLowerCase())}
+                          className={styles.profileInput}
+                          placeholder="Choose a unique username"
+                          autoComplete="username"
+                        />
+                        {errors.username && (
+                          <span className={styles.error}>{errors.username}</span>
+                        )}
+                      </div>
+
+                      <div className={styles.inputGroup}>
+                        <label className={styles.inputLabel}>Contact Email *</label>
+                        <input
+                          type="email"
+                          value={formData.contactEmail}
+                          onChange={(e) => handleInputChange('contactEmail', e.target.value)}
+                          className={styles.profileInput}
+                          placeholder="Enter your contact email"
+                          autoComplete="email"
+                        />
+                        {errors.contactEmail && (
+                          <span className={styles.error}>{errors.contactEmail}</span>
+                        )}
+                      </div>
+
+                      <div className={styles.inputGroup}>
+                        <label className={styles.inputLabel}>Phone Number</label>
+                        <input
+                          type="tel"
+                          value={currentUser?.phoneNumber || ""}
+                          className={`${styles.profileInput} ${styles.disabledInput}`}
+                          placeholder="Phone number (verified)"
+                          disabled
+                          readOnly
+                        />
+                        <span className={styles.helperText}>
+                          ✅ Already verified during login
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={styles.buttonContainer}>
+                      <button
+                        type="submit"
+                        disabled={isSubmitting || isChecking || Object.values(errors).some(error => error)}
+                        className={styles.completeButton}
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <div className={styles.spinner} />
+                            Setting up your profile...
+                          </>
+                        ) : (
+                          'Complete Profile & Continue'
+                        )}
+                      </button>
+                      
+                      <p className={styles.requirementNote}>
+                        * All fields are required to continue
+                      </p>
+                    </div>
+                  </form>
+                </div>
               </div>
-
-              <form onSubmit={handleSubmit} className={styles.profileForm}>
-                <div className={styles.inputGroup}>
-                  <label className={styles.inputLabel}>Name:</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    className={styles.profileInput}
-                    placeholder="Enter your full name"
-                  />
-                  {errors.name && (
-                    <span className={styles.error}>{errors.name}</span>
-                  )}
-                </div>
-
-                <div className={styles.inputGroup}>
-                  <label className={styles.inputLabel}>Username:</label>
-                  <input
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => handleInputChange('username', e.target.value.toLowerCase())}
-                    className={styles.profileInput}
-                    placeholder="Choose a unique username"
-                  />
-                  {errors.username && (
-                    <span className={styles.error}>{errors.username}</span>
-                  )}
-                </div>
-
-                <div className={styles.inputGroup}>
-                  <label className={styles.inputLabel}>Contact Email:</label>
-                  <input
-                    type="email"
-                    value={formData.contactEmail}
-                    onChange={(e) => handleInputChange('contactEmail', e.target.value)}
-                    className={styles.profileInput}
-                    placeholder="Enter your contact email"
-                  />
-                  {errors.contactEmail && (
-                    <span className={styles.error}>{errors.contactEmail}</span>
-                  )}
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting || isChecking || Object.values(errors).some(error => error)}
-                  className={styles.completeButton}
-                >
-                  {isSubmitting ? 'Setting up...' : 'Complete Setup'}
-                </button>
-              </form>
             </div>
           </div>
         </div>
-      </div>
+      </>
     )
   }
 

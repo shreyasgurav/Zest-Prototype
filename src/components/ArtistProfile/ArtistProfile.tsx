@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   getFirestore,
   doc,
@@ -14,10 +14,10 @@ import {
 } from "firebase/firestore";
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 import { toast } from "react-toastify";
-import { FaCamera, FaTimes, FaPlus, FaMusic, FaUser, FaAt, FaMapMarkerAlt, FaTag, FaEdit, FaPhone, FaShare } from 'react-icons/fa';
+import { FaCamera, FaTimes, FaPlus, FaMusic, FaUser, FaAt, FaMapMarkerAlt, FaTag, FaEdit, FaPhone, FaShare, FaInstagram, FaTwitter, FaGlobe, FaEnvelope, FaCalendarAlt, FaPlusCircle } from 'react-icons/fa';
 import ArtistProfileSkeleton from "./ArtistProfileSkeleton";
-import DashboardSection from '../Dashboard/DashboardSection/DashboardSection';
-import PhotoUpload from '../PhotoUpload/PhotoUpload';
+import DashboardSection from '@/components/Dashboard/DashboardSection/DashboardSection';
+import PhotoUpload from '@/components/PhotoUpload/PhotoUpload';
 import LocationPicker from '../LocationPicker/LocationPicker';
 import ContentSharingManager from '../ContentSharingManager/ContentSharingManager';
 import { getUserOwnedPages } from '../../utils/authHelpers';
@@ -84,6 +84,9 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
   const [newBannerImage, setNewBannerImage] = useState<string>("");
   const [usernameError, setUsernameError] = useState<string>("");
   const [isCheckingUsername, setIsCheckingUsername] = useState<boolean>(false);
+  const [isFormValid, setIsFormValid] = useState<boolean>(false);
+  const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
+  const [usernameCheckTimeout, setUsernameCheckTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Photo editing states
   const [showPhotoModal, setShowPhotoModal] = useState<boolean>(false);
@@ -92,6 +95,63 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
   
   // Content sharing state
   const [showSharingModal, setShowSharingModal] = useState<boolean>(false);
+
+  // Input validation helper
+  const validateField = (field: string, value: string): string => {
+    switch (field) {
+      case 'name':
+        if (!value.trim()) return 'Artist name is required';
+        if (value.trim().length < 2) return 'Artist name must be at least 2 characters';
+        if (value.trim().length > 100) return 'Artist name must be less than 100 characters';
+        return '';
+      case 'username':
+        if (!value.trim()) return 'Username is required';
+        if (value.length < 3) return 'Username must be at least 3 characters';
+        if (value.length > 30) return 'Username must be less than 30 characters';
+        if (!/^[a-zA-Z0-9_-]+$/.test(value)) return 'Username can only contain letters, numbers, underscores, and hyphens';
+        return '';
+      case 'bio':
+        if (value.length > 500) return 'Bio must be less than 500 characters';
+        return '';
+      case 'genre':
+        if (!value.trim()) return 'Genre is required';
+        if (value.trim().length < 2) return 'Genre must be at least 2 characters';
+        if (value.trim().length > 50) return 'Genre must be less than 50 characters';
+        return '';
+      case 'location':
+        if (value.trim() && value.trim().length < 2) return 'Location must be at least 2 characters';
+        if (value.length > 100) return 'Location must be less than 100 characters';
+        return '';
+      default:
+        return '';
+    }
+  };
+
+  // Sanitize input helper
+  const sanitizeInput = (input: string): string => {
+    return input.trim().replace(/[<>]/g, '');
+  };
+
+  // Form validation check
+  const validateForm = (): boolean => {
+    const errors: {[key: string]: string} = {};
+    
+    errors.name = validateField('name', newName);
+    errors.username = validateField('username', newUsername);
+    errors.bio = validateField('bio', newBio);
+    errors.genre = validateField('genre', newGenre);
+    errors.location = validateField('location', newLocation);
+    
+    // Remove empty error messages
+    Object.keys(errors).forEach(key => {
+      if (!errors[key]) delete errors[key];
+    });
+    
+    setFieldErrors(errors);
+    const isValid = Object.keys(errors).length === 0 && !usernameError && !isCheckingUsername;
+    setIsFormValid(isValid);
+    return isValid;
+  };
 
   const fetchArtistData = async (pageId: string) => {
     console.log("Fetching artist data for page:", pageId);
@@ -103,6 +163,11 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
       if (docSnap.exists()) {
         console.log("Document exists in Firestore");
         const data = docSnap.data() as ArtistData;
+        
+        // Validate required fields
+        if (!data.ownerId) {
+          throw new Error("Artist page missing owner information");
+        }
         
         setArtistDetails(data);
         setName(data.name || "");
@@ -120,43 +185,31 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
         setBannerImage(data.bannerImage || "");
         setNewBannerImage(data.bannerImage || "");
         
-        localStorage.setItem('artistDetails', JSON.stringify(data));
-        localStorage.setItem('artistName', data.name || "");
-        localStorage.setItem('artistUsername', data.username || "");
-        localStorage.setItem('artistBio', data.bio || "");
-        localStorage.setItem('artistGenre', data.genre || "");
-        localStorage.setItem('artistLocation', data.location || "");
-        localStorage.setItem('artistPhotoURL', data.photoURL || "");
-        localStorage.setItem('artistBannerImage', data.bannerImage || "");
+        // Clear any previous errors
+        setError(null);
       } else {
         console.log("Document doesn't exist in Firestore");
-        const auth = getAuth();
-        const user = auth.currentUser;
-        
-        if (user) {
-          const newData: ArtistData = {
-            phoneNumber: user.phoneNumber || "",
-            isActive: true,
-            role: "Artist",
-            settings: {
-              emailUpdates: false,
-              notifications: true,
-              privacy: {
-                contactVisibility: "followers",
-                profileVisibility: "public"
-              }
-            },
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-  
-          await setDoc(artistDocRef, newData);
-          setArtistDetails(newData);
-        }
+        throw new Error("Artist page not found");
       }
     } catch (err) {
       console.error("Error in fetchArtistData:", err);
       setError(err instanceof Error ? err.message : 'An error occurred');
+      // Reset all data on error
+      setArtistDetails(null);
+      setName("");
+      setNewName("");
+      setUsername("");
+      setNewUsername("");
+      setBio("");
+      setNewBio("");
+      setGenre("");
+      setNewGenre("");
+      setLocation("");
+      setNewLocation("");
+      setPhotoURL("");
+      setNewPhotoURL("");
+      setBannerImage("");
+      setNewBannerImage("");
     } finally {
       setLoading(false);
     }
@@ -210,17 +263,54 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
     setNewUsername(newUsername);
     setUsernameError("");
     
-    // Don't check if it's the same as current username
-    if (newUsername.toLowerCase() === username.toLowerCase()) {
+    // Clear previous timeout
+    if (usernameCheckTimeout) {
+      clearTimeout(usernameCheckTimeout);
+    }
+    
+    // Validate input format first
+    const formatError = validateField('username', newUsername);
+    if (formatError) {
+      setUsernameError(formatError);
+      setIsCheckingUsername(false);
+      validateForm();
       return;
     }
     
+    // Don't check if it's the same as current username
+    if (newUsername.toLowerCase() === username.toLowerCase()) {
+      setIsCheckingUsername(false);
+      validateForm();
+      return;
+    }
+    
+    // Debounce username availability check
     if (newUsername.length >= 3) {
       setIsCheckingUsername(true);
-      await checkUsernameAvailability(newUsername);
+      const timeout = setTimeout(async () => {
+        try {
+          await checkUsernameAvailability(newUsername);
+        } finally {
+          setIsCheckingUsername(false);
+          validateForm();
+        }
+      }, 800); // 800ms debounce
+      
+      setUsernameCheckTimeout(timeout);
+    } else {
       setIsCheckingUsername(false);
+      validateForm();
     }
   };
+
+  // Add cleanup for timeout
+  useEffect(() => {
+    return () => {
+      if (usernameCheckTimeout) {
+        clearTimeout(usernameCheckTimeout);
+      }
+    };
+  }, [usernameCheckTimeout]);
 
   useEffect(() => {
     const auth = getAuth();
@@ -231,14 +321,14 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
       
       if (user && isSubscribed) {
         try {
-          // Check if there's a specific artist page to load
-          const sessionSelectedPageId = typeof window !== 'undefined' ? 
-            sessionStorage.getItem('selectedArtistPageId') : null;
-          
+            // Check if there's a specific artist page to load
+            const sessionSelectedPageId = typeof window !== 'undefined' ? 
+              sessionStorage.getItem('selectedArtistPageId') : null;
+            
           // Priority: prop selectedPageId > session storage
-          const pageIdToUse = selectedPageId || sessionSelectedPageId;
-          
-          if (pageIdToUse) {
+            const pageIdToUse = selectedPageId || sessionSelectedPageId;
+            
+            if (pageIdToUse) {
             // Specific page requested - check access and load directly
             console.log(`🎵 Loading specific artist page: ${pageIdToUse}`);
             
@@ -282,10 +372,10 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
                 canManage: true,
                 role: 'owner'
               });
-              
-              setCurrentArtistPageId(pageToLoad.uid);
-              await fetchArtistData(pageToLoad.uid);
-            } else {
+            
+            setCurrentArtistPageId(pageToLoad.uid);
+            await fetchArtistData(pageToLoad.uid);
+          } else {
               // No owned artist pages - check if user has shared access to any artist pages
               const sharedContent = await ContentSharingSecurity.getUserSharedContent(user.uid);
               
@@ -295,8 +385,8 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
                 setLoading(false);
               } else {
                 // No artist pages found at all
-                setError("No artist pages found. Please create an artist page first.");
-                setLoading(false);
+            setError("No artist pages found. Please create an artist page first.");
+            setLoading(false);
               }
             }
           }
@@ -329,16 +419,27 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
   const handleSaveProfile = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
+      // Validate form first
+      if (!validateForm()) {
+        toast.error("Please fix the form errors before saving");
+        setLoading(false);
+        return;
+      }
+      
       const auth = getAuth();
       const user = auth.currentUser;
   
       if (!user) {
         setError("User not authenticated");
         toast.error("Please login to save profile");
+        setLoading(false);
         return;
       }
   
-      if (newUsername) {
+      // Final username check if username was changed
+      if (newUsername && newUsername.toLowerCase() !== username.toLowerCase()) {
         const isUsernameAvailable = await checkUsernameAvailability(newUsername);
         if (!isUsernameAvailable) {
           setLoading(false);
@@ -353,47 +454,57 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
         setLoading(false);
         return;
       }
+      
       const artistDocRef = doc(db, "Artists", currentArtistPageId);
-  
-      const updates = {
-        name: newName,
-        username: newUsername.toLowerCase(),
-        bio: newBio,
-        genre: newGenre,
-        location: newLocation,
+      
+      // Sanitize inputs before saving
+      const sanitizedUpdates = {
+        name: sanitizeInput(newName),
+        username: newUsername.toLowerCase().trim(),
+        bio: sanitizeInput(newBio),
+        genre: sanitizeInput(newGenre),
+        location: sanitizeInput(newLocation),
         photoURL: newPhotoURL,
         bannerImage: newBannerImage,
         updatedAt: new Date().toISOString()
       };
 
-      await updateDoc(artistDocRef, updates);
+      await updateDoc(artistDocRef, sanitizedUpdates);
       
-      const updatedArtistDetails = { ...artistDetails, ...updates };
+      // Update local state with sanitized data
+      const updatedArtistDetails = { ...artistDetails, ...sanitizedUpdates };
       setArtistDetails(updatedArtistDetails);
-      setName(newName);
-      setUsername(newUsername);
-      setBio(newBio);
-      setGenre(newGenre);
-      setLocation(newLocation);
-      setPhotoURL(newPhotoURL);
-      setBannerImage(newBannerImage);
+      setName(sanitizedUpdates.name);
+      setUsername(sanitizedUpdates.username);
+      setBio(sanitizedUpdates.bio);
+      setGenre(sanitizedUpdates.genre);
+      setLocation(sanitizedUpdates.location);
+      setPhotoURL(sanitizedUpdates.photoURL);
+      setBannerImage(sanitizedUpdates.bannerImage);
       
-      localStorage.setItem('artistDetails', JSON.stringify(updates));
-      localStorage.setItem('artistName', newName);
-      localStorage.setItem('artistUsername', newUsername);
-      localStorage.setItem('artistBio', newBio);
-      localStorage.setItem('artistGenre', newGenre);
-      localStorage.setItem('artistLocation', newLocation);
-      localStorage.setItem('artistPhotoURL', newPhotoURL);
-      localStorage.setItem('artistBannerImage', newBannerImage);
-      
+      // Reset form validation state
+      setFieldErrors({});
       setUsernameError("");
       setEditMode(false);
+      setIsFormValid(false);
+      
       toast.success("Profile updated successfully!");
     } catch (err) {
       console.error("Error saving profile:", err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      toast.error("Error saving profile");
+      let errorMessage = "Error saving profile";
+      
+      if (err instanceof Error) {
+        if (err.message.includes('permission-denied')) {
+          errorMessage = "You don't have permission to edit this profile";
+        } else if (err.message.includes('network')) {
+          errorMessage = "Network error. Please check your connection and try again";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -451,6 +562,69 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
     setShowPhotoUpload(false);
   };
 
+  // Form field change handlers with validation
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewName(value);
+    const error = validateField('name', value);
+    setFieldErrors(prev => ({ ...prev, name: error }));
+    validateForm();
+  };
+
+  const handleGenreChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewGenre(value);
+    const error = validateField('genre', value);
+    setFieldErrors(prev => ({ ...prev, genre: error }));
+    validateForm();
+  };
+
+  const handleBioChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setNewBio(value);
+    const error = validateField('bio', value);
+    setFieldErrors(prev => ({ ...prev, bio: error }));
+    validateForm();
+  };
+
+  const handleLocationChange = (location: string) => {
+    setNewLocation(location);
+    const error = validateField('location', location);
+    setFieldErrors(prev => ({ ...prev, location: error }));
+    validateForm();
+  };
+
+  // Reset form to original values
+  const handleCancelEdit = () => {
+    setNewName(name);
+    setNewUsername(username);
+    setNewBio(bio);
+    setNewGenre(genre);
+    setNewLocation(location);
+    setNewPhotoURL(photoURL);
+    setNewBannerImage(bannerImage);
+    setFieldErrors({});
+    setUsernameError("");
+    setIsFormValid(false);
+    setEditMode(false);
+    
+    // Clear any pending username check
+    if (usernameCheckTimeout) {
+      clearTimeout(usernameCheckTimeout);
+      setUsernameCheckTimeout(null);
+    }
+    setIsCheckingUsername(false);
+  };
+
+  // Enter edit mode with validation
+  const handleEnterEditMode = () => {
+    setEditMode(true);
+    // Validate current values
+    setTimeout(() => {
+      validateForm();
+    }, 100);
+  };
+
   if (loading) {
     return <ArtistProfileSkeleton />;
   }
@@ -502,10 +676,10 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
           
           {/* Edit Banner Button */}
           {userPermissions.canEdit && (
-            <div className={styles.bannerEditHover}>
-              <FaCamera className={styles.editIcon} />
-              <span>Edit Banner</span>
-            </div>
+          <div className={styles.bannerEditHover}>
+            <FaCamera className={styles.editIcon} />
+            <span>Edit Banner</span>
+          </div>
           )}
         </div>
 
@@ -532,9 +706,9 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
               
               {/* Edit Avatar Overlay */}
               {userPermissions.canEdit && (
-                <div className={styles.avatarEditOverlay}>
-                  <FaCamera className={styles.avatarEditIcon} />
-                </div>
+              <div className={styles.avatarEditOverlay}>
+                <FaCamera className={styles.avatarEditIcon} />
+              </div>
               )}
             </div>
 
@@ -568,14 +742,22 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
         )}
 
         {/* Edit Profile Button */}
-        {!editMode && (
+                  {!editMode && (
           <div className={styles.profileButtonsContainer}>
             {userPermissions.canEdit && (
+            <button 
+              onClick={handleEnterEditMode}
+              className={styles.editProfileButton}
+            >
+              Edit Profile
+            </button>
+            )}
+            {username && (
               <button 
-                onClick={() => setEditMode(true)}
-                className={styles.editProfileButton}
+                onClick={() => window.open(`/artist/${username}`, '_blank')}
+                className={styles.viewPublicButton}
               >
-                Edit Profile
+                View Public Page
               </button>
             )}
             {userPermissions.canManage && (
@@ -588,7 +770,7 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
               </button>
             )}
             {userPermissions.canEdit && (
-              <button 
+                          <button 
                 onClick={() => {
                   // Navigate to create page with artist context
                   if (currentArtistPageId) {
@@ -633,10 +815,11 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
                   id="name"
                   type="text"
                   value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  onChange={handleNameChange}
                   placeholder="Enter your artist name"
-                  className={styles.modernInput}
+                  className={`${styles.modernInput} ${fieldErrors.name ? styles.inputError : ''}`}
                 />
+                {fieldErrors.name && <span className={styles.errorText}>{fieldErrors.name}</span>}
               </div>
 
               <div className={styles.modernInputGroup}>
@@ -650,7 +833,7 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
                   value={newUsername}
                   onChange={handleUsernameChange}
                   placeholder="Choose a unique username"
-                  className={styles.modernInput}
+                  className={`${styles.modernInput} ${usernameError || fieldErrors.username ? styles.inputError : ''}`}
                 />
                 {isCheckingUsername && (
                   <span className={styles.checkingText}>
@@ -659,6 +842,7 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
                   </span>
                 )}
                 {usernameError && <span className={styles.errorText}>{usernameError}</span>}
+                {fieldErrors.username && <span className={styles.errorText}>{fieldErrors.username}</span>}
               </div>
 
               <div className={styles.modernInputGroup}>
@@ -670,10 +854,11 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
                   id="genre"
                   type="text"
                   value={newGenre}
-                  onChange={(e) => setNewGenre(e.target.value)}
+                  onChange={handleGenreChange}
                   placeholder="e.g., Rock, Pop, Jazz, Electronic"
-                  className={styles.modernInput}
+                  className={`${styles.modernInput} ${fieldErrors.genre ? styles.inputError : ''}`}
                 />
+                {fieldErrors.genre && <span className={styles.errorText}>{fieldErrors.genre}</span>}
               </div>
             </div>
 
@@ -685,9 +870,10 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
                 </label>
                 <LocationPicker
                   value={newLocation}
-                  onChange={(location) => setNewLocation(location)}
+                  onChange={handleLocationChange}
                   placeholder="Search for your location..."
                 />
+                {fieldErrors.location && <span className={styles.errorText}>{fieldErrors.location}</span>}
               </div>
 
               <div className={styles.modernInputGroup}>
@@ -717,26 +903,28 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
             <textarea
               id="bio"
               value={newBio}
-              onChange={(e) => setNewBio(e.target.value)}
+              onChange={handleBioChange}
               placeholder="Tell your fans about your music journey, style, and what inspires you..."
-              className={styles.modernTextarea}
+              className={`${styles.modernTextarea} ${fieldErrors.bio ? styles.inputError : ''}`}
               rows={4}
             />
             <div className={styles.charCount}>
               {newBio.length}/500 characters
             </div>
+            {fieldErrors.bio && <span className={styles.errorText}>{fieldErrors.bio}</span>}
           </div>
 
           <div className={styles.modernButtonGroup}>
             <button 
-              onClick={() => setEditMode(false)}
+              onClick={handleCancelEdit}
               className={styles.cancelButton}
+              disabled={loading}
             >
               Cancel
             </button>
             <button 
               onClick={handleSaveProfile}
-              disabled={isCheckingUsername || !!usernameError || loading}
+              disabled={!isFormValid || isCheckingUsername || !!usernameError || loading || Object.keys(fieldErrors).some(key => fieldErrors[key])}
               className={styles.saveButton}
             >
               {loading ? (
@@ -805,9 +993,16 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
         />
       )}
 
-                  <div className={styles.artistDashboardSection}>
-              <DashboardSection pageId={currentArtistPageId || undefined} pageType="artist" />
-            </div>
+      {/* Events & Activities Dashboard Section */}
+      <div className={styles.ownedEventsSection}>
+        <div className={styles.sectionHeader}>
+          <h3>🎵 Events & Activities</h3>
+          <p>Manage your created events and collaborated events</p>
+        </div>
+        <div className={styles.artistDashboardSection}>
+          <DashboardSection pageId={currentArtistPageId || undefined} pageType="artist" />
+        </div>
+      </div>
     </div>
   );
 };

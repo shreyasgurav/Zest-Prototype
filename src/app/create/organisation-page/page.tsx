@@ -122,6 +122,14 @@ const CreateOrganizationPage: React.FC = () => {
       toast.success('Organization page created successfully!');
       console.log('Organization page created:', organizationData);
       
+      // Show success with public page info
+      setTimeout(() => {
+        toast.success(
+          `🎉 Your organization page is live! Visit your public page at /organisation/${organizationData.username}`, 
+          { autoClose: 8000 }
+        );
+      }, 1000);
+      
       // Set session to indicate we're switching to organization mode
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('authType', 'organization');

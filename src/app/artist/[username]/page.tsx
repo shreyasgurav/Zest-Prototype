@@ -6,6 +6,7 @@ import { getFirestore, doc, getDoc, collection, query, where, getDocs } from 'fi
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/services/firebase';
 import { checkPageOwnership } from '../../../utils/authHelpers';
+import { EventContentCollaborationService } from '@/utils/eventContentCollaboration';
 import EventBox from '@/components/EventsSection/EventBox/EventBox';
 import styles from './PublicArtistProfile.module.css';
 
@@ -25,7 +26,8 @@ const PublicArtistProfile = () => {
   const params = useParams();
   const username = params?.username as string | undefined;
   const [artistDetails, setArtistDetails] = useState<ArtistData | null>(null);
-  const [eventIds, setEventIds] = useState<string[]>([]);
+  const [ownedEventIds, setOwnedEventIds] = useState<string[]>([]);
+  const [collaboratedEventIds, setCollaboratedEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
@@ -98,9 +100,19 @@ const PublicArtistProfile = () => {
           return data.organizationId === artistData.ownerId;
         });
         
-        // Just get the IDs, let EventBox fetch its own data
-        const eventIds = filteredEventDocs.map(doc => doc.id);
-        setEventIds(eventIds);
+        // Get owned event IDs
+        const ownedIds = filteredEventDocs.map(doc => doc.id);
+        
+        // Get collaborated event IDs
+        const collaboratedIds = await EventContentCollaborationService.getCollaboratedEvents(
+          artistDoc.id, 
+          'artist'
+        );
+        
+        // Combine owned and collaborated events (remove duplicates)
+        const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
+        setOwnedEventIds(allEventIds);
+        setCollaboratedEventIds(collaboratedIds); // Keep collaborated IDs separate for COLLAB badge
 
         // Check if current user can manage this page
         if (currentUser && artistData.uid) {
@@ -264,16 +276,23 @@ const PublicArtistProfile = () => {
 
       {/* Events Section */}
       <div className={styles.eventsSection}>
-        <h2 className={styles.eventsHeading}>Upcoming Events</h2>
-        {eventIds.length === 0 ? (
-          <div className={styles.noEventsMessage}>
-            No upcoming events at the moment.
+        <h2 className={styles.eventsHeading}>Events</h2>
+        
+        {/* All Events (Owned + Collaborated) */}
+        {ownedEventIds.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {ownedEventIds.map((eventId) => (
+              <EventBox 
+                key={eventId} 
+                eventId={eventId} 
+                isCollaboration={collaboratedEventIds.includes(eventId)}
+                collaboratorPageName={collaboratedEventIds.includes(eventId) ? artistDetails?.name : undefined}
+              />
+            ))}
           </div>
         ) : (
-          <div className={styles.eventsGrid}>
-            {eventIds.map((eventId) => (
-              <EventBox key={eventId} eventId={eventId} />
-            ))}
+          <div className={styles.noEventsMessage}>
+            No upcoming events at the moment.
           </div>
         )}
       </div>

@@ -356,23 +356,23 @@ const ActivityDashboard = () => {
           <div className={styles.actionButtons}>
             {/* Show edit button for editors and above */}
             {(userRole === 'owner' || userRole === 'admin' || userRole === 'editor') && (
-              <button 
-                onClick={handleEdit}
-                className={styles.editButton}
-                title="Edit Activity"
-              >
-                <FaEdit /> Edit Activity
-              </button>
+            <button 
+              onClick={handleEdit}
+              className={styles.editButton}
+              title="Edit Activity"
+            >
+              <FaEdit /> Edit Activity
+            </button>
             )}
             {/* Show delete button only for owners and admins */}
             {(userRole === 'owner' || userRole === 'admin') && (
-              <button 
-                onClick={() => setShowDeleteConfirm(true)}
-                className={styles.deleteButton}
-                title="Delete Activity"
-              >
-                <FaTrash /> Delete Activity
-              </button>
+            <button 
+              onClick={() => setShowDeleteConfirm(true)}
+              className={styles.deleteButton}
+              title="Delete Activity"
+            >
+              <FaTrash /> Delete Activity
+            </button>
             )}
             {/* Show role indicator for shared access */}
             {userRole !== 'owner' && (

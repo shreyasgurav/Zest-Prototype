@@ -7,6 +7,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getUserOwnedPages } from "@/utils/authHelpers";
+import { ContentSharingSecurity } from "@/utils/contentSharingSecurity";
 import styles from "./CreateActivity.module.css";
 // @ts-ignore
 import PlacesAutocomplete, { Suggestion } from 'react-places-autocomplete';
@@ -176,23 +177,50 @@ const CreateActivity = () => {
         const ownedPages = await getUserOwnedPages(user.uid);
         
         if (creatorType && creatorPageId) {
-          // Verify user owns the specific page they're creating from
+          // Check if user owns the specific page they're creating from
           let hasSpecificPageAccess = false;
+          let accessLevel = 'unauthorized';
           
           if (creatorType === 'organisation' || creatorType === 'organization') {
             hasSpecificPageAccess = ownedPages.organizations.some(org => org.uid === creatorPageId);
+            if (hasSpecificPageAccess) accessLevel = 'owner';
           } else if (creatorType === 'artist') {
             hasSpecificPageAccess = ownedPages.artists.some(artist => artist.uid === creatorPageId);
+            if (hasSpecificPageAccess) accessLevel = 'owner';
           } else if (creatorType === 'venue') {
             hasSpecificPageAccess = ownedPages.venues.some(venue => venue.uid === creatorPageId);
+            if (hasSpecificPageAccess) accessLevel = 'owner';
+          }
+
+          // If not owned, check for shared access
+          if (!hasSpecificPageAccess) {
+            console.log(`🔍 User doesn't own ${creatorType} page ${creatorPageId}, checking shared access...`);
+            
+            try {
+              const contentType = creatorType === 'organisation' || creatorType === 'organization' ? 'organization' : creatorType as 'artist' | 'venue';
+              const permissions = await ContentSharingSecurity.verifyContentAccess(contentType, creatorPageId, user.uid);
+              
+              // Editor and Admin can create content
+              if (permissions.canEdit && (permissions.role === 'editor' || permissions.role === 'admin' || permissions.role === 'owner')) {
+                hasSpecificPageAccess = true;
+                accessLevel = permissions.role;
+                console.log(`✅ User has ${permissions.role} access to ${creatorType} page, can create activities`);
+              } else {
+                console.log(`❌ User has ${permissions.role} access, insufficient for creating activities`);
+              }
+            } catch (error) {
+              console.error('Error checking shared access:', error);
+            }
           }
 
           if (!hasSpecificPageAccess) {
-            setAuthError(`You don't have permission to create activities as ${creatorName}. Please ensure you own this ${creatorType} page.`);
+            setAuthError(`You don't have permission to create activities as ${creatorName}. You need at least Editor access to this ${creatorType} page.`);
             setIsAuthorized(false);
             setIsLoading(false);
             return;
           }
+          
+          console.log(`✅ User authorized to create activities as ${creatorName} with ${accessLevel} access`);
         } else {
           // No specific creator context - check if user has any pages at all
           const hasAnyPages = ownedPages.artists.length > 0 || 

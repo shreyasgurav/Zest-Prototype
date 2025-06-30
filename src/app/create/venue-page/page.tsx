@@ -150,6 +150,14 @@ const CreateVenuePage: React.FC = () => {
       toast.success('Venue page created successfully!');
       console.log('Venue page created:', venueData);
       
+      // Show success with public page info
+      setTimeout(() => {
+        toast.success(
+          `🎉 Your venue page is live! Visit your public page at /venue/${venueData.username}`, 
+          { autoClose: 8000 }
+        );
+      }, 1000);
+      
       // Set session to indicate we're switching to venue mode
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('authType', 'venue');

@@ -3,9 +3,10 @@ import { auth, db } from '@/services/firebase';
 import { signOut, User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt, FaBuilding, FaMicrophone, FaMapMarkerAlt, FaPlus, FaShareAlt } from 'react-icons/fa';
+import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt, FaBuilding, FaMicrophone, FaMapMarkerAlt, FaPlus, FaShareAlt, FaQrcode } from 'react-icons/fa';
 import { getUserOwnedPages, ArtistData, OrganizationData, VenueData, clearAllSessions } from '../../utils/authHelpers';
 import { ContentSharingSecurity } from '@/utils/contentSharingSecurity';
+import { EventCollaborationSecurity } from '@/utils/eventCollaborationSecurity';
 import styles from "./PersonLogo.module.css";
 
 interface UserData {
@@ -35,10 +36,9 @@ function PersonLogo() {
         events: Array<{ uid: string; name: string; role: string }>;
         activities: Array<{ uid: string; name: string; role: string }>;
     }>({ artists: [], organizations: [], venues: [], events: [], activities: [] });
+    const [checkinEvents, setCheckinEvents] = useState<Array<{ eventId: string; eventTitle: string; role: string; accessLevel: string }>>([]);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
-
-
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth(), async (currentUser) => {
@@ -72,11 +72,10 @@ function PersonLogo() {
                         console.log('👤 Checking for pending invitations for phone:', userPhone);
                         
                         try {
+                            // Accept pending content invitations (page sharing)
                             const pendingInvitations = await ContentSharingSecurity.getUserPendingInvitations(userPhone);
-                            console.log('👤 Found pending invitations:', pendingInvitations);
+                            console.log('👤 Found pending content invitations:', pendingInvitations);
                             
-                            // Auto-accept all pending invitations
-                            let acceptedAny = false;
                             for (const invitation of pendingInvitations) {
                                 if (invitation.id) {
                                     const result = await ContentSharingSecurity.acceptInvitation(
@@ -85,8 +84,25 @@ function PersonLogo() {
                                         personalData.name || currentUser.displayName || 'User'
                                     );
                                     if (result.success) {
-                                        console.log('👤 Auto-accepted invitation:', invitation.id);
-                                        acceptedAny = true;
+                                        console.log('👤 Auto-accepted content invitation:', invitation.id);
+                                    }
+                                }
+                            }
+                            
+                            // 🚨 FIX: Auto-accept event invitations for better UX (since check-in access is direct now)
+                            const pendingEventInvitations = await EventCollaborationSecurity.getUserPendingInvitations(userPhone);
+                            console.log('👤 Found pending event invitations:', pendingEventInvitations);
+                            
+                            // Auto-accept event invitations (they are only created for unregistered users)
+                            for (const invitation of pendingEventInvitations) {
+                                if (invitation.id) {
+                                    const result = await EventCollaborationSecurity.acceptEventInvitation(
+                                        invitation.id,
+                                        currentUser.uid,
+                                        personalData.name || currentUser.displayName || 'User'
+                                    );
+                                    if (result.success) {
+                                        console.log('👤 Auto-accepted event invitation:', invitation.eventTitle);
                                     }
                                 }
                             }
@@ -102,10 +118,40 @@ function PersonLogo() {
                     console.log('👤 Loaded owned pages:', pages);
                     
                     // Load shared pages (pages where user has been given access)
-                    // This will include any newly accepted invitations
                     const shared = await ContentSharingSecurity.getUserSharedContent(currentUser.uid);
                     setSharedPages(shared);
                     console.log('👤 Loaded shared pages:', shared);
+                    
+                    // Load check-in events (events where user has check-in access)
+                    console.log('👤 Loading check-in events...');
+                    const sharedEvents = await EventCollaborationSecurity.getUserSharedEvents(currentUser.uid);
+                    setCheckinEvents(sharedEvents.checkinEvents);
+                    console.log('👤 Loaded check-in events:', sharedEvents.checkinEvents);
+                    
+                    // 🚨 DEBUG: If no check-in events found, log user info for debugging
+                    if (sharedEvents.checkinEvents.length === 0) {
+                        console.log('👤 No check-in events found. Debug info:');
+                        console.log('  - User ID:', currentUser.uid);
+                        console.log('  - User phone from personalData:', personalData.phone);
+                        console.log('  - User phone from auth:', currentUser.phoneNumber);
+                        console.log('  - All user data:', personalData);
+                        
+                        // Try a small delay and retry once
+                        setTimeout(async () => {
+                            try {
+                                console.log('👤 Retrying getUserSharedEvents...');
+                                const retrySharedEvents = await EventCollaborationSecurity.getUserSharedEvents(currentUser.uid);
+                                if (retrySharedEvents.checkinEvents.length > 0) {
+                                    setCheckinEvents(retrySharedEvents.checkinEvents);
+                                    console.log('👤 Retry found check-in events:', retrySharedEvents.checkinEvents);
+                                } else {
+                                    console.log('👤 Retry also found no check-in events');
+                                }
+                            } catch (retryError) {
+                                console.error('👤 Retry failed:', retryError);
+                            }
+                        }, 3000);
+                    }
                 } catch (error) {
                     console.error("Error fetching user data:", error);
                     // Fallback to Firebase Auth data
@@ -123,6 +169,7 @@ function PersonLogo() {
                 setUserData(null);
                 setOwnedPages({ artists: [], organizations: [], venues: [] });
                 setSharedPages({ artists: [], organizations: [], venues: [], events: [], activities: [] });
+                setCheckinEvents([]);
             }
         });
         return () => unsubscribe();
@@ -154,8 +201,6 @@ function PersonLogo() {
             console.error("Error logging out:", error instanceof Error ? error.message : "An error occurred");
         }
     };
-
-
 
     const handleTicketsClick = () => {
         setShowDropdown(false);
@@ -300,7 +345,36 @@ function PersonLogo() {
                         <div className={styles.dropdownDivider}></div>
                     </div>
 
-                    {/*Pages Section */}
+                    {/* Check-in Events Section */}
+                    {checkinEvents.length > 0 && (
+                        <div className={styles.checkinEventsSection}>
+                            <div className={styles.sectionTitle}>
+                                <FaQrcode className={styles.sectionIcon} />
+                                Check-in Events ({checkinEvents.length})
+                            </div>
+                            
+                            {checkinEvents.map((event) => (
+                                <div 
+                                    key={`checkin-${event.eventId}`} 
+                                    className={`${styles.pageItem} ${styles.checkinEventItem}`}
+                                    onClick={() => { 
+                                        setShowDropdown(false); 
+                                        router.push(`/checkin/${event.eventId}`);
+                                    }}
+                                >
+                                    <FaQrcode className={styles.pageIcon} />
+                                    <span>{event.eventTitle}</span>
+                                    <span className={styles.accessTag}>Check-in</span>
+                                </div>
+                            ))}
+                            
+                            <div className={styles.dropdownDivider}></div>
+                        </div>
+                    )}
+
+
+
+                    {/* Pages Section */}
                     <div className={styles.ownedPagesSection}>
                         <div className={styles.sectionTitle}>Pages</div>
                         

@@ -6,6 +6,8 @@ import { getFirestore, doc, getDoc, collection, query, where, getDocs } from 'fi
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/services/firebase';
 import { checkPageOwnership } from '../../../utils/authHelpers';
+import { EventContentCollaborationService } from '@/utils/eventContentCollaboration';
+import EventBox from '@/components/EventsSection/EventBox/EventBox';
 import styles from './PublicVenueProfile.module.css';
 
 interface VenueData {
@@ -26,6 +28,8 @@ const PublicVenueProfile = () => {
   const params = useParams();
   const username = params?.username as string | undefined;
   const [venueDetails, setVenueDetails] = useState<VenueData | null>(null);
+  const [eventIds, setEventIds] = useState<string[]>([]);
+  const [collaboratedEventIds, setCollaboratedEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
@@ -67,6 +71,27 @@ const PublicVenueProfile = () => {
         const venueData = venueDoc.data() as VenueData;
         venueData.uid = venueDoc.id;
         setVenueDetails(venueData);
+
+        // Fetch events for this venue
+        const eventsQuery = query(
+          collection(db, "events"),
+          where("creator.pageId", "==", venueDoc.id)
+        );
+        const eventsSnapshot = await getDocs(eventsQuery);
+        
+        // Get owned event IDs
+        const ownedIds = eventsSnapshot.docs.map(doc => doc.id);
+        
+        // Get collaborated event IDs
+        const collaboratedIds = await EventContentCollaborationService.getCollaboratedEvents(
+          venueDoc.id, 
+          'venue'
+        );
+        
+        // Combine owned and collaborated events (remove duplicates)
+        const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
+        setEventIds(allEventIds);
+        setCollaboratedEventIds(collaboratedIds);
 
         // Check if current user can manage this page
         if (currentUser && venueData.uid) {
@@ -195,17 +220,27 @@ const PublicVenueProfile = () => {
         </div>
       </div>
 
-      {/* Content Sections */}
-      <div className={styles.contentSections}>
-        <div className={styles.placeholderSection}>
-          <h3>Events & Bookings</h3>
-          <p>Coming soon - showcase upcoming events and booking information</p>
-        </div>
+      {/* Events Section */}
+      <div className={styles.eventsSection}>
+        <h2 className={styles.eventsHeading}>Events</h2>
         
-        <div className={styles.placeholderSection}>
-          <h3>Venue Details</h3>
-          <p>Coming soon - detailed venue information, amenities, and photos</p>
-        </div>
+        {/* All Events (Owned + Collaborated) */}
+        {eventIds.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {eventIds.map((eventId) => (
+              <EventBox 
+                key={eventId} 
+                eventId={eventId}
+                isCollaboration={collaboratedEventIds.includes(eventId)}
+                collaboratorPageName={collaboratedEventIds.includes(eventId) ? venueDetails?.name : undefined}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.noEventsMessage}>
+            No upcoming events at the moment.
+          </div>
+        )}
       </div>
     </div>
   );

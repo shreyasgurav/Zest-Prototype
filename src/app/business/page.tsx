@@ -10,6 +10,7 @@ import styles from "./business.module.css"
 export default function BusinessProfileSelectionPage() {
   const [isClient, setIsClient] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -20,6 +21,13 @@ export default function BusinessProfileSelectionPage() {
     if (!isClient) return
 
     const unsubscribe = onAuthStateChanged(auth(), (user) => {
+      if (user) {
+        setIsAuthenticated(true)
+      } else {
+        // User not authenticated, redirect to login
+        router.push('/login')
+        return
+      }
       setIsLoading(false)
     })
 
@@ -31,6 +39,11 @@ export default function BusinessProfileSelectionPage() {
   }
 
   const handleProfileTypeSelection = (type: string) => {
+    if (!isAuthenticated) {
+      router.push('/login')
+      return
+    }
+
     switch (type) {
       case 'artist':
         router.push('/create/artist-page')
@@ -54,6 +67,11 @@ export default function BusinessProfileSelectionPage() {
         </div>
       </div>
     )
+  }
+
+  // Don't render anything if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null
   }
 
   return (

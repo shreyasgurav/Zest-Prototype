@@ -85,6 +85,13 @@
     gap: 8px;
 }
 
+.creatorAvatars {
+    display: flex;
+    align-items: center;
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
 .creatorAvatar {
     width: 24px;
     height: 24px;
@@ -92,12 +99,44 @@
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.2);
     flex-shrink: 0;
+    margin-left: -8px;
+    position: relative;
+    background-color: rgba(60, 60, 60, 0.8);
+}
+
+.creatorAvatar:first-child {
+    margin-left: 0;
 }
 
 .creatorProfileImage {
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+.defaultAvatar {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.moreCount {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(40, 40, 40, 0.9);
+    color: #ccc;
+    font-size: 8px;
+    font-weight: bold;
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .organizationLink {
@@ -108,6 +147,16 @@
 
 .organizationLink:hover {
     color: #888;
+    text-decoration: underline;
+}
+
+.clickableText {
+    color: #6366f1;
+    font-weight: 500;
+}
+
+.clickableText:hover {
+    color: #5855eb;
     text-decoration: underline;
 }
 
@@ -525,11 +574,30 @@
     .creatorInfo {
         flex-wrap: wrap;
         justify-content: flex-start;
+        gap: 6px;
+    }
+
+    .creatorAvatars {
+        margin-left: 0;
+        margin-right: 0;
     }
 
     .creatorAvatar {
-        width: 20px;
-        height: 20px;
+        width: 28px;
+        height: 28px;
+        margin-left: -10px;
+    }
+
+    .creatorAvatar:first-child {
+        margin-left: 0;
+    }
+
+    .defaultAvatar {
+        font-size: 12px;
+    }
+
+    .moreCount {
+        font-size: 9px;
     }
 
     .bookNowButton {
@@ -636,6 +704,46 @@
 
     .skeletonGuideItem {
         width: 100%;
+    }
+
+    /* Popup responsive styles */
+    .popupContent {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .popupHeader {
+        padding: 16px 20px;
+    }
+
+    .popupHeader h3 {
+        font-size: 16px;
+    }
+
+    .collaboratorsList {
+        padding: 8px;
+    }
+
+    .collaboratorItem {
+        padding: 12px;
+        gap: 12px;
+    }
+
+    .collaboratorAvatar {
+        width: 40px;
+        height: 40px;
+    }
+
+    .collaboratorDefaultAvatar {
+        font-size: 16px;
+    }
+
+    .collaboratorName {
+        font-size: 15px;
+    }
+
+    .collaboratorType {
+        font-size: 13px;
     }
 }
 
@@ -763,5 +871,174 @@
     .venueNote,
     .sessionCount {
         font-size: 0.65em;
+    }
+}
+
+/* Collaborators Popup Styles */
+.popupOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.popupContent {
+    background: rgba(40, 40, 40, 0.95);
+    border-radius: 16px;
+    padding: 0;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    animation: slideUp 0.3s ease-out;
+}
+
+.popupHeader {
+    padding: 20px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(50, 50, 50, 0.5);
+}
+
+.popupHeader h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.popupCloseButton {
+    background: none;
+    border: none;
+    color: #ccc;
+    font-size: 24px;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.popupCloseButton:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.collaboratorsList {
+    padding: 12px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.collaboratorItem {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.collaboratorItem:hover {
+    background: rgba(255, 255, 255, 0.05);
+    transform: translateX(4px);
+}
+
+.collaboratorItem:last-child {
+    margin-bottom: 0;
+}
+
+.collaboratorAvatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    flex-shrink: 0;
+    background-color: rgba(60, 60, 60, 0.8);
+}
+
+.collaboratorProfileImage {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.collaboratorDefaultAvatar {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+.collaboratorInfo {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.collaboratorName {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.collaboratorType {
+    color: #888;
+    font-size: 14px;
+}
+
+.collaboratorArrow {
+    color: #666;
+    font-size: 18px;
+    transition: all 0.2s ease;
+}
+
+.collaboratorItem:hover .collaboratorArrow {
+    color: #6366f1;
+    transform: translateX(4px);
+}
+
+/* Popup Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(40px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
     }
 } 

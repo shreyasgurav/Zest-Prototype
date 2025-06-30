@@ -319,7 +319,7 @@
     transform: scale(1.05);
     box-shadow: 0 15px 20px -3px rgba(147, 51, 234, 0.35);
   }
-
+  
   /* Clear Filters Button */
   .clearFiltersButton {
     padding: 0.75rem 1.5rem;

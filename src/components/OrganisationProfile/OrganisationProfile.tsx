@@ -424,6 +424,14 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
               >
                 Edit Profile
               </button>
+              {username && (
+                <button 
+                  onClick={() => window.open(`/organisation/${username}`, '_blank')}
+                  className={styles.viewPublicButton}
+                >
+                  View Public Page
+                </button>
+              )}
               <button 
                 onClick={() => {
                   // Navigate to create page with organization context
@@ -557,15 +565,22 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         </div>
       )}
 
-                  <div className={styles.orgDashboardSection}>
-              <DashboardSection 
-                pageId={typeof window !== 'undefined' ? 
-                  sessionStorage.getItem('selectedOrganizationPageId') || undefined : 
-                  undefined
-                } 
-                pageType="organisation" 
-              />
-            </div>
+      {/* Events & Activities Dashboard Section */}
+      <div className={styles.ownedEventsSection}>
+        <div className={styles.sectionHeader}>
+          <h3>🏢 Events & Activities</h3>
+          <p>Manage your created events and collaborated events</p>
+        </div>
+        <div className={styles.orgDashboardSection}>
+          <DashboardSection 
+            pageId={typeof window !== 'undefined' ? 
+              sessionStorage.getItem('selectedOrganizationPageId') || undefined : 
+              undefined
+            } 
+            pageType="organisation" 
+          />
+        </div>
+      </div>
     </div>
   );
 };

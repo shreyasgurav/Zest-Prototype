@@ -893,12 +893,12 @@
   .inputGroup textarea,
   .inputGroup select {
     padding: 10px 12px;
-  }
-  
-  .fieldWithIcon input {
+}
+
+.fieldWithIcon input {
     padding-left: 36px;
-  }
-  
+}
+
   .type-selection-container {
     padding: 24px 16px;
     margin: 0 8px;
@@ -907,8 +907,8 @@
   .page-title {
     font-size: 24px;
     margin-bottom: 24px;
-  }
-  
+}
+
   .creator-context {
     font-size: 0.55em;
     padding: 4px 10px;
@@ -918,25 +918,25 @@
     grid-template-columns: 1fr;
     gap: 16px;
     padding: 0;
-  }
-  
+}
+
   .type-card {
     padding: 20px 16px;
     min-height: 140px;
     margin: 0 auto;
     max-width: 280px;
-  }
-  
+}
+
   .type-icon {
     font-size: 36px;
     margin-bottom: 8px;
-  }
-  
+}
+
   .type-card h2 {
     font-size: 16px;
     margin-bottom: 6px;
-  }
-  
+}
+
   .type-card p {
     font-size: 12px;
     line-height: 1.3;

@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from "@/services/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, getDoc, doc } from "firebase/firestore";
 import { getAuth } from 'firebase/auth';
 import DashboardBox from '../DashboardBox/DashboardBox';
+import { EventCollaborationSecurity } from '@/utils/eventCollaborationSecurity';
+import { EventContentCollaborationService } from '@/utils/eventContentCollaboration';
+import CollaborationInvites from '@/components/CollaborationInvites/CollaborationInvites';
 import styles from './DashboardSection.module.css';
 
 interface Event {
@@ -10,6 +13,11 @@ interface Event {
   title: string;
   image?: string;
   type: 'event';
+  isShared?: boolean;
+  sharedBy?: string;
+  accessLevel?: string;
+  sessionId?: string;
+  sessionName?: string;
 }
 
 interface Activity {
@@ -17,6 +25,9 @@ interface Activity {
   name: string;
   activity_image?: string;
   type: 'activity';
+  isShared?: boolean;
+  sharedBy?: string;
+  accessLevel?: string;
 }
 
 type DashboardItem = Event | Activity;
@@ -28,8 +39,138 @@ interface DashboardSectionProps {
 
 const DashboardSection: React.FC<DashboardSectionProps> = ({ pageId, pageType }) => {
   const [items, setItems] = useState<DashboardItem[]>([]);
+  const [ownedItems, setOwnedItems] = useState<DashboardItem[]>([]);
+  const [sharedItems, setSharedItems] = useState<DashboardItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'created' | 'collaborated' | 'all'>('all');
   const auth = getAuth();
+
+  // Function to fetch collaborated events for this page using new collaboration system
+  const fetchCollaboratedEvents = async (): Promise<DashboardItem[]> => {
+    if (!auth.currentUser || !pageId || !pageType) {
+      console.log('🚫 fetchCollaboratedEvents: Missing requirements:', {
+        hasUser: !!auth.currentUser,
+        pageId,
+        pageType
+      });
+      return [];
+    }
+
+    try {
+      console.log('🔍 fetchCollaboratedEvents: Starting fetch with:', {
+        pageId,
+        pageType,
+        userId: auth.currentUser.uid,
+        timestamp: new Date().toISOString()
+      });
+
+      // Map 'organisation' to 'organization' for the collaboration service
+      // The collaboration service uses 'organization' while the UI uses 'organisation'
+      const collaborationPageType = pageType === 'organisation' ? 'organization' : pageType;
+      
+      console.log('🔍 fetchCollaboratedEvents: About to call EventContentCollaborationService.getCollaboratedEvents with:', {
+        arg1: pageId,
+        arg2: collaborationPageType,
+        originalPageType: pageType,
+        mappedPageType: collaborationPageType
+      });
+      
+      // Get collaborated event IDs using the new collaboration service
+      const eventIds = await EventContentCollaborationService.getCollaboratedEvents(pageId, collaborationPageType);
+      
+      console.log('📋 fetchCollaboratedEvents: Collaboration service returned eventIds:', {
+        eventIds,
+        count: eventIds.length,
+        pageId,
+        pageType: collaborationPageType
+      });
+
+      // Debug: Call the debug function to see all collaborations
+      console.log('🔍 fetchCollaboratedEvents: Calling debug function to see all collaborations...');
+      await EventContentCollaborationService.debugGetAllCollaborations();
+      
+      if (eventIds.length === 0) {
+        console.log('⚠️ fetchCollaboratedEvents: No collaborated event IDs found');
+        
+        // Enhanced debugging: Let's manually query to see what's in the database
+        try {
+          console.log('🔍 Manual query - checking for ANY collaborations with this pageId...');
+          const allCollaborationsQuery = query(
+            collection(db(), 'eventContentCollaboration'),
+            where('collaboratorPageId', '==', pageId)
+          );
+          const allSnapshot = await getDocs(allCollaborationsQuery);
+          console.log('🔍 All collaborations for this pageId:', {
+            pageId,
+            totalDocs: allSnapshot.docs.length,
+            docs: allSnapshot.docs.map(doc => ({
+              id: doc.id,
+              data: doc.data(),
+              statusMatch: doc.data().status === 'accepted',
+              pageTypeMatch: doc.data().collaboratorPageType === collaborationPageType,
+              showOnProfileMatch: doc.data().showOnCollaboratorProfile === true
+            }))
+          });
+
+          // Also check with different page type variations
+          if (pageType === 'organisation') {
+            console.log('🔍 Also checking with pageType "organization"...');
+            const altQuery = query(
+              collection(db(), 'eventContentCollaboration'),
+              where('collaboratorPageId', '==', pageId),
+              where('collaboratorPageType', '==', 'organization'),
+              where('status', '==', 'accepted'),
+              where('showOnCollaboratorProfile', '==', true)
+            );
+            const altSnapshot = await getDocs(altQuery);
+            console.log('🔍 Alt query results:', altSnapshot.docs.length);
+          }
+        } catch (manualQueryError) {
+          console.error('Manual query failed:', manualQueryError);
+        }
+        
+        return [];
+      }
+      
+      const collaboratedEvents: DashboardItem[] = [];
+      
+      // Fetch event details for each collaboration
+      for (const eventId of eventIds) {
+        try {
+          console.log(`🔍 fetchCollaboratedEvents: Fetching event details for ${eventId}`);
+          const eventDoc = await getDoc(doc(db(), 'events', eventId));
+          
+          if (eventDoc.exists()) {
+            const eventData = eventDoc.data();
+            console.log(`✅ fetchCollaboratedEvents: Found event ${eventId}:`, {
+              title: eventData.title || eventData.eventTitle,
+              creator: eventData.creator?.name || eventData.hosting_club
+            });
+            
+            collaboratedEvents.push({
+              id: eventDoc.id,
+              title: eventData.title || eventData.eventTitle,
+              image: eventData.event_image,
+              type: 'event',
+              isShared: true,
+              sharedBy: eventData.creator?.name || eventData.hosting_club || 'Unknown',
+              accessLevel: 'collaboration'
+            });
+          } else {
+            console.log(`❌ fetchCollaboratedEvents: Event ${eventId} not found in database`);
+          }
+        } catch (error) {
+          console.error(`❌ fetchCollaboratedEvents: Error fetching event ${eventId}:`, error);
+        }
+      }
+
+      console.log(`🎉 fetchCollaboratedEvents: Final result - ${collaboratedEvents.length} collaborated events found`);
+      return collaboratedEvents;
+    } catch (error) {
+      console.error('❌ fetchCollaboratedEvents: Error fetching collaborated events:', error);
+      return [];
+    }
+  };
 
   useEffect(() => {
     const fetchOrganizerContent = async () => {
@@ -39,117 +180,74 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({ pageId, pageType })
       }
 
       try {
-        // Fetch events - filter by specific page if provided, otherwise by user
+        // DEBUG: Check all collaboration records
+        await EventContentCollaborationService.debugGetAllCollaborations();
+
+        // Fetch owned events - ONLY events created by THIS SPECIFIC PAGE
         const eventsCollectionRef = collection(db(), "events");
         let eventsData: Event[] = [];
         
         if (pageId && pageType) {
-          // Filter events by specific page creator (new events) + fallback for legacy events
-          const [newEventsSnapshot, legacyEventsSnapshot] = await Promise.all([
-            getDocs(query(eventsCollectionRef, where("creator.pageId", "==", pageId))),
-            getDocs(query(eventsCollectionRef, where("organizationId", "==", auth.currentUser.uid)))
-          ]);
+          console.log(`🔍 Fetching events for specific page: ${pageType}/${pageId}`);
           
-          // For new events, use creator.pageId directly
-          const newEvents = newEventsSnapshot.docs.map(doc => ({
-            id: doc.id,
-            title: doc.data().title || doc.data().eventTitle,
-            image: doc.data().event_image,
-            type: 'event' as const
-          }));
-          
-          // For legacy events, filter by page type matching
-          const legacyEvents = legacyEventsSnapshot.docs
-            .filter(doc => {
-              const data = doc.data();
-              // Only include legacy events that don't have creator field
-              if (data.creator) return false;
-              // For now, include all legacy events for organizations (they were the only ones creating events before)
-              return pageType === 'organisation';
-            })
-            .map(doc => ({
-              id: doc.id,
-              title: doc.data().title || doc.data().eventTitle,
-              image: doc.data().event_image,
-              type: 'event' as const
-            }));
-          
-          // Combine and deduplicate
-          const allEvents = [...newEvents, ...legacyEvents];
-          eventsData = allEvents.filter((event, index, self) => 
-            index === self.findIndex(e => e.id === event.id)
-          );
-        } else {
-          // Fallback to old behavior for general dashboard
-          const eventsSnapshot = await getDocs(query(
-            eventsCollectionRef,
-            where("organizationId", "==", auth.currentUser.uid)
+          // ONLY fetch events created BY THIS SPECIFIC PAGE
+          // No more fetching by user ID - that was the bug!
+          const ownedEventsSnapshot = await getDocs(query(
+            eventsCollectionRef, 
+            where("creator.pageId", "==", pageId)
           ));
-          eventsData = eventsSnapshot.docs.map(doc => ({
+          
+          console.log(`✅ Found ${ownedEventsSnapshot.docs.length} events owned by this page`);
+          
+          eventsData = ownedEventsSnapshot.docs.map(doc => ({
             id: doc.id,
             title: doc.data().title || doc.data().eventTitle,
             image: doc.data().event_image,
             type: 'event' as const
           }));
+        } else {
+          console.log('⚠️ No pageId provided, cannot fetch page-specific events');
+          eventsData = [];
         }
 
-        // Fetch activities - similar logic
+        // Fetch owned activities - ONLY activities created by THIS SPECIFIC PAGE
         const activitiesCollectionRef = collection(db(), "activities");
         let activitiesData: Activity[] = [];
         
         if (pageId && pageType) {
-          // Filter activities by specific page creator (when implemented)
-          const [newActivitiesSnapshot, legacyActivitiesSnapshot] = await Promise.all([
-            getDocs(query(activitiesCollectionRef, where("creator.pageId", "==", pageId))),
-            getDocs(query(activitiesCollectionRef, where("organizationId", "==", auth.currentUser.uid)))
-          ]);
+          console.log(`🔍 Fetching activities for specific page: ${pageType}/${pageId}`);
           
-          // For new activities, use creator.pageId directly
-          const newActivities = newActivitiesSnapshot.docs.map(doc => ({
-            id: doc.id,
-            name: doc.data().name,
-            activity_image: doc.data().activity_image,
-            type: 'activity' as const
-          }));
-          
-          // For legacy activities, filter by page type matching
-          const legacyActivities = legacyActivitiesSnapshot.docs
-            .filter(doc => {
-              const data = doc.data();
-              // Only include legacy activities that don't have creator field
-              if (data.creator) return false;
-              // For now, include all legacy activities for organizations
-              return pageType === 'organisation';
-            })
-            .map(doc => ({
-              id: doc.id,
-              name: doc.data().name,
-              activity_image: doc.data().activity_image,
-              type: 'activity' as const
-            }));
-          
-          // Combine and deduplicate
-          const allActivities = [...newActivities, ...legacyActivities];
-          activitiesData = allActivities.filter((activity, index, self) => 
-            index === self.findIndex(a => a.id === activity.id)
-          );
-        } else {
-          // Fallback to old behavior
-          const activitiesSnapshot = await getDocs(query(
-            activitiesCollectionRef,
-            where("organizationId", "==", auth.currentUser.uid)
+          // ONLY fetch activities created BY THIS SPECIFIC PAGE
+          const ownedActivitiesSnapshot = await getDocs(query(
+            activitiesCollectionRef, 
+            where("creator.pageId", "==", pageId)
           ));
-          activitiesData = activitiesSnapshot.docs.map(doc => ({
+          
+          console.log(`✅ Found ${ownedActivitiesSnapshot.docs.length} activities owned by this page`);
+          
+          activitiesData = ownedActivitiesSnapshot.docs.map(doc => ({
             id: doc.id,
             name: doc.data().name,
             activity_image: doc.data().activity_image,
             type: 'activity' as const
           }));
+        } else {
+          console.log('⚠️ No pageId provided, cannot fetch page-specific activities');
+          activitiesData = [];
         }
 
-        // Combine both arrays
-        const combinedItems: DashboardItem[] = [...eventsData, ...activitiesData];
-        setItems(combinedItems);
+        // Combine owned events and activities
+        const ownedContent: DashboardItem[] = [...eventsData, ...activitiesData];
+        setOwnedItems(ownedContent);
+
+        // Fetch shared events
+        const sharedContent = await fetchCollaboratedEvents();
+        setSharedItems(sharedContent);
+
+        // Combine all items for the "all" view
+        const allItems = [...ownedContent, ...sharedContent];
+        setItems(allItems);
+
       } catch (error) {
         console.error("Error fetching organizer content:", error);
       } finally {
@@ -159,6 +257,37 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({ pageId, pageType })
 
     fetchOrganizerContent();
   }, [pageId, pageType]);
+
+  // Refresh function for collaboration invite responses
+  const refreshContent = async () => {
+    if (!auth.currentUser) return;
+
+    try {
+      // Refresh collaborated events
+      const sharedContent = await fetchCollaboratedEvents();
+      setSharedItems(sharedContent);
+
+      // Update all items
+      const allItems = [...ownedItems, ...sharedContent];
+      setItems(allItems);
+    } catch (error) {
+      console.error("Error refreshing content:", error);
+    }
+  };
+
+  // Get items to display based on active tab
+  const getDisplayItems = () => {
+    switch (activeTab) {
+      case 'created':
+        return ownedItems;
+      case 'collaborated':
+        return sharedItems;
+      default:
+        return items;
+    }
+  };
+
+  const displayItems = getDisplayItems();
 
   if (loading) {
     return (
@@ -174,14 +303,59 @@ const DashboardSection: React.FC<DashboardSectionProps> = ({ pageId, pageType })
 
   return (
     <div className={styles.dashboardSection}>
-      <h2 className={styles.dashboardTitle}>My Events & Activities</h2>
+      <div className={styles.dashboardHeader}>
+        <h2 className={styles.dashboardTitle}>Events & Activities</h2>
+        
+        {/* Tab Navigation */}
+        <div className={styles.tabNavigation}>
+          <button
+            className={`${styles.tab} ${activeTab === 'all' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('all')}
+          >
+            All ({items.length})
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'created' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('created')}
+          >
+            Created ({ownedItems.length})
+          </button>
+          <button
+            className={`${styles.tab} ${activeTab === 'collaborated' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('collaborated')}
+          >
+            Collaborated ({sharedItems.length})
+          </button>
+        </div>
+      </div>
+
+      {/* Collaboration Invites Section - Only show on Collaborated tab */}
+      {activeTab === 'collaborated' && (
+        <div className={styles.collaborationInvitesSection}>
+          <div className={styles.invitesHeader}>
+            <h3>Pending Invitations</h3>
+            <p>Accept or decline collaboration requests</p>
+          </div>
+          <CollaborationInvites 
+            pageId={pageId}
+            pageType={pageType}
+            onInviteResponded={() => {
+              // Refresh collaborated events when invites are responded to
+              refreshContent();
+            }} 
+          />
+        </div>
+      )}
+
       <div className={styles.dashboardEventsContainer}>
-        {items.length === 0 ? (
+        {displayItems.length === 0 ? (
           <div className={styles.noEventsMessage}>
-            You haven't created any events or activities yet.
+            {activeTab === 'created' && "You haven't created any events or activities yet."}
+            {activeTab === 'collaborated' && "No collaborated events found. Accept collaboration invites above to see events here."}
+            {activeTab === 'all' && "No events or activities found."}
           </div>
         ) : (
-          items.map((item) => (
+          displayItems.map((item) => (
             <DashboardBox key={`${item.type}-${item.id}`} item={item} />
           ))
         )}

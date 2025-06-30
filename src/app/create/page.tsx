@@ -6,6 +6,7 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/services/firebase";
 import { isOrganizationSession, getUserOwnedPages } from "../../utils/authHelpers";
+import { ContentSharingSecurity } from "../../utils/contentSharingSecurity";
 import styles from "./create.module.css";
 
 const CreateType = () => {
@@ -46,17 +47,30 @@ const CreateType = () => {
           });
         }
 
-        // Check if user has any pages to create from
+        // Check if user has any pages to create from (owned or shared)
         const ownedPages = await getUserOwnedPages(user.uid);
-        const hasAnyPages = ownedPages.artists.length > 0 || 
-                           ownedPages.organizations.length > 0 || 
-                           ownedPages.venues.length > 0;
+        const hasOwnedPages = ownedPages.artists.length > 0 || 
+                             ownedPages.organizations.length > 0 || 
+                             ownedPages.venues.length > 0;
+
+        // Also check for shared pages with editor+ access
+        const sharedPages = await ContentSharingSecurity.getUserSharedContent(user.uid);
+        const hasSharedPages = sharedPages.artists.length > 0 || 
+                              sharedPages.organizations.length > 0 || 
+                              sharedPages.venues.length > 0;
+
+        const hasAnyPages = hasOwnedPages || hasSharedPages;
 
         if (hasAnyPages) {
-          console.log("✅ User has pages, allowing access to create page");
+          console.log("✅ User has pages (owned or shared), allowing access to create page", {
+            owned: hasOwnedPages,
+            shared: hasSharedPages,
+            ownedCount: ownedPages.artists.length + ownedPages.organizations.length + ownedPages.venues.length,
+            sharedCount: sharedPages.artists.length + sharedPages.organizations.length + sharedPages.venues.length
+          });
           setIsAuthorized(true);
         } else {
-          console.log("❌ User has no pages, denying access to create page");
+          console.log("❌ User has no pages (owned or shared), denying access to create page");
           setIsAuthorized(false);
         }
       } catch (error) {
