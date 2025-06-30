@@ -110,6 +110,14 @@ const CreateEvent = () => {
   const [mapsScriptError, setMapsScriptError] = useState(false);
   const [guides, setGuides] = useState<{ [key: string]: string }>({});
   const [selectedCity, setSelectedCity] = useState('Mumbai');
+  const [venueCoordinates, setVenueCoordinates] = useState<{
+    lat: number;
+    lng: number;
+    formatted_address: string;
+    place_id?: string;
+    city?: string;
+    country?: string;
+  } | null>(null);
   
   const auth = getAuth();
 
@@ -453,10 +461,92 @@ const CreateEvent = () => {
     });
   };
 
-  const handleSelectAddress = (address: string) => {
+  const handleSelectAddress = async (address: string, placeId?: string) => {
     setAddress(address);
     setEventVenue(address);
     setIsLocationFocused(false);
+    
+    // Get coordinates and additional details from Google Places API
+    if (placeId && window.google && window.google.maps) {
+      try {
+        const service = new window.google.maps.places.PlacesService(document.createElement('div'));
+        
+        service.getDetails({
+          placeId: placeId,
+          fields: ['geometry', 'formatted_address', 'address_components', 'place_id']
+        }, (place: any, status: any) => {
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
+            const coordinates = {
+              lat: place.geometry.location.lat(),
+              lng: place.geometry.location.lng(),
+              formatted_address: place.formatted_address || address,
+              place_id: placeId,
+              city: extractCityFromAddressComponents(place.address_components),
+              country: extractCountryFromAddressComponents(place.address_components)
+            };
+            
+            setVenueCoordinates(coordinates);
+            console.log('Venue coordinates captured:', coordinates);
+          } else {
+            console.warn('Failed to get place details:', status);
+            // Fallback to geocoding if place details fail
+            geocodeAddress(address);
+          }
+        });
+      } catch (error) {
+        console.error('Error getting place details:', error);
+        geocodeAddress(address);
+      }
+    } else {
+      // Fallback to geocoding if no placeId
+      geocodeAddress(address);
+    }
+  };
+  
+  // Helper function to extract city from Google Places address components
+  const extractCityFromAddressComponents = (components: any[]): string | undefined => {
+    for (const component of components) {
+      if (component.types.includes('locality') || 
+          component.types.includes('administrative_area_level_1') ||
+          component.types.includes('sublocality_level_1')) {
+        return component.long_name;
+      }
+    }
+    return undefined;
+  };
+  
+  // Helper function to extract country from address components
+  const extractCountryFromAddressComponents = (components: any[]): string | undefined => {
+    for (const component of components) {
+      if (component.types.includes('country')) {
+        return component.long_name;
+      }
+    }
+    return undefined;
+  };
+  
+  // Fallback geocoding function
+  const geocodeAddress = (address: string) => {
+    if (!window.google || !window.google.maps) return;
+    
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ address }, (results: any[], status: any) => {
+      if (status === 'OK' && results[0]) {
+        const result = results[0];
+        const coordinates = {
+          lat: result.geometry.location.lat(),
+          lng: result.geometry.location.lng(),
+          formatted_address: result.formatted_address || address,
+          city: extractCityFromAddressComponents(result.address_components),
+          country: extractCountryFromAddressComponents(result.address_components)
+        };
+        
+        setVenueCoordinates(coordinates);
+        console.log('Venue coordinates from geocoding:', coordinates);
+      } else {
+        console.warn('Geocoding failed:', status);
+      }
+    });
   };
 
   const handleGuideToggle = (id: string) => {
@@ -619,6 +709,7 @@ const CreateEvent = () => {
         })) : [],
         event_venue: eventVenue.trim(),
         venue_type: 'global',
+        venue_coordinates: venueCoordinates,
         about_event: aboutEvent.trim(),
         event_image: imageUrl,
         organizationId: auth.currentUser.uid,
@@ -834,7 +925,7 @@ const CreateEvent = () => {
                 <PlacesAutocomplete
                   value={address}
                   onChange={setAddress}
-                  onSelect={handleSelectAddress}
+                  onSelect={(address: string, placeId: string) => handleSelectAddress(address, placeId)}
                 >
                   {(props: {
                     getInputProps: (options: any) => any;

@@ -96,6 +96,16 @@ export interface Event extends BaseEntity {
   venue_type: VenueType;
   location?: Location;
   
+  // Enhanced location with coordinates (new)
+  venue_coordinates?: {
+    lat: number;
+    lng: number;
+    formatted_address: string;
+    place_id?: string;
+    city?: string;
+    country?: string;
+  };
+  
   // Creator information
   hosting_club?: string; // Legacy field
   organization_username?: string; // Legacy field

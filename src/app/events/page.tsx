@@ -8,6 +8,7 @@ import Link from "next/link"
 import Image from "next/image"
 import styles from "./events.module.css"
 import EventBox from "@/components/EventsSection/EventBox/EventBox"
+import { matchVenueToCity } from '@/lib/utils/cityBoundaries'
 
 const EVENT_TYPES = [
   { id: "music", label: "Music", icon: Music, color: "from-purple-500 to-pink-500" },
@@ -24,6 +25,14 @@ interface EventFilterData {
   eventCategories?: string[];
   event_venue?: string;
   eventVenue?: string;
+  venue_coordinates?: {
+    lat: number;
+    lng: number;
+    formatted_address: string;
+    place_id?: string;
+    city?: string;
+    country?: string;
+  };
 }
 
 export default function EventsPage() {
@@ -68,7 +77,11 @@ export default function EventsPage() {
     if (selectedCity && selectedCity !== 'All Cities' && selectedCity.trim() !== '') {
       filtered = filtered.filter(event => {
         const venue = event.event_venue || event.eventVenue || '';
-        return venue.toLowerCase().includes(selectedCity.toLowerCase());
+        const venueCoords = event.venue_coordinates ? {
+          lat: event.venue_coordinates.lat,
+          lng: event.venue_coordinates.lng
+        } : null;
+        return matchVenueToCity(venueCoords, venue, selectedCity);
       });
     }
 
@@ -102,7 +115,8 @@ export default function EventsPage() {
             event_categories: data.event_categories || [],
             eventCategories: data.eventCategories || [],
             event_venue: data.event_venue || '',
-            eventVenue: data.eventVenue || ''
+            eventVenue: data.eventVenue || '',
+            venue_coordinates: data.venue_coordinates
           } as EventFilterData;
         });
         

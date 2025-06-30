@@ -1,7 +1,7 @@
 /* Activity Section Styling */
 .activitySection {
     flex: 1;
-    margin-top: 50px;
+    margin-top: 20px; /* Reduced margin as header spacing is handled by ClientLayout */
     margin-bottom: 50px;
     position: relative;
 }

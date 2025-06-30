@@ -1,7 +1,6 @@
 /* Events Section Styling */
 .eventsSection {
     flex: 1;
-    margin-top: 50px;
     margin-bottom: 50px;
     position: relative;
 }
@@ -149,7 +148,7 @@
 /* Mobile Responsiveness */
 @media (max-width: 768px) {
     .eventsSection { 
-        margin-top: 130px;
+        margin-top: 20px; /* Reduced margin as header spacing is handled by ClientLayout */
     }
     .eventsSectionHeading {
         padding: 0 30px;

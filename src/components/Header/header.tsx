@@ -11,24 +11,7 @@ import Link from 'next/link';
 import { Calendar, PartyPopper, Search, X, Building2, MapPin, Clock, ArrowRight, Ticket, Sparkles } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import LocationSelector from '../LocationSelector/LocationSelector';
-
-// A more extensive list of cities for better search results
-const ALL_CITIES = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Ahmedabad', 'Chennai', 'Kolkata', 'Surat', 'Pune', 'Jaipur',
-    'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad', 'Patna',
-    'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivali',
-    'Vasai-Virar', 'Varanasi', 'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
-    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur', 'Madurai', 'Raipur', 'Kota',
-    'Guwahati', 'Chandigarh', 'Solapur', 'Hubli-Dharwad', 'Mysore', 'Tiruchirappalli', 'Bareilly', 'Aligarh',
-    'Tiruppur', 'Gurgaon', 'Moradabad', 'Jalandhar', 'Bhubaneswar', 'Salem', 'Warangal', 'Guntur', 'Noida',
-    'Dehradun', 'Kochi'
-];
-
-// Curated list of popular cities
-const POPULAR_CITIES = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad',
-    'Chennai', 'Kolkata', 'Pune', 'Jaipur'
-];
+import { getPopularCities, searchCities, type CityData } from '@/services/location';
 
 interface SearchResult {
     id: string;
@@ -69,6 +52,17 @@ const Header = () => {
     const searchContainerRef = useRef<HTMLDivElement>(null);
     const locationContainerRef = useRef<HTMLDivElement>(null);
     const [selectedCity, setSelectedCity] = useState('Mumbai');
+    const [popularCities, setPopularCities] = useState<CityData[]>([
+        { name: 'Mumbai', count: 0, eventIds: [] },
+        { name: 'Delhi', count: 0, eventIds: [] },
+        { name: 'Bangalore', count: 0, eventIds: [] },
+        { name: 'Hyderabad', count: 0, eventIds: [] },
+        { name: 'Chennai', count: 0, eventIds: [] },
+        { name: 'Kolkata', count: 0, eventIds: [] },
+        { name: 'Pune', count: 0, eventIds: [] },
+        { name: 'Jaipur', count: 0, eventIds: [] }
+    ]);
+    const [citySearchResults, setCitySearchResults] = useState<CityData[]>([]);
 
     // Check if we're on organization-specific routes
     const isOrganizationRoute = pathname?.startsWith('/organisation') || 
@@ -443,12 +437,70 @@ const Header = () => {
         }
     };
 
-    // Filter cities based on location query, with Google Maps integration
-    const filteredCities = locationQuery.trim() === ''
-        ? []
-        : ALL_CITIES.filter(city =>
-            city.toLowerCase().includes(locationQuery.toLowerCase())
-          );
+    // Load popular cities on component mount
+    useEffect(() => {
+        const loadPopularCities = async () => {
+            try {
+                console.log('Loading popular cities from database...');
+                
+                // Set a timeout to prevent hanging
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Timeout loading cities')), 5000)
+                );
+                
+                const citiesPromise = getPopularCities(8);
+                const cities = await Promise.race([citiesPromise, timeoutPromise]) as CityData[];
+                
+                console.log('Loaded cities from database:', cities);
+                
+                if (cities && cities.length > 0) {
+                    setPopularCities(cities);
+                } else {
+                    console.log('No cities returned from database, keeping fallback cities');
+                }
+            } catch (error) {
+                console.error('Error loading popular cities:', error);
+                console.log('Using fallback cities instead');
+                // Fallback cities are already set in initial state, no need to set again
+            }
+        };
+        loadPopularCities();
+    }, []);
+
+    // Search cities when location query changes
+    useEffect(() => {
+        const searchForCities = async () => {
+            if (locationQuery.trim().length >= 2) {
+                try {
+                    console.log('Searching for cities:', locationQuery);
+                    
+                    // Try database search first, but fallback to local search
+                    let results;
+                    try {
+                        results = await searchCities(locationQuery);
+                        console.log('Database search results:', results);
+                    } catch (error) {
+                        console.warn('Database search failed, using fallback:', error);
+                        // Fallback to searching in popular cities
+                        const searchLower = locationQuery.toLowerCase();
+                        results = popularCities.filter(city => 
+                            city.name.toLowerCase().includes(searchLower)
+                        );
+                    }
+                    
+                    setCitySearchResults(results);
+                } catch (error) {
+                    console.error('Error searching cities:', error);
+                    setCitySearchResults([]);
+                }
+            } else {
+                setCitySearchResults([]);
+            }
+        };
+        
+        const timeoutId = setTimeout(searchForCities, 300);
+        return () => clearTimeout(timeoutId);
+    }, [locationQuery, popularCities]);
 
     const handleNavItemClick = () => setNavActive(false);
     const handleSearchSubmit = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) performSearch(); };
@@ -591,33 +643,49 @@ const Header = () => {
                         {locationQuery.trim() === '' ? (
                             <div className={styles.popularCitiesContainer}>
                                 <h3 className={styles.locationSectionTitle}>Popular Cities</h3>
+                                {/* Debug info - remove in production */}
+                                {process.env.NODE_ENV === 'development' && (
+                                    <div style={{ color: 'white', fontSize: '12px', marginBottom: '10px' }}>
+                                        Cities loaded: {popularCities.length}
+                                    </div>
+                                )}
                                 <div className={styles.locationCityGrid}>
-                                    {POPULAR_CITIES.map(city => (
+                                    {popularCities.length > 0 ? popularCities.map(city => (
                                         <button 
-                                            key={city} 
+                                            key={city.name} 
                                             className={styles.locationCityButton} 
-                                            onClick={() => handleCitySelect(city)}
-                                            aria-label={`Select ${city}`}
+                                            onClick={() => handleCitySelect(city.name)}
+                                            aria-label={`Select ${city.name}`}
                                         >
                                             <MapPin className={styles.locationCityIcon} />
-                                            {city}
+                                            <span>{city.name}</span>
+                                            {city.count > 0 && (
+                                                <span className={styles.cityEventCount}>({city.count})</span>
+                                            )}
                                         </button>
-                                    ))}
+                                    )) : (
+                                        <div style={{ color: 'white', padding: '20px', textAlign: 'center' }}>
+                                            Loading cities...
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ) : (
                             <div className={styles.locationSearchResults}>
                                 <h3 className={styles.locationSectionTitle}>Search Results</h3>
-                                {filteredCities.length > 0 ? (
-                                    filteredCities.map(city => (
+                                {citySearchResults.length > 0 ? (
+                                    citySearchResults.map(city => (
                                         <button 
-                                            key={city} 
+                                            key={city.name} 
                                             className={styles.locationResultItem} 
-                                            onClick={() => handleCitySelect(city)}
-                                            aria-label={`Select ${city}`}
+                                            onClick={() => handleCitySelect(city.name)}
+                                            aria-label={`Select ${city.name}`}
                                         >
                                             <MapPin className={styles.locationResultIcon} />
-                                            {city}
+                                            <span>{city.name}</span>
+                                            {city.count > 0 && (
+                                                <span className={styles.cityEventCount}>({city.count} events)</span>
+                                            )}
                                         </button>
                                     ))
                                 ) : (

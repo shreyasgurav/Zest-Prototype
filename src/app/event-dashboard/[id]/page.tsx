@@ -23,6 +23,8 @@ import { DashboardSecurity, DashboardPermissions } from '@/utils/dashboardSecuri
 import { getTicketDisplayStatus, expireTicketsForPastEvents } from '@/utils/ticketValidator';
 import EventSharingManager from '@/components/EventSharingManager/EventSharingManager';
 import EventCollaborationManager from '@/components/EventCollaborationManager/EventCollaborationManager';
+import DashboardSidebar from '@/components/DashboardSidebar/DashboardSidebar';
+import DashboardOverview from '@/components/DashboardOverview/DashboardOverview';
 import { 
   safeDivision, 
   calculateCheckInRate, 
@@ -72,7 +74,8 @@ import {
   FaHandshake,
   FaStop,
   FaChevronLeft,
-  FaChevronDown
+  FaChevronDown,
+  FaBars
 } from 'react-icons/fa';
 
 interface TimeSlot {
@@ -226,6 +229,7 @@ const EventDashboard = () => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'confirmed' | 'pending' | 'checked-in' | 'not-checked-in'>('all');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [sessionTickets, setSessionTickets] = useState<Ticket[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Real-time data for selected session
   const [sessionStats, setSessionStats] = useState({
@@ -1668,6 +1672,7 @@ const EventDashboard = () => {
     }
   };
 
+
   // CRITICAL: Effect to setup real-time data with proper cleanup - NOW AFTER FUNCTION DECLARATIONS
   useEffect(() => {
     if (eventData && permissions.canView) {
@@ -1826,33 +1831,37 @@ const EventDashboard = () => {
 
   // Main dashboard view (session-specific or legacy)
   return (
-    <div className={styles.dashboardContainer}>
-      {/* Header */}
-      <div className={styles.dashboardHeader}>
-        <div className={styles.headerTop}>
+    <div className={styles.modernDashboard}>
+      {/* Instagram-Style Sidebar */}
+      <DashboardSidebar
+        activeTab={activeTab}
+        setActiveTab={(tab: string) => setActiveTab(tab as any)}
+        attendeesCount={selectedSession ? sessionAttendees.length : attendees.length}
+        selectedSession={selectedSession ? { id: selectedSession.id, name: selectedSession.name } : undefined}
+        onBack={selectedSession ? () => setShowSessionSelector(true) : () => router.push('/events')}
+        eventTitle={eventData?.title || 'Event Dashboard'}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      {/* Sidebar overlay for mobile */}
+      {sidebarOpen && <div className={styles.sidebarOverlay} onClick={() => setSidebarOpen(false)} />}
+
+      {/* Main Content Area */}
+      <div className={styles.mainContent}>
+        {/* Header with Refresh */}
+        <div className={styles.contentHeader}>
           <div className={styles.headerLeft}>
-            {selectedSession ? (
-              <button 
-                onClick={() => setShowSessionSelector(true)} 
-                className={styles.backButton}
-              >
-                <FaArrowLeft /> Back to Sessions
-              </button>
-            ) : (
-              <button 
-                onClick={() => router.push('/events')} 
-                className={styles.backButton}
-              >
-                <FaArrowLeft /> Back to Events
-              </button>
-            )}
-            <div className={styles.eventTitleSection}>
+            <button className={`${styles.sidebarToggle} hidden`} onClick={() => setSidebarOpen(true)}>
+              <FaBars />
+            </button>
+            <div className={styles.headerInfo}>
               <h1>{eventData?.title}</h1>
               {selectedSession && (
-                <div className={styles.sessionBreadcrumb}>
+                <div className={styles.sessionInfo}>
                   <FaLayerGroup />
                   <span>{selectedSession.name}</span>
-                  <span className={styles.sessionDate}>
+                  <span className={styles.sessionMeta}>
                     {formatDate(selectedSession.date)} • {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
                   </span>
                 </div>
@@ -1860,195 +1869,31 @@ const EventDashboard = () => {
             </div>
           </div>
           
-          <div className={styles.headerRight}>
+          <div className={styles.headerActions}>
             <button 
               onClick={handleRefresh}
               className={`${styles.refreshButton} ${refreshing ? styles.refreshing : ''}`}
               disabled={refreshing}
             >
               <FaSyncAlt />
-              {refreshing ? 'Refreshing...' : 'Refresh'}
+              <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
             </button>
-            <span className={styles.lastUpdated}>
+            <span className={`${styles.lastUpdated} hidden md:inline`}>
               Last updated: {lastRefresh.toLocaleTimeString()}
             </span>
           </div>
         </div>
 
-      {/* Modern Stats Cards */}
-        {selectedSession && (
-        <div className={styles.statsGrid}>
-            <div className={styles.statCard}>
-            <div className={styles.statContent}>
-              <div className={`${styles.statIcon} ${styles.revenue}`}>
-                <FaMoneyBillWave />
-              </div>
-              <div className={styles.statData}>
-                <div className={styles.statValue}>₹{calculateSessionRevenue(sessionAttendees, selectedSession || undefined).toLocaleString()}</div>
-                <div className={styles.statLabel}>Total Revenue</div>
-              </div>
-              </div>
-            </div>
-            
-            <div className={styles.statCard}>
-            <div className={styles.statContent}>
-              <div className={`${styles.statIcon} ${styles.attendees}`}>
-                <FaTicketAlt />
-              </div>
-              <div className={styles.statData}>
-                <div className={styles.statValue}>{sessionAttendees.length}</div>
-                <div className={styles.statLabel}>Total Attendees</div>
-              </div>
-              </div>
-            </div>
-            
-            <div className={styles.statCard}>
-            <div className={styles.statContent}>
-              <div className={`${styles.statIcon} ${styles.checkedIn}`}>
-                <FaCheckCircle />
-              </div>
-              <div className={styles.statData}>
-                <div className={styles.statValue}>{sessionAttendees.filter(a => a.checkedIn).length}</div>
-                <div className={styles.statLabel}>Checked In</div>
-              </div>
-            </div>
-          </div>
-          
-          <div className={styles.statCard}>
-              <div className={styles.statContent}>
-              <div className={`${styles.statIcon} ${styles.capacity}`}>
-                <FaUsers />
-              </div>
-              <div className={styles.statData}>
-                <div className={styles.statValue}>
-                  {/* FIXED: Division by zero bug - safe calculation */}
-                  {(() => {
-                    const totalAttendees = sessionAttendees.length;
-                    const totalCapacity = selectedSession?.tickets.reduce((sum, t) => sum + t.capacity, 0) || 0;
-                    
-                    if (totalCapacity === 0) {
-                      return '0%'; // No capacity defined
-                    }
-                    
-                    if (totalAttendees === 0) {
-                      return '0%'; // No attendees yet
-                    }
-                    
-                    const percentage = Math.round((totalAttendees / totalCapacity) * 100);
-                    return `${Math.min(percentage, 100)}%`; // Cap at 100%
-                  })()}
-                </div>
-                <div className={styles.statLabel}>Capacity Used</div>
-              </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Modern Navigation Tabs */}
-      <div className={styles.tabNavigation}>
-        <button
-          className={`${styles.tab} ${activeTab === 'overview' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          Overview
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === 'attendees' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('attendees')}
-        >
-          Attendees ({selectedSession ? sessionAttendees.length : attendees.length})
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === 'checkin' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('checkin')}
-        >
-          Check-in
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === 'manage-tickets' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('manage-tickets')}
-        >
-          Manage Tickets
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === 'collaborations' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('collaborations')}
-        >
-          <FaHandshake /> Collaborations
-        </button>
-        <button
-          className={`${styles.tab} ${activeTab === 'settings' ? styles.activeTab : ''}`}
-          onClick={() => setActiveTab('settings')}
-        >
-          Settings
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      <div className={styles.tabContent}>
+        {/* Tab Content */}
+        <div className={styles.tabContent}>
         {activeTab === 'overview' && selectedSession && (
-          <div className={styles.overviewTab}>
-            <div className={styles.overviewHeader}>
-              <h2>Session Overview</h2>
-              <div className={styles.sessionInfo}>
-                <span className={styles.sessionDate}>{formatDate(selectedSession.date)}</span>
-                <span className={styles.sessionTime}>
-                  {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
-                </span>
-              </div>
-            </div>
-
-
-
-            {/* Ticket Sales Breakdown - Simple and Clear */}
-            <div className={styles.overviewSection}>
-              <h3>Ticket Sales by Type</h3>
-              <div className={styles.ticketBreakdown}>
-                {selectedSession.tickets.map((ticket, index) => {
-                  const soldCount = sessionAttendees.filter(attendee => 
-                    attendee.ticketType === ticket.name ||
-                    (typeof attendee.tickets === 'object' && attendee.tickets[ticket.name] > 0)
-                  ).length;
-                  const revenue = soldCount * ticket.price;
-                  const percentage = (soldCount / ticket.capacity) * 100;
-
-                  return (
-                    <div key={index} className={styles.ticketBreakdownCard}>
-                      <div className={styles.ticketHeader}>
-                        <h4>{ticket.name}</h4>
-                        <span className={styles.ticketPrice}>₹{ticket.price}</span>
-                      </div>
-                      <div className={styles.ticketStats}>
-                        <div className={styles.ticketStat}>
-                          <span className={styles.statLabel}>Sold</span>
-                          <span className={styles.statValue}>{soldCount} / {ticket.capacity}</span>
-                          <div className={styles.soldProgressBar}>
-                            <div 
-                              className={styles.soldProgressFill}
-                              style={{ width: `${percentage}%` }}
-                            ></div>
-                          </div>
-                          <span className={styles.soldPercentageText}>{percentage.toFixed(1)}% sold</span>
-                        </div>
-                        <div className={styles.ticketStat}>
-                          <span className={styles.statLabel}>Revenue</span>
-                          <span className={styles.statValue}>₹{revenue.toLocaleString()}</span>
-                        </div>
-                        <div className={styles.ticketStat}>
-                          <span className={styles.statLabel}>Available</span>
-                          <span className={styles.statValue}>{ticket.capacity - soldCount}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-
-          </div>
+          <DashboardOverview
+            selectedSession={selectedSession}
+            sessionAttendees={sessionAttendees as any}
+            calculateSessionRevenue={calculateSessionRevenue as any}
+            formatDate={formatDate}
+            formatTime={formatTime}
+          />
         )}
 
         {/* Attendees Tab - DATA VIEW ONLY with CSV Export */}
@@ -2896,6 +2741,7 @@ const EventDashboard = () => {
           onClose={() => setShowEventSharing(false)}
         />
       )}
+      </div>
     </div>
   );
 };

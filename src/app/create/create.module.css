@@ -1,8 +1,8 @@
 /* Create Page - Main Container */
 .createPageContainer {
   min-height: 100vh;
-  background: linear-gradient(135deg, #000000 0%, #1a1a2e 50%, #16213e 100%);
-  padding: 80px 20px 40px;
+  background: none;
+  padding: 50px;
   position: relative;
   overflow-x: hidden;
 }
@@ -14,10 +14,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
-    radial-gradient(circle at 20% 20%, rgba(120, 119, 198, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 80% 80%, rgba(255, 99, 99, 0.1) 0%, transparent 50%),
-    radial-gradient(circle at 40% 60%, rgba(132, 250, 176, 0.05) 0%, transparent 50%);
+  background: none;
   pointer-events: none;
 }
 

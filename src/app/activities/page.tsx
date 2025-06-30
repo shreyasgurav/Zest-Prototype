@@ -8,6 +8,7 @@ import { Calendar, MapPin, Clock, Building2, Music, PartyPopper, Palette, Beer, 
 import Link from 'next/link';
 import { format } from 'date-fns';
 import ActivityBox from '@/components/ActivitySection/ActivityBox/ActivityBox';
+import { matchVenueToCity } from '@/lib/utils/cityBoundaries';
 
 // Activity type definition - matching ActivityBox component interface
 interface WeeklySchedule {
@@ -95,8 +96,9 @@ export default function ActivitiesPage() {
     
     return activities.filter(activity => {
       const location = activity.location || activity.activityLocation || '';
-      // Check if location contains the city name (case insensitive)
-      return location.toLowerCase().includes(city.toLowerCase());
+      // For activities, we'll need to implement coordinate storage later
+      // For now, use coordinate-based matching with null coordinates (fallback to text)
+      return matchVenueToCity(null, location, city);
     });
   };
 

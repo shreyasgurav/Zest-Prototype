@@ -1,7 +1,7 @@
 /* Enhanced Tickets Page Styles */
 .ticketsPage {
   min-height: 100vh;
-  background: #0f0f0f;
+  background: none;
   padding: 2rem 1rem;
   color: #ffffff;
 }

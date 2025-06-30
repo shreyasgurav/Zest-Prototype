@@ -1,14 +1,14 @@
 /* Main Container */
 .artistProfileContainer {
   min-height: 100vh;
-  background: linear-gradient(to bottom, #1e293b, #000000);
+  background: none;
   color: white;
   overflow-x: hidden;
 }
 
 /* Page Selector */
 .pageSelector {
-  background: rgba(255, 255, 255, 0.05);
+  background: none;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   padding: 20px;
@@ -1177,11 +1177,11 @@
 .collaboratedEventsSection {
   margin: 40px 0;
   padding: 32px;
-  background: rgba(255, 255, 255, 0.03);
+  background: none;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
   backdrop-filter: blur(10px);
 }
+
 
 .sectionHeader {
   margin-bottom: 24px;

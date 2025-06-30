@@ -1,6 +1,6 @@
 .activityDashboard {
   max-width: 1200px;
-  margin: 50px auto;
+  margin: 0 auto; /* Remove top margin as it's handled by ClientLayout */
   padding: 24px;
   background-color: rgb(66, 66, 66, 0.5);
   border-radius: 12px;
