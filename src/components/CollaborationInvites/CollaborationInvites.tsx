@@ -12,6 +12,8 @@ import {
 import { getAuth } from 'firebase/auth';
 import { EventContentCollaborationService, EventContentCollaboration } from '@/utils/eventContentCollaboration';
 import styles from './CollaborationInvites.module.css';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '@/services/firebase';
 
 interface CollaborationInvitesProps {
   pageId?: string;
@@ -24,6 +26,13 @@ const CollaborationInvites: React.FC<CollaborationInvitesProps> = ({
   pageType, 
   onInviteResponded 
 }) => {
+  // Add debug logging for props
+  console.log('🔍 CollaborationInvites Component Props:', {
+    pageId,
+    pageType,
+    componentLocation: new Error().stack?.split('\n')[2] // This will show where the component is being rendered from
+  });
+
   const auth = getAuth();
   const [invites, setInvites] = useState<EventContentCollaboration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,15 +62,37 @@ const CollaborationInvites: React.FC<CollaborationInvitesProps> = ({
         userId: auth.currentUser.uid
       });
 
-      // Get ALL invites for the user
+      // 🚨 ENHANCED DEBUG: First check what invites exist for this user across ALL pages
+      console.log('🐛 DEBUG: Checking ALL invites for current user...');
       const allInvites = await EventContentCollaborationService.getCollaborationInvites(auth.currentUser.uid);
-      console.log('📋 CollaborationInvites: All invites for user:', allInvites.length);
+      console.log('📋 CollaborationInvites: All invites for user:', {
+        totalInvites: allInvites.length,
+        invites: allInvites.map(invite => ({
+          eventTitle: invite.eventTitle,
+          collaboratorPageId: invite.collaboratorPageId,
+          collaboratorPageType: invite.collaboratorPageType,
+          collaboratorPageUsername: invite.collaboratorPageUsername,
+          status: invite.status
+        }))
+      });
+
+      // 🚨 DEBUG: Also run the debug function to see what's happening
+      await EventContentCollaborationService.debugUserInvites(auth.currentUser.uid);
 
       // Filter invites to only show ones for THIS SPECIFIC PAGE
       const collaborationPageType = pageType === 'organisation' ? 'organization' : pageType;
+      console.log('🔍 Filtering for current page:', {
+        currentPageId: pageId,
+        currentPageType: collaborationPageType,
+        originalPageType: pageType
+      });
+
       const pageSpecificInvites = allInvites.filter(invite => {
-        const isForThisPage = invite.collaboratorPageId === pageId && 
-                             invite.collaboratorPageType === collaborationPageType;
+        // Normalize page types to handle organisation/organization spelling differences
+        const normalizeType = (t: string) => t.replace('organisation', 'organization');
+        const pageTypeMatch = normalizeType(invite.collaboratorPageType).toLowerCase() === normalizeType(collaborationPageType).toLowerCase();
+
+        const isForThisPage = invite.collaboratorPageId === pageId && pageTypeMatch;
         
         console.log(`🔍 Checking invite ${invite.id}:`, {
           eventTitle: invite.eventTitle,
@@ -76,6 +107,28 @@ const CollaborationInvites: React.FC<CollaborationInvitesProps> = ({
       });
 
       console.log(`✅ CollaborationInvites: Found ${pageSpecificInvites.length} invites for this page (${pageType}/${pageId})`);
+      
+      // 🚨 DEBUG: If no invites found, let's check if the page exists in database
+      if (pageSpecificInvites.length === 0) {
+        console.log('🔍 No invites found, checking if page exists in database...');
+        const collectionName = pageType === 'organisation' ? 'Organisations' : 
+                              pageType === 'artist' ? 'Artists' : 'Venues';
+        
+        try {
+          const pageDoc = await getDoc(doc(db(), collectionName, pageId));
+          console.log('Page exists:', {
+            exists: pageDoc.exists(),
+            data: pageDoc.exists() ? {
+              name: pageDoc.data()?.name,
+              username: pageDoc.data()?.username,
+              ownerId: pageDoc.data()?.ownerId
+            } : 'Not found'
+          });
+        } catch (error) {
+          console.error('Error checking page existence:', error);
+        }
+      }
+
       setInvites(pageSpecificInvites);
     } catch (error) {
       console.error('Error loading collaboration invites:', error);

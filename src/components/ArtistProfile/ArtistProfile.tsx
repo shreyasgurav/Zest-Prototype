@@ -114,9 +114,9 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
         if (value.length > 500) return 'Bio must be less than 500 characters';
         return '';
       case 'genre':
-        if (!value.trim()) return 'Genre is required';
-        if (value.trim().length < 2) return 'Genre must be at least 2 characters';
-        if (value.trim().length > 50) return 'Genre must be less than 50 characters';
+        if (!value.trim()) return 'Category is required';
+        if (value.trim().length < 2) return 'Category must be at least 2 characters';
+        if (value.trim().length > 50) return 'Category must be less than 50 characters';
         return '';
       case 'location':
         if (value.trim() && value.trim().length < 2) return 'Location must be at least 2 characters';
@@ -718,16 +718,6 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
               <h1 className={styles.artistName}>
                 {name || "Artist Name"}
               </h1>
-
-              {/* Additional Info */}
-              <div className={styles.artistMeta}>
-                {username && (
-                  <span className={styles.username}>@{username}</span>
-                )}
-                {genre && (
-                  <span className={styles.genre}>{genre}</span>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -735,6 +725,16 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
 
       {/* Bio and Edit Section */}
       <div className={styles.contentSection}>
+        {/* Artist Meta Information */}
+        <div className={styles.artistMetaSection}>
+          {username && (
+            <span className={styles.username}>@{username}</span>
+          )}
+          {genre && (
+            <span className={styles.genre}>{genre}</span>
+          )}
+        </div>
+
         {bio && (
           <div className={styles.bioSection}>
             <p>{bio}</p>
@@ -753,11 +753,11 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
             </button>
             )}
             {username && (
-              <button 
+                              <button 
                 onClick={() => window.open(`/artist/${username}`, '_blank')}
                 className={styles.viewPublicButton}
               >
-                View Public Page
+                View Page →
               </button>
             )}
             {userPermissions.canManage && (
@@ -848,17 +848,17 @@ const ArtistProfile: React.FC<ArtistProfileProps> = ({ selectedPageId }) => {
               <div className={styles.modernInputGroup}>
                 <label htmlFor="genre">
                   <FaTag className={styles.inputIcon} />
-                  Genre
+                  Category
                 </label>
                 <input
                   id="genre"
                   type="text"
                   value={newGenre}
                   onChange={handleGenreChange}
-                  placeholder="e.g., Rock, Pop, Jazz, Electronic"
+                  placeholder="e.g., Musician, Actor, Painter"
                   className={`${styles.modernInput} ${fieldErrors.genre ? styles.inputError : ''}`}
                 />
-                {fieldErrors.genre && <span className={styles.errorText}>{fieldErrors.genre}</span>}
+                {fieldErrors.genre && <span className={styles.errorText}>{fieldErrors.genre.replace('Genre', 'Category')}</span>}
               </div>
             </div>
 

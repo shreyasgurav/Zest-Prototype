@@ -61,13 +61,14 @@
 
 .orgProfileImageContainer {
   position: absolute;
-  bottom: -50px;
+  bottom: -40px;
   left: 24px;
-  width: 150px;
-  height: 150px;
-  border-radius: 20px;
+  width: 130px;
+  height: 130px;
+  border-radius: 16px;
   overflow: hidden;
-  border: 4px solid black;
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(8px);
   z-index: 2;
   cursor: pointer;
 }
@@ -235,7 +236,7 @@
 .orgName {
   font-size: 30px;
   font-weight: 900;
-  margin: 0 0 8px 0;
+  margin: 0 0 2px 0;
   color: white;
 }
 
@@ -427,6 +428,48 @@
   transform: translateY(-2px);
 }
 
+.shareButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%);
+  color: white;
+  border: none;
+  border-radius: 15px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.shareButton::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.6s ease;
+}
+
+.shareButton:hover::before {
+  left: 100%;
+}
+
+.shareButton:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #5b21b6 100%);
+  box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+  transform: translateY(-2px);
+}
+
+.shareIcon {
+  font-size: 14px;
+}
+
 .statItem {
   display: flex;
   flex-direction: column;
@@ -476,7 +519,7 @@
 
 .orgDashboardSection {
   margin-top: 40px;
-  padding: 20px;
+  padding: 0 32px 40px;
 }
 
 .placeholderDashboard {
@@ -706,9 +749,9 @@
   }
 
   .orgProfileImageContainer {
-    width: 120px;
-    height: 120px;
-    bottom: -40px;
+    width: 110px;
+    height: 110px;
+    bottom: -35px;
     left: 16px;
   }
 
@@ -757,6 +800,15 @@
     grid-template-columns: 1fr;
     padding: 16px;
   }
+
+  .ownedEventsSection,
+  .collaboratedEventsSection {
+    padding: 24px 16px 0 16px;
+  }
+
+  .orgDashboardSection {
+    padding: 0 16px 24px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -771,7 +823,7 @@
   .orgProfileImageContainer {
     width: 100px;
     height: 100px;
-    bottom: -35px;
+    bottom: -30px;
     left: 16px;
   }
 
@@ -786,17 +838,25 @@
     justify-content: center;
     text-align: center;
   }
+
+  .ownedEventsSection,
+  .collaboratedEventsSection {
+    padding: 20px 12px 0 12px;
+  }
+
+  .orgDashboardSection {
+    padding: 0 12px 20px;
+  }
 }
 
 /* Management Sections */
 .ownedEventsSection,
 .collaboratedEventsSection {
-  margin: 40px 0;
-  padding: 32px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  backdrop-filter: blur(10px);
+  margin: 40px 0 0 0;
+  padding: 32px 32px 0 32px;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .sectionHeader {
@@ -896,4 +956,112 @@
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%);
   box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
   transform: translateY(-2px);
+}
+
+/* No Organization Pages Container - matches artist profile */
+.noOrganizationPagesContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+  padding: 40px 20px;
+}
+
+.noOrganizationPagesCard {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 60px 40px;
+  text-align: center;
+  max-width: 500px;
+  width: 100%;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.noOrganizationPagesIcon {
+  font-size: 64px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 24px;
+}
+
+.noOrganizationPagesCard h2 {
+  color: white;
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.noOrganizationPagesCard p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 0 0 32px 0;
+}
+
+.createOrganizationPageButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6d28d9 100%);
+  color: white;
+  border: none;
+  border-radius: 15px;
+  padding: 16px 32px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 8px 25px rgba(139, 92, 246, 0.4);
+}
+
+.createOrganizationPageButton::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.6s ease;
+}
+
+.createOrganizationPageButton:hover::before {
+  left: 100%;
+}
+
+.createOrganizationPageButton:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 50%, #5b21b6 100%);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(139, 92, 246, 0.6);
+}
+
+.createIcon {
+  font-size: 18px;
+}
+
+@media (max-width: 768px) {
+  .noOrganizationPagesCard {
+    padding: 40px 24px;
+    margin: 0 16px;
+  }
+  
+  .noOrganizationPagesIcon {
+    font-size: 48px;
+  }
+  
+  .noOrganizationPagesCard h2 {
+    font-size: 24px;
+  }
+  
+  .createOrganizationPageButton {
+    padding: 14px 24px;
+    font-size: 14px;
+  }
 } 

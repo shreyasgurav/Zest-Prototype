@@ -38,6 +38,13 @@ interface DashboardSectionProps {
 }
 
 const DashboardSection: React.FC<DashboardSectionProps> = ({ pageId, pageType }) => {
+  // Add debug logging for props
+  console.log('🔍 DashboardSection Props:', {
+    pageId,
+    pageType,
+    sessionStorageId: typeof window !== 'undefined' ? sessionStorage.getItem('selectedOrganizationPageId') : null
+  });
+
   const [items, setItems] = useState<DashboardItem[]>([]);
   const [ownedItems, setOwnedItems] = useState<DashboardItem[]>([]);
   const [sharedItems, setSharedItems] = useState<DashboardItem[]>([]);

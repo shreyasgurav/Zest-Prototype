@@ -9,6 +9,7 @@ import EventBox from '@/components/EventsSection/EventBox/EventBox';
 
 interface OrganisationData {
   uid?: string;
+  ownerId?: string;
   name?: string;
   username?: string;
   bio?: string;
@@ -24,79 +25,115 @@ const PublicOrganisationProfile = () => {
   const [collaboratedEventIds, setCollaboratedEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchOrgData = async () => {
-      if (!username) {
-        setError("Username is required");
+  // Function to fetch organization data
+  const fetchOrgData = async (isManualRefresh = false) => {
+    if (!username) {
+      setError("Username is required");
+      setLoading(false);
+      return;
+    }
+
+    if (isManualRefresh) {
+      setRefreshing(true);
+    }
+
+    try {
+      const db = getFirestore();
+      
+      // First, find the organization by username
+      const orgsQuery = query(
+        collection(db, "Organisations"),
+        where("username", "==", username.toLowerCase())
+      );
+      const orgSnapshot = await getDocs(orgsQuery);
+      
+      if (orgSnapshot.empty) {
+        setError("Organization not found");
         setLoading(false);
         return;
       }
 
-      try {
-        const db = getFirestore();
-        
-        // First, find the organization by username
-        const orgsQuery = query(
-          collection(db, "Organisations"),
-          where("username", "==", username.toLowerCase())
-        );
-        const orgSnapshot = await getDocs(orgsQuery);
-        
-        if (orgSnapshot.empty) {
-          setError("Organization not found");
-          setLoading(false);
-          return;
-        }
+      const orgDoc = orgSnapshot.docs[0];
+      const orgData = orgDoc.data() as OrganisationData;
+      orgData.uid = orgDoc.id;
+      setOrgDetails(orgData);
 
-        const orgDoc = orgSnapshot.docs[0];
-        const orgData = orgDoc.data() as OrganisationData;
-        orgData.uid = orgDoc.id;
-        setOrgDetails(orgData);
+      // Fetch event IDs created by this organization page
+      // Try both new creator.pageId and legacy organizationId for backward compatibility
+      const [newEventsSnapshot, legacyEventsSnapshot] = await Promise.all([
+        getDocs(query(
+          collection(db, "events"),
+          where("creator.pageId", "==", orgDoc.id)
+        )),
+        getDocs(query(
+          collection(db, "events"),
+          where("organizationId", "==", orgDoc.id)
+        ))
+      ]);
+      
+      // Combine and deduplicate events
+      const allEventDocs = [...newEventsSnapshot.docs, ...legacyEventsSnapshot.docs];
+      const uniqueEventDocs = allEventDocs.filter((doc, index, self) => 
+        index === self.findIndex(d => d.id === doc.id)
+      );
+      
+      // Get owned event IDs
+      const ownedIds = uniqueEventDocs.map(doc => doc.id);
+      
+      // Get collaborated event IDs
+      const collaboratedIds = await EventContentCollaborationService.getCollaboratedEvents(
+        orgDoc.id, 
+        'organization'
+      );
+      
+      // Combine owned and collaborated events (remove duplicates)
+      const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
+      setEventIds(allEventIds);
+      setCollaboratedEventIds(collaboratedIds);
 
-        // Fetch event IDs created by this organization page
-        // Try both new creator.pageId and legacy organizationId for backward compatibility
-        const [newEventsSnapshot, legacyEventsSnapshot] = await Promise.all([
-          getDocs(query(
-            collection(db, "events"),
-            where("creator.pageId", "==", orgDoc.id)
-          )),
-          getDocs(query(
-            collection(db, "events"),
-            where("organizationId", "==", orgDoc.id)
-          ))
-        ]);
-        
-        // Combine and deduplicate events
-        const allEventDocs = [...newEventsSnapshot.docs, ...legacyEventsSnapshot.docs];
-        const uniqueEventDocs = allEventDocs.filter((doc, index, self) => 
-          index === self.findIndex(d => d.id === doc.id)
-        );
-        
-        // Get owned event IDs
-        const ownedIds = uniqueEventDocs.map(doc => doc.id);
-        
-        // Get collaborated event IDs
-        const collaboratedIds = await EventContentCollaborationService.getCollaboratedEvents(
-          orgDoc.id, 
-          'organization'
-        );
-        
-        // Combine owned and collaborated events (remove duplicates)
-        const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
-        setEventIds(allEventIds);
-        setCollaboratedEventIds(collaboratedIds);
+      setError(null);
+    } catch (err) {
+      console.error("Error fetching organization data:", err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+      if (isManualRefresh) {
+        setRefreshing(false);
+      }
+    }
+  };
 
-        setError(null);
-      } catch (err) {
-        console.error("Error fetching organization data:", err);
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
+  // Manual refresh function
+  const handleManualRefresh = () => {
+    fetchOrgData(true);
+  };
+
+  useEffect(() => {
+    fetchOrgData();
+
+    // Set up an interval to refresh data every 5 seconds (reduced from 10 for better responsiveness)
+    const refreshInterval = setInterval(() => {
+      console.log('🔄 Refreshing organization data...');
+      fetchOrgData();
+    }, 5000);
+
+    // Also refresh when the page becomes visible again (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('👁️ Page became visible, refreshing data...');
+        fetchOrgData();
       }
     };
 
-    fetchOrgData();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup interval and event listener on unmount
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [username]);
 
   if (loading) {
@@ -167,28 +204,32 @@ const PublicOrganisationProfile = () => {
         <div className={styles.orgUsername}>
           <span>@{orgDetails.username || "username"}</span>
         </div>
-        <div className={styles.orgBio}>
-          <p>{orgDetails.bio || "No bio available"}</p>
-        </div>
+        {orgDetails.bio && orgDetails.bio.trim() && (
+          <div className={styles.orgBio}>
+            <p>{orgDetails.bio}</p>
+          </div>
+        )}
       </div>
 
       {/* Events Section */}
       <div className={styles.eventsSection}>
-        <h2 className={styles.eventsHeading}>Upcoming Events</h2>
-        {eventIds.length === 0 ? (
-          <div className={styles.noEventsMessage}>
-            No upcoming events at the moment.
-          </div>
-        ) : (
+        <h2 className={styles.eventsHeading}>Events</h2>
+        
+        {/* All Events (Owned + Collaborated) */}
+        {eventIds.length > 0 ? (
           <div className={styles.eventsGrid}>
             {eventIds.map((eventId) => (
               <EventBox 
                 key={eventId} 
-                eventId={eventId}
+                eventId={eventId} 
                 isCollaboration={collaboratedEventIds.includes(eventId)}
                 collaboratorPageName={collaboratedEventIds.includes(eventId) ? orgDetails?.name : undefined}
               />
             ))}
+          </div>
+        ) : (
+          <div className={styles.noEventsMessage}>
+            No upcoming events at the moment.
           </div>
         )}
       </div>

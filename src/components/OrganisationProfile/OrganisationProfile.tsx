@@ -4,25 +4,24 @@ import React, { useEffect, useState } from "react";
 import {
   doc,
   getDoc,
-  setDoc,
-  collection,
-  query,
-  where,
-  getDocs,
   updateDoc,
 } from "firebase/firestore";
-import { onAuthStateChanged, User } from "firebase/auth";
-import { auth, db } from '@/services/firebase';
+import { onAuthStateChanged, User, getAuth } from "firebase/auth";
+import { getFirestore } from 'firebase/firestore';
 import { toast } from "react-toastify";
-import { FaCamera, FaTimes } from 'react-icons/fa';
+import { FaCamera, FaTimes, FaBuilding, FaPlus, FaShare } from 'react-icons/fa';
 import OrganisationProfileSkeleton from "./OrganisationProfileSkeleton";
 import DashboardSection from '../Dashboard/DashboardSection/DashboardSection';
 import PhotoUpload from '../PhotoUpload/PhotoUpload';
+import ContentSharingManager from '../ContentSharingManager/ContentSharingManager';
 import { useRouter } from 'next/navigation';
+import { getUserOwnedPages } from '@/utils/authHelpers';
+import { ContentSharingSecurity } from '@/utils/contentSharingSecurity';
 import styles from "./OrganisationProfile.module.css";
 
 interface OrganisationData {
-  uid?: string;
+  uid: string;
+  ownerId: string;
   phoneNumber?: string;
   isActive?: boolean;
   role?: string;
@@ -33,14 +32,7 @@ interface OrganisationData {
   bannerImage?: string;
   createdAt?: string;
   updatedAt?: string;
-  settings?: {
-    notifications?: boolean;
-    emailUpdates?: boolean;
-    privacy?: {
-      profileVisibility?: string;
-      contactVisibility?: string;
-    };
-  };
+  settings?: any;
 }
 
 interface OrganisationProfileProps {
@@ -54,6 +46,11 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<boolean>(false);
   
+  // Current page management
+  const [currentOrgPageId, setCurrentOrgPageId] = useState<string | null>(null);
+  const [ownedOrgPages, setOwnedOrgPages] = useState<OrganisationData[]>([]);
+  
+  // Form states
   const [name, setName] = useState<string>("");
   const [newName, setNewName] = useState<string>("");
   const [username, setUsername] = useState<string>("");
@@ -72,92 +69,65 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   const [showPhotoUpload, setShowPhotoUpload] = useState<boolean>(false);
   const [currentPhotoType, setCurrentPhotoType] = useState<'profile' | 'banner'>('profile');
 
-  const fetchOrgData = async (uid: string, pageId?: string | null) => {
-    console.log("Fetching org data for:", uid);
+  // Sharing states
+  const [showSharingModal, setShowSharingModal] = useState<boolean>(false);
+  const [userPermissions, setUserPermissions] = useState({
+    canEdit: false,
+    canManage: false,
+    role: 'unauthorized' as string
+  });
+
+  const fetchOrgData = async (pageId: string) => {
+    console.log("Fetching organization data for page:", pageId);
     try {
-      
-              // First, check if we have a selected organization page ID from props or session storage
-        const sessionSelectedPageId = sessionStorage.getItem('selectedOrganizationPageId');
-        const pageIdToUse = pageId || sessionSelectedPageId;
-      
-              if (pageIdToUse) {
-          console.log("Using selected organization page ID:", pageIdToUse);
-          const orgDocRef = doc(db(), "Organisations", pageIdToUse);
-        const docSnap = await getDoc(orgDocRef);
+      const db = getFirestore();
+      const orgDocRef = doc(db, "Organisations", pageId);
+      const docSnap = await getDoc(orgDocRef);
+  
+      if (docSnap.exists()) {
+        console.log("Document exists in Firestore");
+        const data = docSnap.data();
         
-        if (docSnap.exists()) {
-          const data = docSnap.data() as OrganisationData;
-          console.log("Found organization document:", data);
-          
-          // Update states with fetched data
-          setOrgDetails(data);
-          setName(data.name || "");
-          setNewName(data.name || "");
-          setUsername(data.username || "");
-          setNewUsername(data.username || "");
-          setBio(data.bio || "");
-          setNewBio(data.bio || "");
-          setPhotoURL(data.photoURL || "");
-          setNewPhotoURL(data.photoURL || "");
-          setBannerImage(data.bannerImage || "");
-          setNewBannerImage(data.bannerImage || "");
-          
-          // Store in localStorage
-          localStorage.setItem('orgDetails', JSON.stringify(data));
-          localStorage.setItem('orgName', data.name || "");
-          localStorage.setItem('orgUsername', data.username || "");
-          localStorage.setItem('orgBio', data.bio || "");
-          localStorage.setItem('orgPhotoURL', data.photoURL || "");
-          localStorage.setItem('orgBannerImage', data.bannerImage || "");
-          return;
+        if (!data.ownerId) {
+          throw new Error("Organization page missing owner information");
         }
-      }
-      
-      // If no selected page ID or document not found, query by ownerId
-      console.log("Querying organizations by ownerId:", uid);
-      const orgsQuery = query(
-        collection(db(), "Organisations"),
-        where("ownerId", "==", uid)
-      );
-      
-      const orgSnap = await getDocs(orgsQuery);
-      
-      if (!orgSnap.empty) {
-        // Use the first organization found (user might have multiple organizations)
-        const firstOrgDoc = orgSnap.docs[0];
-        const data = firstOrgDoc.data() as OrganisationData;
-        console.log("Found organization by ownerId:", data);
         
-        // Store the page ID for future use
-        sessionStorage.setItem('selectedOrganizationPageId', firstOrgDoc.id);
+        const orgData: OrganisationData = {
+          uid: docSnap.id,
+          ownerId: data.ownerId,
+          name: data.name || "",
+          username: data.username || "",
+          bio: data.bio || "",
+          photoURL: data.photoURL || "",
+          bannerImage: data.bannerImage || "",
+          phoneNumber: data.phoneNumber || "",
+          isActive: data.isActive || true,
+          role: data.role || "Organisation",
+          createdAt: data.createdAt || "",
+          updatedAt: data.updatedAt || "",
+          settings: data.settings || {}
+        };
         
-        // Update states with fetched data
-        setOrgDetails(data);
-        setName(data.name || "");
-        setNewName(data.name || "");
-        setUsername(data.username || "");
-        setNewUsername(data.username || "");
-        setBio(data.bio || "");
-        setNewBio(data.bio || "");
-        setPhotoURL(data.photoURL || "");
-        setNewPhotoURL(data.photoURL || "");
-        setBannerImage(data.bannerImage || "");
-        setNewBannerImage(data.bannerImage || "");
+        setOrgDetails(orgData);
+        setName(orgData.name || "");
+        setNewName(orgData.name || "");
+        setUsername(orgData.username || "");
+        setNewUsername(orgData.username || "");
+        setBio(orgData.bio || "");
+        setNewBio(orgData.bio || "");
+        setPhotoURL(orgData.photoURL || "");
+        setNewPhotoURL(orgData.photoURL || "");
+        setBannerImage(orgData.bannerImage || "");
+        setNewBannerImage(orgData.bannerImage || "");
         
-        // Store in localStorage
-        localStorage.setItem('orgDetails', JSON.stringify(data));
-        localStorage.setItem('orgName', data.name || "");
-        localStorage.setItem('orgUsername', data.username || "");
-        localStorage.setItem('orgBio', data.bio || "");
-        localStorage.setItem('orgPhotoURL', data.photoURL || "");
-        localStorage.setItem('orgBannerImage', data.bannerImage || "");
+        setError(null);
       } else {
-        console.log("No organization found, user may need to create one");
-        setError("No organization found. Please create an organization first.");
+        throw new Error("Organization page not found");
       }
     } catch (err) {
       console.error("Error in fetchOrgData:", err);
       setError(err instanceof Error ? err.message : 'An error occurred');
+      setOrgDetails(null);
     } finally {
       setLoading(false);
     }
@@ -169,14 +139,18 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
       return false;
     }
 
+    if (username.toLowerCase() === (orgDetails?.username || '').toLowerCase()) {
+      setUsernameError("");
+      return true;
+    }
+
     try {
       const { checkGlobalUsernameAvailability } = await import('@/utils/authHelpers');
-      const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId') || undefined;
       
       const result = await checkGlobalUsernameAvailability(
         username,
-        undefined, // Don't exclude user ID since this is for organization page
-        selectedOrgPageId,
+        undefined,
+        currentOrgPageId || undefined,
         'organisation'
       );
       
@@ -203,6 +177,10 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
     setNewUsername(newUsername);
     setUsernameError("");
     
+    if (newUsername.toLowerCase() === username.toLowerCase()) {
+      return;
+    }
+    
     if (newUsername.length >= 3) {
       setIsCheckingUsername(true);
       await checkUsernameAvailability(newUsername);
@@ -211,17 +189,91 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   };
 
   useEffect(() => {
+    const auth = getAuth();
     let isSubscribed = true;
     
-    const unsubscribe = onAuthStateChanged(auth(), async (user: User | null) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       console.log("Auth state changed:", user?.uid);
       
       if (user && isSubscribed) {
-        await fetchOrgData(user.uid, selectedPageId);
+        try {
+          const sessionSelectedPageId = typeof window !== 'undefined' ? 
+            sessionStorage.getItem('selectedOrganizationPageId') : null;
+          
+          const pageIdToUse = selectedPageId || sessionSelectedPageId;
+          
+          if (pageIdToUse) {
+            console.log(`🏢 Loading specific organization page: ${pageIdToUse}`);
+            
+            // Verify access to this specific page
+            const permissions = await ContentSharingSecurity.verifyContentAccess('organization', pageIdToUse, user.uid);
+            
+            if (permissions.canView && permissions.role !== 'unauthorized') {
+              console.log(`🔓 Access granted to organization page: ${pageIdToUse} with role: ${permissions.role}`);
+              
+              // Set user permissions for this page
+              setUserPermissions({
+                canEdit: permissions.canEdit,
+                canManage: permissions.canManage,
+                role: permissions.role
+              });
+              
+              setCurrentOrgPageId(pageIdToUse);
+              await fetchOrgData(pageIdToUse);
+              
+              // Clear session selection after using it
+              if (sessionSelectedPageId) {
+                sessionStorage.removeItem('selectedOrganizationPageId');
+              }
+            } else {
+              console.log(`🚫 Access denied to organization page: ${pageIdToUse}`);
+              setError("You don't have permission to access this organization page.");
+              setLoading(false);
+            }
+          } else {
+            console.log("🏢 Loading owned organization pages");
+            const ownedPages = await getUserOwnedPages(user.uid);
+            setOwnedOrgPages(ownedPages.organizations);
+            
+            if (ownedPages.organizations.length > 0) {
+              const pageToLoad = ownedPages.organizations[0];
+              
+              // Set owner permissions
+              setUserPermissions({
+                canEdit: true,
+                canManage: true,
+                role: 'owner'
+              });
+              
+              setCurrentOrgPageId(pageToLoad.uid);
+              await fetchOrgData(pageToLoad.uid);
+            } else {
+              // No owned organization pages - check if user has shared access to any organization pages
+              const sharedContent = await ContentSharingSecurity.getUserSharedContent(user.uid);
+              
+              if (sharedContent.organizations.length > 0) {
+                // User has shared access to organization pages, but no specific page selected
+                setError("Please select an organization page from your dropdown menu.");
+                setLoading(false);
+              } else {
+                // No organization pages found at all
+                setError("No organization pages found. Please create an organization page first.");
+                setLoading(false);
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Error loading organization pages:", err);
+          setError("Failed to load organization pages");
+          setLoading(false);
+        }
       } else if (!user) {
         setOrgDetails(null);
+        setOwnedOrgPages([]);
+        setCurrentOrgPageId(null);
         setError(null);
         setEditMode(false);
+        setLoading(false);
       }
     });
   
@@ -234,7 +286,7 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   const handleSaveProfile = async () => {
     try {
       setLoading(true);
-      const user = auth().currentUser;
+      const user = getAuth().currentUser;
   
       if (!user) {
         setError("User not authenticated");
@@ -242,7 +294,19 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         return;
       }
   
-      if (newUsername) {
+      if (!newName.trim()) {
+        toast.error("Organization name is required");
+        setLoading(false);
+        return;
+      }
+
+      if (!newUsername.trim()) {
+        toast.error("Username is required");
+        setLoading(false);
+        return;
+      }
+  
+      if (newUsername.toLowerCase() !== (orgDetails?.username || '').toLowerCase()) {
         const isUsernameAvailable = await checkUsernameAvailability(newUsername);
         if (!isUsernameAvailable) {
           setLoading(false);
@@ -250,21 +314,19 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         }
       }
       
-      // Get the correct organization page ID
-      const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
-      if (!selectedOrgPageId) {
-        setError("No organization page selected");
+      if (!currentOrgPageId) {
         toast.error("No organization page found");
         setLoading(false);
         return;
       }
       
-      const orgDocRef = doc(db(), "Organisations", selectedOrgPageId);
+      const db = getFirestore();
+      const orgDocRef = doc(db, "Organisations", currentOrgPageId);
   
       const updates = {
-        name: newName,
-        username: newUsername.toLowerCase(),
-        bio: newBio,
+        name: newName.trim(),
+        username: newUsername.toLowerCase().trim(),
+        bio: newBio.trim(),
         photoURL: newPhotoURL,
         bannerImage: newBannerImage,
         updatedAt: new Date().toISOString()
@@ -272,24 +334,25 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
 
       await updateDoc(orgDocRef, updates);
       
-      const updatedOrgDetails = { ...orgDetails, ...updates };
-      setOrgDetails(updatedOrgDetails);
-      setName(newName);
-      setUsername(newUsername);
-      setBio(newBio);
+      if (orgDetails) {
+        const updatedOrgDetails: OrganisationData = { 
+          ...orgDetails, 
+          ...updates 
+        };
+        setOrgDetails(updatedOrgDetails);
+      }
+      
+      setName(newName.trim());
+      setUsername(newUsername.toLowerCase().trim());
+      setBio(newBio.trim());
       setPhotoURL(newPhotoURL);
       setBannerImage(newBannerImage);
       
-      localStorage.setItem('orgDetails', JSON.stringify(updates));
-      localStorage.setItem('orgName', newName);
-      localStorage.setItem('orgUsername', newUsername);
-      localStorage.setItem('orgBio', newBio);
-      localStorage.setItem('orgPhotoURL', newPhotoURL);
-      localStorage.setItem('orgBannerImage', newBannerImage);
-      
       setUsernameError("");
+      setError(null);
       setEditMode(false);
       toast.success("Profile updated successfully!");
+      
     } catch (err) {
       console.error("Error saving profile:", err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -297,22 +360,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
     } finally {
       setLoading(false);
     }
-  };
-
-  // Photo editing handlers
-  const handleProfilePhotoClick = () => {
-    setCurrentPhotoType('profile');
-    setShowPhotoModal(true);
-  };
-
-  const handleBannerClick = () => {
-    setCurrentPhotoType('banner');
-    setShowPhotoModal(true);
-  };
-
-  const handleUploadPhotoClick = () => {
-    setShowPhotoModal(false);
-    setShowPhotoUpload(true);
   };
 
   const handlePhotoChange = async (imageUrl: string) => {
@@ -325,18 +372,9 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         setBannerImage(imageUrl);
       }
 
-      // Update Firestore immediately
-      const user = auth().currentUser;
-      if (user) {
-        
-        // Get the correct organization page ID
-        const selectedOrgPageId = sessionStorage.getItem('selectedOrganizationPageId');
-        if (!selectedOrgPageId) {
-          toast.error("No organization page found");
-          return;
-        }
-        
-        const orgDocRef = doc(db(), "Organisations", selectedOrgPageId);
+      if (currentOrgPageId) {
+        const db = getFirestore();
+        const orgDocRef = doc(db, "Organisations", currentOrgPageId);
         const updateField = currentPhotoType === 'profile' ? 'photoURL' : 'bannerImage';
         await updateDoc(orgDocRef, {
           [updateField]: imageUrl,
@@ -352,6 +390,21 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
     }
   };
 
+  const handleProfilePhotoClick = () => {
+    setCurrentPhotoType('profile');
+    setShowPhotoModal(true);
+  };
+
+  const handleBannerClick = () => {
+    setCurrentPhotoType('banner');
+    setShowPhotoModal(true);
+  };
+
+  const handleUploadPhotoClick = () => {
+    setShowPhotoModal(false);
+    setShowPhotoUpload(true);
+  };
+
   const closePhotoModal = () => {
     setShowPhotoModal(false);
     setShowPhotoUpload(false);
@@ -362,102 +415,122 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
   }
 
   if (error && !orgDetails) {
-    return <div>Error: {error}</div>;
+    return (
+      <div className={styles.orgProfileContainer}>
+        <div className={styles.noOrganizationPagesContainer}>
+          <div className={styles.noOrganizationPagesCard}>
+            <FaBuilding className={styles.noOrganizationPagesIcon} />
+            <h2>No Organization Pages Found</h2>
+            <p>You haven't created any organization pages yet. Create your first organization page to start showcasing your organization!</p>
+            <button 
+              onClick={() => router.push('/business')}
+              className={styles.createOrganizationPageButton}
+            >
+              <FaPlus className={styles.createIcon} />
+              Create Organization Page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className={styles.orgProfileContainer}>
-      {/* Display Organisation Details */}
-      <div className={styles.orgProfileContainer}>
-        <div className={styles.orgBannerSection}>
-          <div className={styles.orgBanner} onClick={handleBannerClick} style={{ cursor: 'pointer' }}>
-            {bannerImage ? (
-              <img
-                src={bannerImage}
-                alt="Organization Banner"
-                className={styles.bannerImage}
-              />
-            ) : (
-              <div className={styles.defaultBanner} />
-            )}
-            <div className={styles.bannerOverlay}>
-              <FaCamera className={styles.cameraIcon} />
-              <span>Edit Banner</span>
-            </div>
-          </div>
-          <div className={styles.orgProfileImageContainer} onClick={handleProfilePhotoClick} style={{ cursor: 'pointer' }}>
-            {photoURL ? (
-              <img 
-                src={photoURL} 
-                alt="Profile"
-                className={styles.orgProfileImage}
-              />
-            ) : (
-              <div className={styles.noPhoto}>
-                {name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ORG'}
-              </div>
-            )}
-            <div className={styles.profileOverlay}>
-              <FaCamera className={styles.cameraIcon} />
-              <span>Edit Photo</span>
-            </div>
+      {/* Banner and Profile Image Section */}
+      <div className={styles.orgBannerSection}>
+        <div className={styles.orgBanner} onClick={handleBannerClick} style={{ cursor: 'pointer' }}>
+          {bannerImage ? (
+            <img
+              src={bannerImage}
+              alt="Organization Banner"
+              className={styles.bannerImage}
+            />
+          ) : (
+            <div className={styles.defaultBanner} />
+          )}
+          <div className={styles.bannerOverlay}>
+            <FaCamera className={styles.cameraIcon} />
+            <span>Edit Banner</span>
           </div>
         </div>
-        
-        <div className={styles.orgDetailsSection}>
-          <div className={styles.orgName}>
-            <h3>{name || "Organization Name"}</h3>
+        <div className={styles.orgProfileImageContainer} onClick={handleProfilePhotoClick} style={{ cursor: 'pointer' }}>
+          {photoURL ? (
+            <img 
+              src={photoURL} 
+              alt="Profile"
+              className={styles.orgProfileImage}
+            />
+          ) : (
+            <div className={styles.noPhoto}>
+              {name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'ORG'}
+            </div>
+          )}
+          <div className={styles.profileOverlay}>
+            <FaCamera className={styles.cameraIcon} />
+            <span>Edit Photo</span>
           </div>
-          <div className={styles.orgUsername}>
-            <span>@{username || "username"}</span>
-          </div>
-          <div className={styles.orgBio}>
-            <p>{bio || "No bio available"}</p>
-          </div>
+        </div>
+      </div>
+      
+      <div className={styles.orgDetailsSection}>
+        <div className={styles.orgName}>
+          <h3>{name || "Organization Name"}</h3>
+        </div>
+        <div className={styles.orgUsername}>
+          <span>@{username || "username"}</span>
+        </div>
+        <div className={styles.orgBio}>
+          <p>{bio || "No bio available"}</p>
+        </div>
 
-          {/* Profile Action Buttons */}
-          {!editMode && (
-            <div className={styles.profileButtonsContainer}>
+        {!editMode && (
+          <div className={styles.profileButtonsContainer}>
+            {userPermissions.canEdit && (
               <button 
                 onClick={() => setEditMode(true)}
                 className={styles.editProfileButton}
               >
                 Edit Profile
               </button>
-              {username && (
-                <button 
-                  onClick={() => window.open(`/organisation/${username}`, '_blank')}
-                  className={styles.viewPublicButton}
-                >
-                  View Public Page
-                </button>
-              )}
+            )}
+            {username && (
               <button 
-                onClick={() => {
-                  // Navigate to create page with organization context
-                  const selectedOrgPageId = typeof window !== 'undefined' ? 
-                    sessionStorage.getItem('selectedOrganizationPageId') : null;
-                  
-                  if (selectedOrgPageId) {
-                    router.push(`/create?from=organisation&pageId=${selectedOrgPageId}&name=${encodeURIComponent(name || '')}&username=${encodeURIComponent(username || '')}`);
-                  } else {
-                    router.push('/create');
-                  }
-                }}
-                className={styles.createButton}
+                onClick={() => window.open(`/organisation/${username}`, '_blank')}
+                className={styles.viewPublicButton}
               >
-                Create
+                View Public Page
               </button>
-            </div>
-          )}
-        </div>
+            )}
+            {userPermissions.canManage && (
+              <button 
+                onClick={() => setShowSharingModal(true)}
+                className={styles.shareButton}
+              >
+                <FaShare className={styles.shareIcon} />
+                Share Access
+              </button>
+            )}
+            <button 
+              onClick={() => {
+                if (currentOrgPageId) {
+                  router.push(`/create?from=organisation&pageId=${currentOrgPageId}&name=${encodeURIComponent(name || '')}&username=${encodeURIComponent(username || '')}`);
+                } else {
+                  router.push('/create');
+                }
+              }}
+              className={styles.createButton}
+            >
+              Create
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Edit Form */}
       {editMode && (
         <div className={styles.editProfileContainer}>
           <div className={styles.inputGroup}>
-            <label htmlFor="name">Organization Name :</label>
+            <label htmlFor="name">Organization Name:</label>
             <input
               id="name"
               type="text"
@@ -469,7 +542,7 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
           </div>
 
           <div className={styles.inputGroup}>
-            <label htmlFor="username">Username :</label>
+            <label htmlFor="username">Username:</label>
             <input
               id="username"
               type="text"
@@ -494,18 +567,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
             />
           </div>
 
-          <div className={styles.inputGroup}>
-              <label>Phone Number:</label>
-              <input
-                type="tel"
-                value={orgDetails?.phoneNumber || ""}
-                className={styles.profileInput}
-                placeholder="Phone number"
-                disabled
-              />
-              <span className={styles.helperText}>Phone number cannot be changed</span>
-            </div>
-
           <div className={styles.buttonGroup}>
             <button 
               onClick={handleSaveProfile}
@@ -524,7 +585,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         </div>
       )}
 
-      {/* Photo Options Modal */}
       {showPhotoModal && (
         <div className={styles.modalOverlay} onClick={closePhotoModal}>
           <div className={styles.photoModal} onClick={(e) => e.stopPropagation()}>
@@ -544,7 +604,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         </div>
       )}
 
-      {/* Photo Upload Modal */}
       {showPhotoUpload && (
         <div className={styles.modalOverlay} onClick={closePhotoModal}>
           <div className={styles.uploadModal} onClick={(e) => e.stopPropagation()}>
@@ -565,7 +624,6 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         </div>
       )}
 
-      {/* Events & Activities Dashboard Section */}
       <div className={styles.ownedEventsSection}>
         <div className={styles.sectionHeader}>
           <h3>🏢 Events & Activities</h3>
@@ -573,14 +631,21 @@ const OrganisationProfile: React.FC<OrganisationProfileProps> = ({ selectedPageI
         </div>
         <div className={styles.orgDashboardSection}>
           <DashboardSection 
-            pageId={typeof window !== 'undefined' ? 
-              sessionStorage.getItem('selectedOrganizationPageId') || undefined : 
-              undefined
-            } 
+            pageId={currentOrgPageId || undefined} 
             pageType="organisation" 
           />
         </div>
       </div>
+
+      {/* Content Sharing Modal */}
+      {showSharingModal && currentOrgPageId && (
+        <ContentSharingManager
+          contentType="organization"
+          contentId={currentOrgPageId}
+          contentName={name || 'Organization Page'}
+          onClose={() => setShowSharingModal(false)}
+        />
+      )}
     </div>
   );
 };

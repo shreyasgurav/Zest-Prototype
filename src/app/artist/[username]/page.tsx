@@ -147,21 +147,17 @@ const PublicArtistProfile = () => {
             <div className={styles.bannerOverlay} />
           </div>
 
-          {/* Profile Image Skeleton */}
-          <div className={`${styles.artistProfileImageContainer} ${styles.skeletonProfileImageContainer}`}>
-            <div className={`${styles.skeletonProfileImage} ${styles.animatePulse}`} />
-          </div>
-
           {/* Artist Info Skeleton */}
           <div className={styles.artistDetailsSection}>
             <div className={styles.artistHeader}>
+              {/* Profile Image Skeleton */}
+              <div className={`${styles.artistProfileImageContainer} ${styles.skeletonProfileImageContainer}`}>
+                <div className={`${styles.skeletonProfileImage} ${styles.animatePulse}`} />
+              </div>
+              
               <div className={styles.artistInfo}>
                 <div className={styles.artistName}>
                   <div className={`${styles.skeletonArtistName} ${styles.animatePulse}`} />
-                </div>
-                <div className={styles.artistMeta}>
-                  <div className={`${styles.skeletonUsername} ${styles.animatePulse}`} />
-                  <div className={`${styles.skeletonGenre} ${styles.animatePulse}`} />
                 </div>
               </div>
             </div>
@@ -170,6 +166,12 @@ const PublicArtistProfile = () => {
 
         {/* Content Section Skeleton */}
         <div className={styles.contentSection}>
+          {/* Artist Meta Skeleton */}
+          <div className={styles.artistMetaSection}>
+            <div className={`${styles.skeletonUsername} ${styles.animatePulse}`} />
+            <div className={`${styles.skeletonGenre} ${styles.animatePulse}`} />
+          </div>
+          
           <div className={styles.bioSection}>
             <div className={`${styles.skeletonBioLine} ${styles.animatePulse}`} />
             <div className={`${styles.skeletonBioLine} ${styles.w75} ${styles.animatePulse}`} />
@@ -226,39 +228,27 @@ const PublicArtistProfile = () => {
           <div className={styles.bannerOverlay} />
         </div>
 
-        {/* Artist Profile Image */}
-        <div className={styles.artistProfileImageContainer}>
-          {artistDetails.photoURL ? (
-            <img 
-              src={artistDetails.photoURL} 
-              alt="Profile"
-              className={styles.artistProfileImage}
-            />
-          ) : (
-            <div className={styles.noPhoto}>
-              {artistDetails.name ? artistDetails.name.charAt(0).toUpperCase() : 'A'}
-            </div>
-          )}
-        </div>
-
-
-
         {/* Artist Info Overlay */}
         <div className={styles.artistDetailsSection}>
           <div className={styles.artistHeader}>
+            {/* Artist Profile Image */}
+            <div className={styles.artistProfileImageContainer}>
+              {artistDetails.photoURL ? (
+                <img 
+                  src={artistDetails.photoURL} 
+                  alt="Profile"
+                  className={styles.artistProfileImage}
+                />
+              ) : (
+                <div className={styles.noPhoto}>
+                  {artistDetails.name ? artistDetails.name.charAt(0).toUpperCase() : 'A'}
+                </div>
+              )}
+            </div>
+            
             <div className={styles.artistInfo}>
               <div className={styles.artistName}>
                 <h1>{artistDetails.name || "Artist Name"}</h1>
-              </div>
-              <div className={styles.artistMeta}>
-                <div className={styles.artistUsername}>
-                  @{artistDetails.username || "username"}
-                </div>
-                {artistDetails.genre && (
-                  <div className={styles.artistGenre}>
-                    {artistDetails.genre}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -267,6 +257,18 @@ const PublicArtistProfile = () => {
 
       {/* Content Section */}
       <div className={styles.contentSection}>
+        {/* Artist Meta Information */}
+        <div className={styles.artistMetaSection}>
+          <div className={styles.artistUsername}>
+            @{artistDetails.username || "username"}
+          </div>
+          {artistDetails.genre && (
+            <div className={styles.artistGenre}>
+              {artistDetails.genre}
+            </div>
+          )}
+        </div>
+
         {artistDetails.bio && (
           <div className={styles.bioSection}>
             <p>{artistDetails.bio}</p>

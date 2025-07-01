@@ -238,10 +238,24 @@ export class EventContentCollaborationService {
       console.log(`✅ Event found: ${eventData.title}`);
       console.log(`🔍 Event creator userId: ${eventData.creator?.userId}, organizationId: ${eventData.organizationId}`);
       
-      // Verify sender owns the event
-      if (eventData.creator?.userId !== senderUserId && eventData.organizationId !== senderUserId) {
-        console.log(`❌ Permission denied. Sender ${senderUserId} is not event owner`);
-        return { success: false, error: 'You can only send collaboration invites for your own events' };
+      // Verify sender has permission: either event owner OR has full management access (editor)
+      const isEventOwner = eventData.creator?.userId === senderUserId || eventData.organizationId === senderUserId;
+      let hasFullManagementAccess = false;
+
+      if (!isEventOwner) {
+        try {
+          // Dynamically import to avoid circular deps
+          const { EventCollaborationSecurity } = await import('./eventCollaborationSecurity');
+          hasFullManagementAccess = await EventCollaborationSecurity.verifyEventManagementAccess(eventId, senderUserId);
+          console.log(`🔍 Full management access check:`, hasFullManagementAccess);
+        } catch (secErr) {
+          console.error('⚠️ Error checking full management access:', secErr);
+        }
+      }
+
+      if (!isEventOwner && !hasFullManagementAccess) {
+        console.log(`❌ Permission denied. Sender ${senderUserId} lacks required privileges`);
+        return { success: false, error: 'You do not have permission to send collaboration invites for this event' };
       }
       
       console.log(`✅ Permission check passed`);
@@ -282,17 +296,32 @@ export class EventContentCollaborationService {
       
       const existingSnap = await getDocs(existingCollabQuery);
       if (!existingSnap.empty) {
+        const existingDocRef = existingSnap.docs[0].ref;
         const existing = existingSnap.docs[0].data();
         console.log(`⚠️ Found existing collaboration:`, existing);
-        if (existing.status === 'pending') {
-          return { success: false, error: 'Collaboration invite already pending for this page' };
-        } else if (existing.status === 'accepted') {
-          return { success: false, error: 'This page is already collaborating on this event' };
-        }
+        
+        // 🔄 RESEND LOGIC: Always update (or reset) the existing invite instead of blocking
+        console.log('🔄 Resending collaboration invite – updating existing document');
+        await updateDoc(existingDocRef, {
+          status: 'pending',
+          invitedAt: new Date().toISOString(),
+          respondedAt: null,
+          message: message.trim(),
+          updatedAt: serverTimestamp(),
+          showOnCollaboratorProfile: true
+        });
+        
+        return { success: true, inviteId: existingDocRef.id };
       }
       
       console.log(`✅ No existing collaboration found`);
       console.log(`🔍 Step 5: Creating collaboration record`);
+      
+      // 🚫 Prevent sending invite to your own page
+      if (collaboratorPage.pageId === senderPage.pageId) {
+        console.log('❌ Attempted to send invite to own page – operation blocked');
+        return { success: false, error: 'You cannot send a collaboration invite to your own page' };
+      }
       
       // Create collaboration record
       const collaboration: EventContentCollaboration = {
@@ -393,6 +422,7 @@ export class EventContentCollaborationService {
     try {
       console.log('🔍 getCollaborationInvites: Starting query for userId:', userId);
 
+      // --- Method 1: Direct collaboratorUserId match (fast path) ---
       const invitesQuery = query(
         collection(db(), 'eventContentCollaboration'),
         where('collaboratorUserId', '==', userId),
@@ -400,20 +430,61 @@ export class EventContentCollaborationService {
       );
       
       const snapshot = await getDocs(invitesQuery);
-      
-      console.log('📊 getCollaborationInvites: Query results:', {
-        totalDocs: snapshot.docs.length,
-        docs: snapshot.docs.map(doc => ({
-          id: doc.id,
-          data: doc.data()
-        }))
-      });
-      
-      const invites = snapshot.docs.map(doc => ({
+      let invites = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       } as EventContentCollaboration));
 
+      console.log('📊 Direct collaboratorUserId query results:', invites.length);
+
+      // --- Method 2: If nothing found, fallback to page-based lookup ---
+      if (invites.length === 0) {
+        console.log('ℹ️ No invites found via collaboratorUserId. Falling back to page-based lookup…');
+        
+        // 1) Find the user's pages across all collections
+        const [artistsSnap, orgsSnap, venuesSnap] = await Promise.all([
+          getDocs(query(collection(db(), 'Artists'), where('ownerId', '==', userId))),
+          getDocs(query(collection(db(), 'Organisations'), where('ownerId', '==', userId))),
+          getDocs(query(collection(db(), 'Venues'), where('ownerId', '==', userId)))
+        ]);
+        
+        const userPages: { id: string; type: 'artist' | 'organization' | 'venue' }[] = [];
+        artistsSnap.forEach(doc => userPages.push({ id: doc.id, type: 'artist' } as any));
+        orgsSnap.forEach(doc => userPages.push({ id: doc.id, type: 'organization' } as any));
+        venuesSnap.forEach(doc => userPages.push({ id: doc.id, type: 'venue' } as any));
+        
+        console.log('🔍 User pages found:', userPages);
+
+        if (userPages.length > 0) {
+          // Firestore allows up to 10 values in 'in' filter. Split into chunks just in case.
+          const chunk = (arr: { id: string; type: 'artist' | 'organization' | 'venue' }[], size: number): { id: string; type: 'artist' | 'organization' | 'venue' }[][] => {
+            if (arr.length <= size) return [arr];
+            return [arr.slice(0, size), ...chunk(arr.slice(size), size)];
+          };
+          const pageChunks = chunk(userPages, 10);
+          
+          for (const pages of pageChunks) {
+            const pageIds = pages.map(p => p.id);
+            const pageTypesSet = new Set(pages.map(p => p.type));
+            
+            // Query by pageId (==) and status pending. We need to OR across types since Firestore can't do composite or. We'll just filter client-side.
+            const invitesByPageQuery = query(
+              collection(db(), 'eventContentCollaboration'),
+              where('collaboratorPageId', 'in', pageIds),
+              where('status', '==', 'pending')
+            );
+            const pageSnapshot = await getDocs(invitesByPageQuery);
+            pageSnapshot.docs.forEach(doc => {
+              const data = doc.data() as EventContentCollaboration;
+              if (pageTypesSet.has(data.collaboratorPageType)) {
+                invites.push({ id: doc.id, ...data });
+              }
+            });
+          }
+        }
+      }
+
+      // Log final result
       console.log('📋 getCollaborationInvites: Final invites:', invites);
       
       return invites;
@@ -593,6 +664,302 @@ export class EventContentCollaborationService {
       
     } catch (error) {
       console.error('🐛 DEBUG: Error fetching all collaborations:', error);
+    }
+  }
+
+  /**
+   * ENHANCED DEBUG: Comprehensive collaboration flow debugging
+   */
+  static async debugCollaborationFlow(
+    eventId: string, 
+    collaboratorUsername: string, 
+    senderUserId: string
+  ): Promise<void> {
+    console.log('🐛🐛🐛 STARTING COMPREHENSIVE COLLABORATION DEBUG 🐛🐛🐛');
+    console.log('='.repeat(80));
+    
+    try {
+      // Step 1: Check authentication
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      console.log('🔍 STEP 1: Authentication Check');
+      console.log('Current user:', {
+        isAuthenticated: !!currentUser,
+        uid: currentUser?.uid,
+        email: currentUser?.email,
+        matchesSender: currentUser?.uid === senderUserId
+      });
+      
+      // Step 2: Check event
+      console.log('\n🔍 STEP 2: Event Verification');
+      const eventDoc = await getDoc(doc(db(), 'events', eventId));
+      if (!eventDoc.exists()) {
+        console.log('❌ Event not found!');
+        return;
+      }
+      const eventData = eventDoc.data();
+      console.log('Event data:', {
+        title: eventData.title,
+        creatorUserId: eventData.creator?.userId,
+        organizationId: eventData.organizationId,
+        senderCanSendInvites: (eventData.creator?.userId === senderUserId || eventData.organizationId === senderUserId)
+      });
+      
+      // Step 3: Find collaborator page
+      console.log('\n🔍 STEP 3: Collaborator Page Search');
+      console.log(`Searching for username: "${collaboratorUsername}"`);
+      
+      // Check each collection manually
+      const [artistsQuery, organizationsQuery, venuesQuery] = await Promise.all([
+        getDocs(query(collection(db(), 'Artists'), where('username', '==', collaboratorUsername.toLowerCase().trim()))),
+        getDocs(query(collection(db(), 'Organisations'), where('username', '==', collaboratorUsername.toLowerCase().trim()))),
+        getDocs(query(collection(db(), 'Venues'), where('username', '==', collaboratorUsername.toLowerCase().trim())))
+      ]);
+      
+      console.log('Query results:', {
+        artists: artistsQuery.size,
+        organizations: organizationsQuery.size,
+        venues: venuesQuery.size
+      });
+      
+      // Show first few results from each collection for debugging
+      if (!artistsQuery.empty) {
+        const artistData = artistsQuery.docs[0].data();
+        console.log('Found artist:', {
+          id: artistsQuery.docs[0].id,
+          name: artistData.name,
+          username: artistData.username,
+          ownerId: artistData.ownerId
+        });
+      }
+      if (!organizationsQuery.empty) {
+        const orgData = organizationsQuery.docs[0].data();
+        console.log('Found organization:', {
+          id: organizationsQuery.docs[0].id,
+          name: orgData.name,
+          username: orgData.username,
+          ownerId: orgData.ownerId
+        });
+      }
+      if (!venuesQuery.empty) {
+        const venueData = venuesQuery.docs[0].data();
+        console.log('Found venue:', {
+          id: venuesQuery.docs[0].id,
+          name: venueData.name,
+          username: venueData.username,
+          ownerId: venueData.ownerId
+        });
+      }
+      
+      // Step 4: Find sender page
+      console.log('\n🔍 STEP 4: Sender Page Search');
+      console.log(`Searching for sender userId: "${senderUserId}"`);
+      
+      const [senderArtistsQuery, senderOrgsQuery, senderVenuesQuery] = await Promise.all([
+        getDocs(query(collection(db(), 'Artists'), where('ownerId', '==', senderUserId))),
+        getDocs(query(collection(db(), 'Organisations'), where('ownerId', '==', senderUserId))),
+        getDocs(query(collection(db(), 'Venues'), where('ownerId', '==', senderUserId)))
+      ]);
+      
+      console.log('Sender page query results:', {
+        artists: senderArtistsQuery.size,
+        organizations: senderOrgsQuery.size,
+        venues: senderVenuesQuery.size
+      });
+      
+      // Step 5: Check existing collaborations
+      console.log('\n🔍 STEP 5: Existing Collaborations Check');
+      const allCollaborationsQuery = query(
+        collection(db(), 'eventContentCollaboration'),
+        where('eventId', '==', eventId)
+      );
+      const allCollabsSnapshot = await getDocs(allCollaborationsQuery);
+      console.log(`Found ${allCollabsSnapshot.size} total collaborations for this event`);
+      
+      allCollabsSnapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`Collaboration ${index + 1}:`, {
+          id: doc.id,
+          collaboratorPageId: data.collaboratorPageId,
+          collaboratorPageUsername: data.collaboratorPageUsername,
+          collaboratorUserId: data.collaboratorUserId,
+          status: data.status
+        });
+      });
+      
+      // Step 6: Check all invites for the collaborator user
+      if (!artistsQuery.empty || !organizationsQuery.empty || !venuesQuery.empty) {
+        const collaboratorPage = !artistsQuery.empty 
+          ? { doc: artistsQuery.docs[0], type: 'artist' }
+          : !organizationsQuery.empty 
+          ? { doc: organizationsQuery.docs[0], type: 'organization' }
+          : { doc: venuesQuery.docs[0], type: 'venue' };
+          
+        const collaboratorData = collaboratorPage.doc.data();
+        const collaboratorOwnerId = collaboratorData.ownerId;
+        
+        console.log('\n🔍 STEP 6: Collaborator Invites Check');
+        console.log(`Checking invites for collaborator ownerId: "${collaboratorOwnerId}"`);
+        
+        const invitesQuery = query(
+          collection(db(), 'eventContentCollaboration'),
+          where('collaboratorUserId', '==', collaboratorOwnerId),
+          where('status', '==', 'pending')
+        );
+        
+        const invitesSnapshot = await getDocs(invitesQuery);
+        console.log(`Found ${invitesSnapshot.size} pending invites for this user`);
+        
+        invitesSnapshot.docs.forEach((doc, index) => {
+          const data = doc.data();
+          console.log(`Invite ${index + 1}:`, {
+            id: doc.id,
+            eventTitle: data.eventTitle,
+            eventId: data.eventId,
+            collaboratorPageUsername: data.collaboratorPageUsername,
+            status: data.status,
+            invitedAt: data.invitedAt
+          });
+        });
+      }
+      
+      console.log('\n🐛🐛🐛 DEBUG COMPLETE 🐛🐛🐛');
+      console.log('='.repeat(80));
+      
+    } catch (error) {
+      console.error('🐛 DEBUG ERROR:', error);
+    }
+  }
+
+  /**
+   * ENHANCED DEBUG: Quick user invite check
+   */
+  static async debugUserInvites(userId: string): Promise<void> {
+    console.log('🔍 DEBUG: Checking invites for userId:', userId);
+    
+    try {
+      // Check invites directly
+      const invitesQuery = query(
+        collection(db(), 'eventContentCollaboration'),
+        where('collaboratorUserId', '==', userId),
+        where('status', '==', 'pending')
+      );
+      
+      const snapshot = await getDocs(invitesQuery);
+      console.log(`Found ${snapshot.size} pending invites`);
+      
+      snapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`Invite ${index + 1}:`, {
+          id: doc.id,
+          eventTitle: data.eventTitle,
+          collaboratorPageUsername: data.collaboratorPageUsername,
+          status: data.status
+        });
+      });
+      
+      // Also check user's pages
+      console.log('\n🔍 Checking user pages...');
+      const [artistsQuery, organizationsQuery, venuesQuery] = await Promise.all([
+        getDocs(query(collection(db(), 'Artists'), where('ownerId', '==', userId))),
+        getDocs(query(collection(db(), 'Organisations'), where('ownerId', '==', userId))),
+        getDocs(query(collection(db(), 'Venues'), where('ownerId', '==', userId)))
+      ]);
+      
+      console.log('User pages:', {
+        artists: artistsQuery.size,
+        organizations: organizationsQuery.size,
+        venues: venuesQuery.size
+      });
+      
+    } catch (error) {
+      console.error('DEBUG ERROR:', error);
+    }
+  }
+
+  /**
+   * ENHANCED DEBUG: Database diagnostics
+   */
+  static async debugDatabaseDiagnostics(): Promise<void> {
+    console.log('🔍 RUNNING DATABASE DIAGNOSTICS...');
+    console.log('='.repeat(60));
+    
+    try {
+      // Test 1: Check if eventContentCollaboration collection exists and is accessible
+      console.log('\n📊 TEST 1: Collection Accessibility');
+      const allCollabsQuery = collection(db(), 'eventContentCollaboration');
+      const allCollabsSnapshot = await getDocs(allCollabsQuery);
+      console.log(`✅ Collection accessible. Total documents: ${allCollabsSnapshot.size}`);
+      
+      // Test 2: Check recent collaborations
+      console.log('\n📊 TEST 2: Recent Collaborations');
+      const recentCollabs = allCollabsSnapshot.docs.slice(0, 5).map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      console.log('Recent collaborations:', recentCollabs);
+      
+      // Test 3: Check for pending invites across all users
+      console.log('\n📊 TEST 3: All Pending Invites');
+      const pendingQuery = query(
+        collection(db(), 'eventContentCollaboration'),
+        where('status', '==', 'pending')
+      );
+      const pendingSnapshot = await getDocs(pendingQuery);
+      console.log(`Found ${pendingSnapshot.size} total pending invites`);
+      
+      pendingSnapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`Pending invite ${index + 1}:`, {
+          id: doc.id,
+          eventTitle: data.eventTitle,
+          collaboratorPageUsername: data.collaboratorPageUsername,
+          collaboratorUserId: data.collaboratorUserId?.substring(0, 8) + '...',
+          invitedAt: data.invitedAt
+        });
+      });
+      
+      // Test 4: Check page collections
+      console.log('\n📊 TEST 4: Page Collections Check');
+      const [artistsSnap, orgsSnap, venuesSnap] = await Promise.all([
+        getDocs(collection(db(), 'Artists')),
+        getDocs(collection(db(), 'Organisations')),
+        getDocs(collection(db(), 'Venues'))
+      ]);
+      
+      console.log('Page collections:', {
+        Artists: artistsSnap.size,
+        Organisations: orgsSnap.size,
+        Venues: venuesSnap.size
+      });
+      
+      // Test 5: Query performance test
+      console.log('\n📊 TEST 5: Query Performance Test');
+      const startTime = Date.now();
+      
+      // Simulate the exact query used by getCollaborationInvites
+      const testUserId = 'test-user-id';
+      const testQuery = query(
+        collection(db(), 'eventContentCollaboration'),
+        where('collaboratorUserId', '==', testUserId),
+        where('status', '==', 'pending')
+      );
+      
+      await getDocs(testQuery);
+      const queryTime = Date.now() - startTime;
+      console.log(`Query completed in ${queryTime}ms`);
+      
+      console.log('\n✅ DATABASE DIAGNOSTICS COMPLETE');
+      console.log('='.repeat(60));
+      
+    } catch (error) {
+      console.error('❌ DATABASE DIAGNOSTICS ERROR:', error);
+      console.error('Full error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: (error as any)?.code || 'No error code',
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
     }
   }
 } 

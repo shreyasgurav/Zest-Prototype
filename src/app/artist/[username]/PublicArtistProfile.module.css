@@ -269,15 +269,14 @@
 }
 
 .artistProfileImageContainer {
-  position: absolute;
-  bottom: 32px;
-  left: 80px;
+  position: relative;
   width: 128px;
   height: 128px;
   border-radius: 50%;
   overflow: hidden;
   border: 4px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
 }
 
 .artistProfileImage {
@@ -314,7 +313,6 @@
   gap: 24px;
   max-width: 1200px;
   margin: 0 auto;
-  padding-left: 240px; /* Space for avatar */
 }
 
 .artistInfo {
@@ -341,46 +339,32 @@
 /* Ultra-Wide Screens (2560px+) */
 @media (min-width: 2560px) {
   .artistProfileImageContainer {
-    left: 120px;
-  }
-  
-  .artistHeader {
-    padding-left: 280px;
+    width: 140px;
+    height: 140px;
   }
 }
 
 /* Large Desktop (1921px - 2559px) */
 @media (max-width: 2559px) and (min-width: 1921px) {
   .artistProfileImageContainer {
-    left: 100px;
-  }
-  
-  .artistHeader {
-    padding-left: 260px;
+    width: 136px;
+    height: 136px;
   }
 }
 
 /* Standard Desktop (1441px - 1920px) */
 @media (max-width: 1920px) and (min-width: 1441px) {
   .artistProfileImageContainer {
-    left: 80px;
-  }
-  
-  .artistHeader {
-    padding-left: 240px;
+    width: 128px;
+    height: 128px;
   }
 }
 
 /* Laptop/Medium Desktop Responsive Adjustments */
 @media (max-width: 1440px) and (min-width: 1024px) {
   .artistProfileImageContainer {
-    left: 60px;
     width: 120px;
     height: 120px;
-  }
-  
-  .artistHeader {
-    padding-left: 212px; /* Adjusted for smaller profile image */
   }
   
   .artistName h1 {
@@ -418,6 +402,30 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 40px 32px;
+}
+
+.artistMetaSection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.artistUsername {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.artistGenre {
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 16px;
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #a78bfa;
 }
 
 .bioSection {
@@ -517,20 +525,12 @@
   .artistHeader {
     flex-direction: row;
     align-items: flex-end;
-    gap: 20px;
-    padding-left: 0;
+    gap: 16px;
   }
   
   .artistProfileImageContainer {
-    position: absolute;
-    bottom: 24px;
-    left: 16px;
-    width: 100px;
-    height: 100px;
-  }
-  
-  .artistInfo {
-    padding-left: 124px; /* Space for profile image */
+    width: 96px;
+    height: 96px;
   }
   
   .artistName h1 {
@@ -539,6 +539,20 @@
   
   .contentSection {
     padding: 30px 16px;
+  }
+
+  .artistMetaSection {
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .artistUsername {
+    font-size: 16px;
+  }
+
+  .artistGenre {
+    font-size: 13px;
+    padding: 5px 14px;
   }
   
   .eventsSection {
@@ -572,19 +586,12 @@
   }
   
   .artistProfileImageContainer {
-    position: absolute;
-    bottom: 20px;
-    left: 12px;
     width: 80px;
     height: 80px;
   }
   
-  .artistInfo {
-    padding-left: 100px; /* Space for smaller profile image */
-  }
-  
   .artistName h1 {
-    font-size: 32px;
+    font-size: 36px;
     line-height: 1.0;
   }
   
@@ -599,6 +606,22 @@
   
   .contentSection {
     padding: 20px 12px;
+  }
+
+  .artistMetaSection {
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .artistUsername {
+    font-size: 15px;
+  }
+
+  .artistGenre {
+    font-size: 12px;
+    padding: 4px 12px;
   }
   
   .eventsSection {
@@ -629,14 +652,8 @@
   }
   
   .artistProfileImageContainer {
-    bottom: 16px;
-    left: 8px;
     width: 70px;
     height: 70px;
-  }
-  
-  .artistInfo {
-    padding-left: 86px; /* Space for even smaller profile image */
   }
   
   .artistName h1 {

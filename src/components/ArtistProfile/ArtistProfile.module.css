@@ -65,6 +65,7 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+  z-index: 1;
 }
 
 .bannerImage {
@@ -86,6 +87,11 @@
   width: 100%;
   height: 100%;
   background: rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.bannerBackground:hover .bannerOverlay {
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .bannerEditHover {
@@ -95,26 +101,57 @@
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(0, 0, 0, 0.7);
+  justify-content: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 12px 20px;
-  color: white;
+  border-radius: 12px;
+  padding: 12px 24px;
+  color: rgba(255, 255, 255, 0.9);
   font-size: 14px;
   font-weight: 500;
   opacity: 0;
   transition: all 0.3s ease;
   pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  text-transform: none;
+  letter-spacing: 0.2px;
+  z-index: 3;
+}
+
+.bannerEditHover::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.5s ease;
+  border-radius: 10px;
 }
 
 .bannerBackground:hover .bannerEditHover {
   opacity: 1;
+  transform: translate(-50%, -50%) scale(1.02);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.bannerBackground:hover .bannerEditHover::before {
+  left: 100%;
+}
+
+.bannerBackground:hover {
+  cursor: pointer;
 }
 
 .editIcon {
   font-size: 16px;
+  color: rgba(255, 255, 255, 0.8);
+  filter: none;
 }
 
 /* Artist Info Section */
@@ -125,6 +162,12 @@
   width: 100%;
   padding: 32px;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.artistContent {
+  pointer-events: auto;
 }
 
 .artistContent {
@@ -274,6 +317,30 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 40px 32px;
+}
+
+.artistMetaSection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.artistMetaSection .username {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.artistMetaSection .genre {
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 16px;
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #a78bfa;
 }
 
 .bioSection {
@@ -1104,8 +1171,8 @@
   }
 
   .artistContent {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: flex-end;
     gap: 16px;
   }
 
@@ -1120,6 +1187,31 @@
 
   .contentSection {
     padding: 32px 20px;
+  }
+
+  .artistMetaSection {
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .artistMetaSection .username {
+    font-size: 16px;
+  }
+
+  .artistMetaSection .genre {
+    font-size: 13px;
+    padding: 5px 14px;
+  }
+
+  .bannerEditHover {
+    padding: 10px 20px;
+    font-size: 13px;
+    border-radius: 10px;
+    gap: 8px;
+  }
+
+  .editIcon {
+    font-size: 14px;
   }
 
   .editProfileContainer {
@@ -1160,13 +1252,43 @@
     font-size: 24px;
   }
 
+  .artistMetaSection {
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .artistMetaSection .username {
+    font-size: 15px;
+  }
+
+  .artistMetaSection .genre {
+    font-size: 12px;
+    padding: 4px 12px;
+  }
+
   .profileButtonsContainer {
     flex-direction: column;
     width: 100%;
   }
 
+  .bannerEditHover {
+    padding: 8px 16px;
+    font-size: 12px;
+    border-radius: 8px;
+    gap: 6px;
+    letter-spacing: 0.2px;
+  }
+
+  .editIcon {
+    font-size: 12px;
+  }
+
   .editProfileButton,
-  .createButton {
+  .createButton,
+  .shareButton,
+  .viewPublicButton {
     width: 100%;
     justify-content: center;
   }
@@ -1175,11 +1297,11 @@
 /* Management Sections */
 .ownedEventsSection,
 .collaboratedEventsSection {
-  margin: 40px 0;
-  padding: 32px;
+  margin: 40px 0 0 0;
+  padding: 32px 32px 0 32px;
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 
@@ -1240,12 +1362,15 @@
 }
 
 .viewPublicButton {
-  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 32px;
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
   color: white;
   border: none;
-  border-radius: 15px;
-  font-size: 14px;
+  border-radius: 50px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;

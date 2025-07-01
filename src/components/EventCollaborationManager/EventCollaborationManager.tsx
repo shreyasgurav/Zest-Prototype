@@ -65,6 +65,13 @@ const EventCollaborationManager: React.FC<EventCollaborationManagerProps> = ({
       setInviteLoading(true);
       setInviteResult(null);
 
+      console.log('🚀 EventCollaborationManager: Sending invite...', {
+        eventId,
+        inviteUsername: inviteUsername.trim(),
+        currentUser: auth.currentUser.uid,
+        eventTitle
+      });
+
       // The service will automatically find the sender's page
       const result = await EventContentCollaborationService.sendCollaborationInvite(
         eventId,
@@ -74,6 +81,8 @@ const EventCollaborationManager: React.FC<EventCollaborationManagerProps> = ({
         '' // No longer needed - service finds page automatically
       );
 
+      console.log('📨 EventCollaborationManager: Invite result:', result);
+
       if (result.success) {
         setInviteResult({ type: 'success', message: `Collaboration invite sent to @${inviteUsername}!` });
         setInviteUsername('');
@@ -81,10 +90,16 @@ const EventCollaborationManager: React.FC<EventCollaborationManagerProps> = ({
         setShowInviteForm(false);
         await loadCollaborations();
         onCollaborationChange?.();
+        
+        // 🚨 DEBUG: Also run a debug check to verify the invite was created
+        console.log('🔍 Verifying invite was created...');
+        await EventContentCollaborationService.debugGetAllCollaborations();
       } else {
+        console.error('❌ Invite failed:', result.error);
         setInviteResult({ type: 'error', message: result.error || 'Failed to send invite' });
       }
     } catch (error) {
+      console.error('❌ Exception sending invite:', error);
       setInviteResult({ type: 'error', message: 'Failed to send collaboration invite' });
     } finally {
       setInviteLoading(false);

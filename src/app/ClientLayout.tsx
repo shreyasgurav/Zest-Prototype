@@ -9,9 +9,10 @@ import ProfileGuard from '../components/ProfileGuard/ProfileGuard';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Import debug utility in development
+// Import debug utilities in development
 if (process.env.NODE_ENV === 'development') {
   import('../utils/authDebugger');
+  import('../utils/debugCollaboration');
 }
 
 interface ClientLayoutProps {
