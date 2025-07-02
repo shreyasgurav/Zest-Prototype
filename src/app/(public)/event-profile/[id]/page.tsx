@@ -9,6 +9,7 @@ import { isOrganizationSession } from '@/domains/authentication/services/auth.se
 import { EventContentCollaborationService, EventContentCollaboration } from '@/domains/events/services/content-collaboration.service';
 import styles from './EventProfile.module.css';
 import { FaBookmark, FaCalendarAlt, FaMapMarkerAlt, FaLanguage, FaClock, FaUsers, FaInfo, FaTicketAlt, FaRupeeSign } from 'react-icons/fa';
+import { MapPin } from 'lucide-react';
 import EventProfileSkeleton from './EventProfileSkeleton';
 
 interface TimeSlot {
@@ -320,6 +321,46 @@ function EventProfile() {
       console.error('Error formatting time:', error);
       return 'Invalid time format';
     }
+  };
+
+  // Helper function to extract date components for card display
+  const getDateComponents = (dateString: string | undefined) => {
+    if (!dateString) return { month: 'TBD', date: '??', day: 'To be announced', fullDate: 'Date to be announced' };
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return { month: 'INV', date: '??', day: 'Invalid', fullDate: 'Invalid date' };
+      
+      return {
+        month: date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase(),
+        date: date.getDate().toString(),
+        day: date.toLocaleDateString('en-US', { weekday: 'long' }),
+        fullDate: date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
+      };
+    } catch (error) {
+      console.error('Error extracting date components:', error);
+      return { month: 'ERR', date: '??', day: 'Error', fullDate: 'Error in date' };
+    }
+  };
+
+  // Helper function to get time slot display
+  const getTimeSlotDisplay = () => {
+    if (!event) return 'Time TBD';
+    
+    if (event.architecture === 'session-centric' && event.sessions && event.sessions.length > 0) {
+      const firstSession = event.sessions[0];
+      if (firstSession.start_time && firstSession.end_time) {
+        return `${formatTime(firstSession.start_time)} - ${formatTime(firstSession.end_time)}`;
+      }
+      return 'Time TBD';
+    } else if (event.time_slots && event.time_slots.length > 0) {
+      const firstSlot = event.time_slots[0];
+      if (firstSlot.start_time && firstSlot.end_time) {
+        return `${formatTime(firstSlot.start_time)} - ${formatTime(firstSlot.end_time)}`;
+      }
+      return 'Time TBD';
+    }
+    return 'Time TBD';
   };
 
   const handleLocationClick = () => {
@@ -788,34 +829,73 @@ function EventProfile() {
               </div>
             </div>
             
-            {/* Date Display */}
-            <div className={styles.eventDetail}>
-              <FaCalendarAlt /> {displayData?.dateText}
-            </div>
-            
+            {/* Date and Location Card */}
+            <div className={styles.eventCard}>
+              <div className={styles.topSection}>
+                {/* Date Box */}
+                <div className={styles.dateBox}>
+                  <div className={styles.monthSection}>
+                    <div className={styles.monthText}>
+                      {event.architecture === 'session-centric' && event.sessions && event.sessions.length > 0
+                        ? getDateComponents(event.sessions[0].date).month
+                        : event.time_slots && event.time_slots.length > 0
+                        ? getDateComponents(event.time_slots[0].date).month
+                        : 'TBD'
+                      }
+                    </div>
+                  </div>
+                  <div className={styles.dateSection}>
+                    <div className={styles.dateText}>
+                      {event.architecture === 'session-centric' && event.sessions && event.sessions.length > 0
+                        ? getDateComponents(event.sessions[0].date).date
+                        : event.time_slots && event.time_slots.length > 0
+                        ? getDateComponents(event.time_slots[0].date).date
+                        : '??'
+                      }
+                    </div>
+                  </div>
+                </div>
 
-            
-            {/* Venue Display */}
-            <div 
-              className={`${styles.eventDetail} ${styles.locationDetail}`}
-              onClick={handleLocationClick}
-              style={{ cursor: 'pointer' }}
-            >
-              <FaMapMarkerAlt /> {displayData?.venue}
-              {event.architecture === 'session-centric' && event.venue_type === 'per_session' && (
-                <span className={styles.venueNote}> (Check individual sessions for specific venues)</span>
-              )}
-            </div>
-
-            {/* Starting Price Display */}
-            {ticketAvailability.length > 0 && (
-              <div className={styles.eventDetail}>
-                <FaRupeeSign />
-                <span className={styles.startingPrice}>
-                  Starting from ₹{startingPrice}
-                </span>
+                {/* Date and Time Info */}
+                <div className={styles.dateTimeInfo}>
+                  <div className={styles.dayText}>
+                    {event.architecture === 'session-centric' && event.sessions && event.sessions.length > 0
+                      ? `${getDateComponents(event.sessions[0].date).day}, ${getDateComponents(event.sessions[0].date).fullDate}`
+                      : event.time_slots && event.time_slots.length > 0
+                      ? `${getDateComponents(event.time_slots[0].date).day}, ${getDateComponents(event.time_slots[0].date).fullDate}`
+                      : 'Date to be announced'
+                    }
+                  </div>
+                  <div className={styles.timeText}>
+                    {getTimeSlotDisplay()}
+                  </div>
+                </div>
               </div>
-            )}
+
+              {/* Location Info */}
+              <div 
+                className={styles.locationSection}
+                onClick={handleLocationClick}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className={styles.locationIconBox}>
+                  <MapPin className={styles.locationIcon} />
+                </div>
+                <div className={styles.locationInfo}>
+                  <div className={styles.venueText}>
+                    {displayData?.venue || 'Venue TBD'}
+                  </div>
+                  <div className={styles.locationText}>
+                    {event.architecture === 'session-centric' && event.venue_type === 'per_session' 
+                      ? 'Multiple Venues' 
+                      : 'View on Maps'
+                    }
+                  </div>
+                </div>
+              </div>
+            </div>
+
+
             
             {/* Only show Book Now button for regular users, not organizations */}
             {!isOrganization && user && (

@@ -3,7 +3,7 @@ import { auth, db } from '@/infrastructure/firebase';
 import { signOut, User, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { FaTicketAlt, FaUser, FaCog, FaSignOutAlt, FaBuilding, FaMicrophone, FaMapMarkerAlt, FaPlus, FaShareAlt, FaQrcode } from 'react-icons/fa';
+import { FaTicketAlt, FaUser, FaSignOutAlt, FaBuilding, FaMicrophone, FaMapMarkerAlt, FaPlus, FaShareAlt, FaQrcode, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { getUserOwnedPages, ArtistData, OrganizationData, VenueData, clearAllSessions } from '@/domains/authentication/services/auth.service';
 import { ContentSharingSecurity } from '@/shared/utils/security/contentSharingSecurity';
 import { EventCollaborationSecurity } from '@/domains/events/services/collaboration.service';
@@ -22,6 +22,9 @@ interface UserData {
 
 function PersonLogo() {
     const [showDropdown, setShowDropdown] = useState(false);
+    const [showOwnedPages, setShowOwnedPages] = useState(false);
+    const [showSharedPages, setShowSharedPages] = useState(false);
+    const [showCheckinEvents, setShowCheckinEvents] = useState(false);
     const [user, setUser] = useState<User | null>(null);
     const [userData, setUserData] = useState<UserData | null>(null);
     const [ownedPages, setOwnedPages] = useState<{
@@ -207,12 +210,6 @@ function PersonLogo() {
         router.push('/tickets');
     };
 
-    const handleSettingsClick = () => {
-        setShowDropdown(false);
-        // Add settings route when available
-        console.log("Settings clicked");
-    };
-
     const handleSignInClick = () => {
         router.push('/login');
     };
@@ -262,6 +259,10 @@ function PersonLogo() {
         return name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
     };
 
+    // Calculate totals
+    const totalOwnedPages = ownedPages.artists.length + ownedPages.organizations.length + ownedPages.venues.length;
+    const totalSharedPages = sharedPages.artists.length + sharedPages.organizations.length + sharedPages.venues.length;
+
     if (!user) {
         // Show Sign In button when not logged in
         return (
@@ -300,7 +301,7 @@ function PersonLogo() {
 
             {showDropdown && (
                 <div className={styles.dropdown}>
-                    {/* User Info Header - Always personal profile */}
+                    {/* User Info Header */}
                     <div className={styles.userInfo}>
                         <div className={styles.userInfoImage}>
                             {userData?.photoURL || userData?.photo ? (
@@ -325,176 +326,212 @@ function PersonLogo() {
                         </div>
                     </div>
 
-                    {/* Personal Navigation */}
-                    <div className={styles.dropdownItems}>
-                        <div className={styles.dropdownItem} onClick={() => { setShowDropdown(false); router.push('/profile'); }}>
-                            <FaUser className={styles.dropdownIcon} />
-                            <span>View Profile</span>
+                    {/* Main Navigation Grid */}
+                    <div className={styles.navigationGrid}>
+                        <div className={styles.navItem} onClick={() => { setShowDropdown(false); router.push('/profile'); }}>
+                            <FaUser className={styles.navIcon} />
+                            <span className={styles.navLabel}>Profile</span>
                         </div>
 
-                        <div className={styles.dropdownItem} onClick={handleTicketsClick}>
-                            <FaTicketAlt className={styles.dropdownIcon} />
-                            <span>Tickets</span>
+                        <div className={styles.navItem} onClick={handleTicketsClick}>
+                            <FaTicketAlt className={styles.navIcon} />
+                            <span className={styles.navLabel}>Tickets</span>
                         </div>
-
-                        <div className={styles.dropdownItem} onClick={handleSettingsClick}>
-                            <FaCog className={styles.dropdownIcon} />
-                            <span>Settings</span>
-                        </div>
-
-                        <div className={styles.dropdownDivider}></div>
                     </div>
 
-                    {/* Check-in Events Section */}
-                    {checkinEvents.length > 0 && (
-                        <div className={styles.checkinEventsSection}>
-                            <div className={styles.sectionTitle}>
-                                <FaQrcode className={styles.sectionIcon} />
-                                Check-in Events ({checkinEvents.length})
+                    <div className={styles.dropdownDivider}></div>
+
+                    {/* Pages Section */}
+                    {totalOwnedPages > 0 && (
+                        <div className={styles.section}>
+                            <div 
+                                className={styles.sectionHeader}
+                                onClick={() => setShowOwnedPages(!showOwnedPages)}
+                            >
+                                <div className={styles.sectionTitle}>
+                                    <FaBuilding className={styles.sectionIcon} />
+                                    <span>My Pages ({totalOwnedPages})</span>
+                                </div>
+                                {showOwnedPages ? <FaChevronUp className={styles.chevronIcon} /> : <FaChevronDown className={styles.chevronIcon} />}
                             </div>
                             
-                            {checkinEvents.map((event) => (
-                                <div 
-                                    key={`checkin-${event.eventId}`} 
-                                    className={`${styles.pageItem} ${styles.checkinEventItem}`}
-                                    onClick={() => { 
-                                        setShowDropdown(false); 
-                                        router.push(`/checkin/${event.eventId}`);
-                                    }}
-                                >
-                                    <FaQrcode className={styles.pageIcon} />
-                                    <span>{event.eventTitle}</span>
-                                    <span className={styles.accessTag}>Check-in</span>
+                            {showOwnedPages && (
+                                <div className={styles.sectionContent}>
+                                    {/* Artist Pages */}
+                                    {ownedPages.artists.map((artist) => (
+                                        <div 
+                                            key={artist.uid} 
+                                            className={styles.pageItem}
+                                            onClick={() => { 
+                                                setShowDropdown(false); 
+                                                router.push(`/artist?page=${artist.uid}`);
+                                            }}
+                                        >
+                                            <FaMicrophone className={styles.pageIcon} />
+                                            <span>{artist.name || 'Unnamed Artist'}</span>
+                                            <span className={styles.pageType}>Artist</span>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Organization Pages */}
+                                    {ownedPages.organizations.map((org) => (
+                                        <div 
+                                            key={org.uid} 
+                                            className={styles.pageItem}
+                                            onClick={() => { 
+                                                setShowDropdown(false); 
+                                                router.push(`/organisation?page=${org.uid}`);
+                                            }}
+                                        >
+                                            <FaBuilding className={styles.pageIcon} />
+                                            <span>{org.name || 'Unnamed Organization'}</span>
+                                            <span className={styles.pageType}>Org</span>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Venue Pages */}
+                                    {ownedPages.venues.map((venue) => (
+                                        <div 
+                                            key={venue.uid} 
+                                            className={styles.pageItem}
+                                            onClick={() => { 
+                                                setShowDropdown(false); 
+                                                router.push(`/venue?page=${venue.uid}`);
+                                            }}
+                                        >
+                                            <FaMapMarkerAlt className={styles.pageIcon} />
+                                            <span>{venue.name || 'Unnamed Venue'}</span>
+                                            <span className={styles.pageType}>Venue</span>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Create New Page Option */}
+                                    <div className={styles.createPageItem} onClick={handleCreateNewPage}>
+                                        <FaPlus className={styles.pageIcon} />
+                                        <span>Create new page</span>
+                                    </div>
                                 </div>
-                            ))}
-                            
-                            <div className={styles.dropdownDivider}></div>
+                            )}
                         </div>
                     )}
 
-
-
-                    {/* Pages Section */}
-                    <div className={styles.ownedPagesSection}>
-                        <div className={styles.sectionTitle}>Pages</div>
-                        
-                        {/* Artist Pages */}
-                        {ownedPages.artists.map((artist) => (
+                    {/* Check-in Events Section */}
+                    {checkinEvents.length > 0 && (
+                        <div className={styles.section}>
                             <div 
-                                key={artist.uid} 
-                                className={styles.pageItem}
-                                onClick={() => { 
-                                    setShowDropdown(false); 
-                                    // Redirect to management interface with specific page
-                                    router.push(`/artist?page=${artist.uid}`);
-                                }}
+                                className={styles.sectionHeader}
+                                onClick={() => setShowCheckinEvents(!showCheckinEvents)}
                             >
-                                <FaMicrophone className={styles.pageIcon} />
-                                <span>{artist.name || 'Unnamed Artist'}</span>
-                            </div>
-                        ))}
-                        
-                        {/* Organization Pages */}
-                        {ownedPages.organizations.map((org) => (
-                            <div 
-                                key={org.uid} 
-                                className={styles.pageItem}
-                                onClick={() => { 
-                                    setShowDropdown(false); 
-                                    // Redirect to management interface with specific page
-                                    router.push(`/organisation?page=${org.uid}`);
-                                }}
-                            >
-                                <FaBuilding className={styles.pageIcon} />
-                                <span>{org.name || 'Unnamed Organization'}</span>
-                            </div>
-                        ))}
-                        
-                        {/* Venue Pages */}
-                        {ownedPages.venues.map((venue) => (
-                            <div 
-                                key={venue.uid} 
-                                className={styles.pageItem}
-                                onClick={() => { 
-                                    setShowDropdown(false); 
-                                    // Redirect to management interface with specific page
-                                    router.push(`/venue?page=${venue.uid}`);
-                                }}
-                            >
-                                <FaMapMarkerAlt className={styles.pageIcon} />
-                                <span>{venue.name || 'Unnamed Venue'}</span>
-                            </div>
-                        ))}
-                        
-                        {/* Shared Pages Section */}
-                        {(sharedPages.artists.length > 0 || sharedPages.organizations.length > 0 || sharedPages.venues.length > 0) && (
-                            <>
-                                <div className={styles.sharedPagesHeader}>
-                                    <FaShareAlt className={styles.sharedIcon} />
-                                    <span>Shared with me</span>
+                                <div className={styles.sectionTitle}>
+                                    <FaQrcode className={styles.sectionIcon} />
+                                    <span>Check-in Events ({checkinEvents.length})</span>
                                 </div>
-                                
-                                {/* Shared Artist Pages */}
-                                {sharedPages.artists.map((artist) => (
-                                    <div 
-                                        key={`shared-artist-${artist.uid}`} 
-                                        className={`${styles.pageItem} ${styles.sharedPageItem}`}
-                                        onClick={() => { 
-                                            setShowDropdown(false); 
-                                            router.push(`/artist?page=${artist.uid}`);
-                                        }}
-                                    >
-                                        <FaMicrophone className={styles.pageIcon} />
-                                        <span>{artist.name}</span>
-                                        <span className={styles.roleTag}>{artist.role}</span>
-                                    </div>
-                                ))}
-                                
-                                {/* Shared Organization Pages */}
-                                {sharedPages.organizations.map((org) => (
-                                    <div 
-                                        key={`shared-org-${org.uid}`} 
-                                        className={`${styles.pageItem} ${styles.sharedPageItem}`}
-                                        onClick={() => { 
-                                            setShowDropdown(false); 
-                                            router.push(`/organisation?page=${org.uid}`);
-                                        }}
-                                    >
-                                        <FaBuilding className={styles.pageIcon} />
-                                        <span>{org.name}</span>
-                                        <span className={styles.roleTag}>{org.role}</span>
-                                    </div>
-                                ))}
-                                
-                                {/* Shared Venue Pages */}
-                                {sharedPages.venues.map((venue) => (
-                                    <div 
-                                        key={`shared-venue-${venue.uid}`} 
-                                        className={`${styles.pageItem} ${styles.sharedPageItem}`}
-                                        onClick={() => { 
-                                            setShowDropdown(false); 
-                                            router.push(`/venue?page=${venue.uid}`);
-                                        }}
-                                    >
-                                        <FaMapMarkerAlt className={styles.pageIcon} />
-                                        <span>{venue.name}</span>
-                                        <span className={styles.roleTag}>{venue.role}</span>
-                                    </div>
-                                ))}
-                            </>
-                        )}
-                        
-                        {/* Create New Page Option */}
-                        <div className={styles.pageItem} onClick={handleCreateNewPage}>
-                            <FaPlus className={styles.pageIcon} />
-                            <span>Create new page</span>
+                                {showCheckinEvents ? <FaChevronUp className={styles.chevronIcon} /> : <FaChevronDown className={styles.chevronIcon} />}
+                            </div>
+                            
+                            {showCheckinEvents && (
+                                <div className={styles.sectionContent}>
+                                    {checkinEvents.map((event) => (
+                                        <div 
+                                            key={`checkin-${event.eventId}`} 
+                                            className={`${styles.pageItem} ${styles.checkinItem}`}
+                                            onClick={() => { 
+                                                setShowDropdown(false); 
+                                                router.push(`/checkin/${event.eventId}`);
+                                            }}
+                                        >
+                                            <FaQrcode className={styles.pageIcon} />
+                                            <span>{event.eventTitle}</span>
+                                            <span className={styles.accessTag}>Check-in</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                        
-                        <div className={styles.dropdownDivider}></div>
-                    </div>
+                    )}
+
+                    {/* Shared Pages Section */}
+                    {totalSharedPages > 0 && (
+                        <div className={styles.section}>
+                            <div 
+                                className={styles.sectionHeader}
+                                onClick={() => setShowSharedPages(!showSharedPages)}
+                            >
+                                <div className={styles.sectionTitle}>
+                                    <FaShareAlt className={styles.sectionIcon} />
+                                    <span>Shared with me ({totalSharedPages})</span>
+                                </div>
+                                {showSharedPages ? <FaChevronUp className={styles.chevronIcon} /> : <FaChevronDown className={styles.chevronIcon} />}
+                            </div>
+                            
+                            {showSharedPages && (
+                                <div className={styles.sectionContent}>
+                                    {/* Shared Artist Pages */}
+                                    {sharedPages.artists.map((artist) => (
+                                        <div 
+                                            key={`shared-artist-${artist.uid}`} 
+                                            className={`${styles.pageItem} ${styles.sharedItem}`}
+                                            onClick={() => { 
+                                                setShowDropdown(false); 
+                                                router.push(`/artist?page=${artist.uid}`);
+                                            }}
+                                        >
+                                            <FaMicrophone className={styles.pageIcon} />
+                                            <span>{artist.name}</span>
+                                            <span className={styles.roleTag}>{artist.role}</span>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Shared Organization Pages */}
+                                    {sharedPages.organizations.map((org) => (
+                                        <div 
+                                            key={`shared-org-${org.uid}`} 
+                                            className={`${styles.pageItem} ${styles.sharedItem}`}
+                                            onClick={() => { 
+                                                setShowDropdown(false); 
+                                                router.push(`/organisation?page=${org.uid}`);
+                                            }}
+                                        >
+                                            <FaBuilding className={styles.pageIcon} />
+                                            <span>{org.name}</span>
+                                            <span className={styles.roleTag}>{org.role}</span>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Shared Venue Pages */}
+                                    {sharedPages.venues.map((venue) => (
+                                        <div 
+                                            key={`shared-venue-${venue.uid}`} 
+                                            className={`${styles.pageItem} ${styles.sharedItem}`}
+                                            onClick={() => { 
+                                                setShowDropdown(false); 
+                                                router.push(`/venue?page=${venue.uid}`);
+                                            }}
+                                        >
+                                            <FaMapMarkerAlt className={styles.pageIcon} />
+                                            <span>{venue.name}</span>
+                                            <span className={styles.roleTag}>{venue.role}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Show create page option if no owned pages */}
+                    {totalOwnedPages === 0 && (
+                        <div className={styles.section}>
+                            <div className={styles.createPageItem} onClick={handleCreateNewPage}>
+                                <FaPlus className={styles.pageIcon} />
+                                <span>Create your first page</span>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className={styles.dropdownDivider}></div>
 
                     {/* Sign Out */}
-                    <div className={styles.dropdownItems}>
+                    <div className={styles.signOutSection}>
                         <div className={styles.dropdownItem} onClick={handleLogout}>
                             <FaSignOutAlt className={styles.dropdownIcon} />
                             <span>Sign Out</span>

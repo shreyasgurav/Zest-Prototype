@@ -1,6 +1,6 @@
 'use client';
 
-const logo = '/zest-logo.jpeg';
+const logo = '/zest-logo.png';
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '@/infrastructure/firebase';
