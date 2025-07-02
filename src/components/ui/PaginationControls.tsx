@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { FaChevronLeft, FaChevronRight, FaFastBackward, FaFastForward, FaClock, FaMemory, FaExclamationTriangle } from 'react-icons/fa';
-import { PaginationState, PerformanceMetrics, PERFORMANCE_CONFIG } from '@/utils/performanceOptimizations';
+import { PaginationState, PerformanceMetrics, PERFORMANCE_CONFIG } from '@/shared/utils/helpers/performanceOptimizations';
 import styles from './PaginationControls.module.css';
 
 interface PaginationControlsProps {

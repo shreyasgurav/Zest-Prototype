@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFirestore, doc, getDoc, updateDoc, collection, addDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { app } from '@/services/firebase';
-import { adminDb } from '@/lib/firebase-admin';
-import { validateTicketComprehensive, markTicketAsUsed } from '@/utils/ticketValidator';
+import { app } from '@/infrastructure/firebase';
+import { adminDb } from '@/infrastructure/firebase/firebase-admin';
+import { validateTicketComprehensive, markTicketAsUsed } from '@/domains/tickets/services/ticketValidator';
 
 const db = getFirestore(app());
 

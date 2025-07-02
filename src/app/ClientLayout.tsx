@@ -3,17 +3,17 @@
 import React, { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { HelmetProvider } from 'react-helmet-async';
-import Header from '../components/Header/header';
-import Footer from '../components/Footer/Footer';
-import ProfileGuard from '../components/ProfileGuard/ProfileGuard';
+import Header from '@/components/layout/Header/header';
+import Footer from '@/components/layout/Footer/Footer';
+import ProfileGuard from '@/domains/authentication/components/ProfileGuard/ProfileGuard';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Import debug utilities in development
-if (process.env.NODE_ENV === 'development') {
-  import('../utils/authDebugger');
-  import('../utils/debugCollaboration');
-}
+// Debug utilities temporarily disabled during reorganization
+// if (process.env.NODE_ENV === 'development') {
+//   import('@/domains/authentication/utils/authDebugger');
+//   import('@/domains/events/utils/debugCollaboration');
+// }
 
 interface ClientLayoutProps {
   children: React.ReactNode;

@@ -1,5 +1,0 @@
-// DEPRECATED: This file is replaced by the new utils architecture
-// Please use: import { cn } from '@/lib/utils';
-
-// Re-export the cn function for backward compatibility
-export { cn } from '@/lib/utils/formatting'; 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { expireTicketsForPastEvents } from '@/utils/ticketValidator';
+import { expireTicketsForPastEvents } from '@/domains/tickets/services/ticketValidator';
 
 /**
  * Maintenance endpoint to expire tickets for past events

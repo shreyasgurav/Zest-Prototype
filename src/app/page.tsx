@@ -1,6 +1,6 @@
 import React from 'react';
-import EventsSection from '@/components/EventsSection/EventsSection';
-import ActivitySection from '@/components/ActivitySection/ActivitySection';
+import EventsSection from '@/domains/events/components/EventsSection/EventsSection';
+import ActivitySection from '@/domains/activities/components/ActivitySection/ActivitySection';
 
 export default function Home() {
   return (

@@ -1,14 +1,15 @@
 // Main library exports
 // Central export point for all library functionality
+// NOTE: This file will be deprecated in favor of direct shared imports
 
 // Configuration and constants
-export * from './config/constants';
+export * from '../shared/config/constants';
 
 // Type definitions
-export * from './types';
+export * from '../shared/types';
 
 // Utilities
-export * from './utils';
+export * from '../shared/utils';
 
 // Re-export commonly used items for convenience
 export {
@@ -18,7 +19,7 @@ export {
   GUIDE_OPTIONS,
   ERROR_MESSAGES,
   SUCCESS_MESSAGES
-} from './config/constants';
+} from '../shared/config/constants';
 
 export type {
   Event,
@@ -30,4 +31,4 @@ export type {
   VenueData,
   AuthSession,
   ApiResponse
-} from './types'; 
+} from '../shared/types'; 

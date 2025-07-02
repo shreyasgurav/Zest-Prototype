@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
-import { getUserByPhone } from '@/utils/authHelpers';
-import { generateUniqueTicketNumber, generateQRCodeData } from '@/utils/ticketGenerator';
-import { DashboardSecurity } from '@/utils/dashboardSecurity';
+import { adminDb } from '@/infrastructure/firebase/firebase-admin';
+import { getUserByPhone } from '@/domains/authentication/services/auth.service';
+import { generateUniqueTicketNumber, generateQRCodeData } from '@/domains/tickets/services/ticketGenerator';
+import { DashboardSecurity } from '@/shared/utils/security/dashboardSecurity';
 
 interface ManualAttendeeRequest {
   eventId: string;
