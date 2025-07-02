@@ -120,7 +120,7 @@ const CollaboratedEventsList: React.FC<CollaboratedEventsListProps> = ({ pageId,
         {collaboratedEvents.map((event) => (
           <div
             key={event.id}
-            className={styles.eventCard}
+                            className={styles.collaborationEventCard}
             onClick={() => handleEventClick(event.id)}
           >
             <div className={styles.eventImage}>

@@ -7,7 +7,7 @@ import { Music, Smile, Palette, PartyPopper, Mountain, Trophy, Calendar, MapPin,
 import Link from "next/link"
 import Image from "next/image"
 import styles from "./events.module.css"
-import EventBox from "@/domains/events/components/EventsSection/EventBox/EventBox"
+import { EventProfileCard } from "@/components/ui/EventCard"
 import { matchVenueToCity } from '@/lib/utils/cityBoundaries'
 
 const EVENT_TYPES = [
@@ -166,12 +166,37 @@ export default function EventsPage() {
 
   if (isLoading) {
     return (
-      <div className={styles.loading}>
-        <div className={styles.loadingSpinner}>
-          <div className={styles.spinner}></div>
-          <div className={styles.spinnerSecondary}></div>
+      <div className={styles.container}>
+        <div className={styles.wrapper}>
+          {/* Header Section */}
+          <header className={styles.header}>
+            <h1 className={styles.title}>All Events</h1>
+            <p className={styles.subtitle}>
+              Discover and join exciting events happening around you
+            </p>
+          </header>
+
+          {/* Filters Section - Skeleton */}
+          <div className={styles.filters}>
+            {Array.from({ length: 7 }).map((_, index) => (
+              <div key={index} className={styles.filterSkeleton}></div>
+            ))}
+          </div>
+
+          {/* Events Grid - Skeleton */}
+          <div className={styles.eventsGrid}>
+            {Array.from({ length: 8 }).map((_, index) => (
+              <div key={index} className={styles.eventCardSkeleton}>
+                <div className={styles.skeletonImageSection}></div>
+                <div className={styles.skeletonContentSection}>
+                  <div className={styles.skeletonTitle}></div>
+                  <div className={styles.skeletonMeta}></div>
+                  <div className={styles.skeletonMeta}></div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-        <p className={styles.loadingText}>Loading events...</p>
       </div>
     )
   }
@@ -236,7 +261,7 @@ export default function EventsPage() {
             </div>
             <div className={styles.eventsGrid}>
               {filteredEventIds.map((eventId) => (
-                <EventBox 
+                <EventProfileCard 
                   key={eventId} 
                   eventId={eventId}
                 />

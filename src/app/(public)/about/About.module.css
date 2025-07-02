@@ -394,7 +394,7 @@
   }
 }
 
-.eventCard {
+.aboutEventCard {
   background-color: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(4px);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -403,7 +403,7 @@
   border-radius: 15px;
 }
 
-.eventCard:hover {
+.aboutEventCard:hover {
   border-color: rgba(255, 255, 255, 0.2);
   transform: scale(1.05) translateY(-0.5rem);
 }
@@ -439,7 +439,7 @@
   transition: transform 300ms;
 }
 
-.eventCard:hover .cardIcon {
+.aboutEventCard:hover .cardIcon {
   transform: rotate(12deg);
 }
 
@@ -455,7 +455,7 @@
   transition: opacity 300ms;
 }
 
-.eventCard:hover .cardIconGlow {
+.aboutEventCard:hover .cardIconGlow {
   opacity: 0.5;
 }
 
@@ -472,7 +472,7 @@
   transition: all 300ms;
 }
 
-.eventCard:hover .cardTitle {
+.aboutEventCard:hover .cardTitle {
   background: linear-gradient(to right, white, #d1d5db);
   -webkit-background-clip: text;
   background-clip: text;

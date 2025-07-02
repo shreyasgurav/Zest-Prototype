@@ -4,17 +4,35 @@ import React, { useState, useEffect, useCallback } from "react";
 import { db } from "@/infrastructure/firebase";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import useEmblaCarousel from "embla-carousel-react";
-import EventBox from "./EventBox/EventBox";
+import { EventCarouselCard } from "@/components/ui/EventCard";
 import { FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import styles from "./EventsSection.module.css";
 import Link from 'next/link';
 import EventsSectionSkeleton from './EventsSectionSkeleton';
+import { matchVenueToCity } from '@/lib/utils/cityBoundaries';
+
+interface EventFilterData {
+  id: string;
+  event_categories?: string[];
+  eventCategories?: string[];
+  event_venue?: string;
+  eventVenue?: string;
+  venue_coordinates?: {
+    lat: number;
+    lng: number;
+    formatted_address: string;
+    place_id?: string;
+    city?: string;
+    country?: string;
+  };
+}
 
 const EventsSection = () => {
-  const [eventIds, setEventIds] = useState<string[]>([]);
+  const [allEvents, setAllEvents] = useState<EventFilterData[]>([]);
+  const [filteredEventIds, setFilteredEventIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCity, setSelectedCity] = useState('Mumbai');
+  const [selectedCity, setSelectedCity] = useState('All Cities');
 
   const [emblaRef, emblaApi] = useEmblaCarousel({
     align: 'start',
@@ -49,9 +67,9 @@ const EventsSection = () => {
 
   // Listen for location changes
   useEffect(() => {
-    // Get initial city from localStorage
+    // Get initial city from localStorage, but only set it if it's not "All Cities"
     const storedCity = localStorage.getItem('selectedCity');
-    if (storedCity) {
+    if (storedCity && storedCity !== 'All Cities') {
       setSelectedCity(storedCity);
     }
 
@@ -67,8 +85,35 @@ const EventsSection = () => {
     };
   }, []);
 
+  // Filter events based on selected city
   useEffect(() => {
-    const fetchEventIds = async () => {
+    // Don't filter until we have events data
+    if (allEvents.length === 0) {
+      setFilteredEventIds([]);
+      return;
+    }
+
+    let filtered = [...allEvents];
+
+    // Filter by city - only apply filter if a specific city is selected
+    if (selectedCity && selectedCity !== 'All Cities' && selectedCity.trim() !== '') {
+      filtered = filtered.filter(event => {
+        const venue = event.event_venue || event.eventVenue || '';
+        const venueCoords = event.venue_coordinates ? {
+          lat: event.venue_coordinates.lat,
+          lng: event.venue_coordinates.lng
+        } : null;
+        return matchVenueToCity(venueCoords, venue, selectedCity);
+      });
+    }
+
+    // Limit to first 10 for carousel
+    const limitedFiltered = filtered.slice(0, 10);
+    setFilteredEventIds(limitedFiltered.map(event => event.id));
+  }, [allEvents, selectedCity]);
+
+  useEffect(() => {
+    const fetchEventsData = async () => {
       try {
         setLoading(true);
         setError(null);
@@ -79,23 +124,33 @@ const EventsSection = () => {
         const q = query(eventsCollectionRef, orderBy("createdAt", "desc"));
         const querySnapshot = await getDocs(q);
         
-        // Just get the IDs, let EventBox fetch its own data
-        const ids = querySnapshot.docs.map(doc => doc.id);
+        // Fetch minimal data needed for filtering
+        const eventsData = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            event_categories: data.event_categories || [],
+            eventCategories: data.eventCategories || [],
+            event_venue: data.event_venue || '',
+            eventVenue: data.eventVenue || '',
+            venue_coordinates: data.venue_coordinates
+          } as EventFilterData;
+        });
         
-        // Limit to first 10 for carousel
-        setEventIds(ids.slice(0, 10));
+        setAllEvents(eventsData);
+        setError(null);
         
-        console.log(`Fetched ${ids.length} event IDs`);
+        console.log(`Fetched ${eventsData.length} events for filtering`);
         
       } catch (error) {
-        console.error('Error fetching event IDs:', error);
+        console.error('Error fetching events data:', error);
         setError(error instanceof Error ? error.message : 'Failed to fetch events');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchEventIds();
+    fetchEventsData();
   }, []);
 
   if (error) {
@@ -111,14 +166,24 @@ const EventsSection = () => {
     return <EventsSectionSkeleton />;
   }
 
-  if (!eventIds.length) {
+  if (!filteredEventIds.length) {
     return (
       <div className={styles.eventsSection}>
         <div className={styles.eventsSectionHeading}>
-          <h1 className={styles.upcomingEventsHeading}>Upcoming Events</h1>
+          <h1 className={styles.upcomingEventsHeading}>
+            {selectedCity !== 'All Cities' 
+              ? `Upcoming Events in ${selectedCity}`
+              : "Upcoming Events"
+            }
+          </h1>
           <Link href="/events" className={styles.seeAllLink}>See All</Link>
         </div>
-        <div className={styles.noEventsMessage}>No events available.</div>
+        <div className={styles.noEventsMessage}>
+          {selectedCity !== 'All Cities' 
+            ? `No events found in ${selectedCity}. Try selecting all cities or check back later.`
+            : "No events available."
+          }
+        </div>
       </div>
     );
   }
@@ -126,7 +191,12 @@ const EventsSection = () => {
   return (
     <div className={styles.eventsSection}>
       <div className={styles.eventsSectionHeading}>
-        <h1 className={styles.upcomingEventsHeading}>Upcoming Events</h1>
+        <h1 className={styles.upcomingEventsHeading}>
+          {selectedCity !== 'All Cities' 
+            ? `Upcoming Events in ${selectedCity}`
+            : "Upcoming Events"
+          }
+        </h1>
         <Link href="/events" className={styles.seeAllLink}>See All</Link>
       </div>
 
@@ -142,9 +212,11 @@ const EventsSection = () => {
         <div className={styles.embla}>
           <div className={styles.embla__viewport} ref={emblaRef}>
             <div className={styles.embla__container}>
-              {eventIds.map((eventId) => (
+              {filteredEventIds.map((eventId: string) => (
                 <div className={styles.embla__slide} key={eventId}>
-                  <EventBox eventId={eventId} />
+                  <EventCarouselCard 
+                    eventId={eventId} 
+                  />
                 </div>
               ))}
             </div>

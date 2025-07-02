@@ -125,7 +125,7 @@ export default function About() {
               {eventTypes.map((type, index) => (
                 <Card
                   key={index}
-                  className={styles.eventCard}
+                  className={styles.aboutEventCard}
                   style={{
                     animationDelay: `${index * 100}ms`,
                   }}

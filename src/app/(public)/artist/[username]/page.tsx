@@ -7,7 +7,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/infrastructure/firebase';
 import { checkPageOwnership } from '@/domains/authentication/services/auth.service';
 import { EventContentCollaborationService } from '@/domains/events/services/content-collaboration.service';
-import EventBox from '@/domains/events/components/EventsSection/EventBox/EventBox';
+import { EventCleanupService } from '@/domains/events/services/event-cleanup.service';
+import { EventProfileCard } from '@/components/ui/EventCard';
 import styles from './PublicArtistProfile.module.css';
 
 interface ArtistData {
@@ -113,6 +114,13 @@ const PublicArtistProfile = () => {
         const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
         setOwnedEventIds(allEventIds);
         setCollaboratedEventIds(collaboratedIds); // Keep collaborated IDs separate for COLLAB badge
+
+        // 🧹 Background cleanup: Remove any orphaned collaborations
+        try {
+          await EventCleanupService.cleanupOrphanedData();
+        } catch (cleanupError) {
+          console.log('Background cleanup completed with some warnings:', cleanupError);
+        }
 
         // Check if current user can manage this page
         if (currentUser && artistData.uid) {
@@ -284,11 +292,14 @@ const PublicArtistProfile = () => {
         {ownedEventIds.length > 0 ? (
           <div className={styles.eventsGrid}>
             {ownedEventIds.map((eventId) => (
-              <EventBox 
+              <EventProfileCard 
                 key={eventId} 
                 eventId={eventId} 
-                isCollaboration={collaboratedEventIds.includes(eventId)}
-                collaboratorPageName={collaboratedEventIds.includes(eventId) ? artistDetails?.name : undefined}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: artistDetails?.name }
+                }] : []}
               />
             ))}
           </div>

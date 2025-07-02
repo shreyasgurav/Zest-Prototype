@@ -7,7 +7,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '@/infrastructure/firebase';
 import { checkPageOwnership } from '@/domains/authentication/services/auth.service';
 import { EventContentCollaborationService } from '@/domains/events/services/content-collaboration.service';
-import EventBox from '@/domains/events/components/EventsSection/EventBox/EventBox';
+import { EventCleanupService } from '@/domains/events/services/event-cleanup.service';
+import { EventProfileCard } from '@/components/ui/EventCard';
 import styles from './PublicVenueProfile.module.css';
 
 interface VenueData {
@@ -92,6 +93,13 @@ const PublicVenueProfile = () => {
         const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
         setEventIds(allEventIds);
         setCollaboratedEventIds(collaboratedIds);
+
+        // 🧹 Background cleanup: Remove any orphaned collaborations
+        try {
+          await EventCleanupService.cleanupOrphanedData();
+        } catch (cleanupError) {
+          console.log('Background cleanup completed with some warnings:', cleanupError);
+        }
 
         // Check if current user can manage this page
         if (currentUser && venueData.uid) {
@@ -228,11 +236,14 @@ const PublicVenueProfile = () => {
         {eventIds.length > 0 ? (
           <div className={styles.eventsGrid}>
             {eventIds.map((eventId) => (
-              <EventBox 
+              <EventProfileCard 
                 key={eventId} 
                 eventId={eventId}
-                isCollaboration={collaboratedEventIds.includes(eventId)}
-                collaboratorPageName={collaboratedEventIds.includes(eventId) ? venueDetails?.name : undefined}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: venueDetails?.name }
+                }] : []}
               />
             ))}
           </div>

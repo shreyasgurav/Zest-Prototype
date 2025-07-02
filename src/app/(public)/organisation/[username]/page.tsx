@@ -4,8 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getFirestore, doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { EventContentCollaborationService } from '@/domains/events/services/content-collaboration.service';
+import { EventCleanupService } from '@/domains/events/services/event-cleanup.service';
 import styles from './PublicOrganisationProfile.module.css';
-import EventBox from '@/domains/events/components/EventsSection/EventBox/EventBox';
+import { EventProfileCard } from '@/components/ui/EventCard';
 
 interface OrganisationData {
   uid?: string;
@@ -92,6 +93,13 @@ const PublicOrganisationProfile = () => {
       const allEventIds = Array.from(new Set([...ownedIds, ...collaboratedIds]));
       setEventIds(allEventIds);
       setCollaboratedEventIds(collaboratedIds);
+
+      // 🧹 Background cleanup: Remove any orphaned collaborations
+      try {
+        await EventCleanupService.cleanupOrphanedData();
+      } catch (cleanupError) {
+        console.log('Background cleanup completed with some warnings:', cleanupError);
+      }
 
       setError(null);
     } catch (err) {
@@ -219,11 +227,14 @@ const PublicOrganisationProfile = () => {
         {eventIds.length > 0 ? (
           <div className={styles.eventsGrid}>
             {eventIds.map((eventId) => (
-              <EventBox 
+              <EventProfileCard 
                 key={eventId} 
                 eventId={eventId} 
-                isCollaboration={collaboratedEventIds.includes(eventId)}
-                collaboratorPageName={collaboratedEventIds.includes(eventId) ? orgDetails?.name : undefined}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: orgDetails?.name }
+                }] : []}
               />
             ))}
           </div>
