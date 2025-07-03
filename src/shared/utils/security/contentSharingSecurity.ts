@@ -9,11 +9,21 @@ const SECURITY_LIMITS = {
   maxInvitationsPerHour: 10,
   maxInvitationsPerDay: 50,
   maxMessageLength: 500,
-  maxPhoneLength: 20
+  maxPhoneLength: 20,
+  // Add new security limits
+  maxConcurrentSessions: 5,
+  accessTokenExpiry: 3600, // 1 hour in seconds
+  maxFailedAttempts: 5,
+  lockoutDuration: 900, // 15 minutes in seconds
+  minPasswordLength: 8
 };
 
 // Rate limiting storage
 const invitationRateLimit = new Map<string, { count: number; lastReset: number; dailyCount: number; dailyReset: number }>();
+
+// Add session tracking
+const activeSessions = new Map<string, Set<string>>();
+const failedAttempts = new Map<string, { count: number; lastAttempt: number }>();
 
 export interface ContentPermissions {
   canView: boolean;
@@ -238,7 +248,7 @@ export class ContentSharingSecurity {
    * Log security events for monitoring
    */
   static async logSecurityEvent(event: {
-    type: 'access_granted' | 'access_denied' | 'permission_change' | 'suspicious_activity';
+    type: 'access_granted' | 'access_denied' | 'permission_change' | 'suspicious_activity' | 'session_limit_exceeded' | 'account_lockout';
     userId: string;
     contentType: string;
     contentId: string;
@@ -263,8 +273,21 @@ export class ContentSharingSecurity {
     contentId: string,
     userId: string
   ): Promise<ContentPermissions> {
+    // Add brute force protection
+    if (!(await this.validateAccessAttempt(userId))) {
+      await this.logSecurityEvent({
+        type: 'access_denied',
+        userId,
+        contentType,
+        contentId,
+        details: { reason: 'Account temporarily locked due to too many failed attempts' }
+      });
+      return this.unauthorizedPermissions();
+    }
+
     const currentUser = getAuth().currentUser;
     if (!currentUser || currentUser.uid !== userId) {
+      this.recordFailedAttempt(userId);
       return this.unauthorizedPermissions();
     }
 
@@ -281,10 +304,12 @@ export class ContentSharingSecurity {
         return sharedPermissions;
       }
 
+      this.recordFailedAttempt(userId);
       return this.unauthorizedPermissions();
 
     } catch (error) {
       console.error('Error verifying content access:', error);
+      this.recordFailedAttempt(userId);
       return this.unauthorizedPermissions();
     }
   }
@@ -1008,5 +1033,72 @@ export class ContentSharingSecurity {
       canDelete: false,
       role: 'unauthorized'
     };
+  }
+
+  /**
+   * Track and limit concurrent sessions
+   */
+  static async trackSession(userId: string, sessionId: string): Promise<boolean> {
+    if (!activeSessions.has(userId)) {
+      activeSessions.set(userId, new Set());
+    }
+    
+    const userSessions = activeSessions.get(userId)!;
+    
+    if (userSessions.size >= SECURITY_LIMITS.maxConcurrentSessions) {
+      await this.logSecurityEvent({
+        type: 'session_limit_exceeded',
+        userId,
+        contentType: 'system',
+        contentId: 'global',
+        details: { sessionId, activeCount: userSessions.size }
+      });
+      return false;
+    }
+    
+    userSessions.add(sessionId);
+    return true;
+  }
+
+  /**
+   * Enhanced permission validation with brute force protection
+   */
+  static async validateAccessAttempt(userId: string): Promise<boolean> {
+    if (!failedAttempts.has(userId)) {
+      failedAttempts.set(userId, { count: 0, lastAttempt: Date.now() });
+      return true;
+    }
+
+    const attempts = failedAttempts.get(userId)!;
+    const now = Date.now();
+
+    // Reset if lockout duration has passed
+    if (now - attempts.lastAttempt > SECURITY_LIMITS.lockoutDuration * 1000) {
+      failedAttempts.set(userId, { count: 0, lastAttempt: now });
+      return true;
+    }
+
+    if (attempts.count >= SECURITY_LIMITS.maxFailedAttempts) {
+      await this.logSecurityEvent({
+        type: 'account_lockout',
+        userId,
+        contentType: 'system',
+        contentId: 'global',
+        details: { failedAttempts: attempts.count }
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Record failed access attempt
+   */
+  static recordFailedAttempt(userId: string): void {
+    const attempts = failedAttempts.get(userId) || { count: 0, lastAttempt: Date.now() };
+    attempts.count++;
+    attempts.lastAttempt = Date.now();
+    failedAttempts.set(userId, attempts);
   }
 } 

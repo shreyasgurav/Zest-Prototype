@@ -54,17 +54,101 @@ const GUIDE_OPTIONS = [
   { id: 'accessibility', label: 'Accessibility', placeholder: 'e.g., Wheelchair accessible' }
 ];
 
+// Update interfaces for new slot management
 interface TimeSlot {
   startTime: string;
   endTime: string;
   capacity: number;
+  price: number;
 }
 
-interface DaySchedule {
-  day: string;
-  isOpen: boolean;
-  timeSlots: TimeSlot[];
+interface DateSchedule {
+  [date: string]: TimeSlot[];
 }
+
+// Utility functions for date handling
+const getLocalISOString = (date: Date): string => {
+  const offset = date.getTimezoneOffset();
+  const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+  return localDate.toISOString().split('T')[0];
+};
+
+const formatDateForDisplay = (dateString: string): string => {
+  // Create date object in local timezone
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+};
+
+const isSameDay = (date1: Date, date2: Date): boolean => {
+  return date1.getFullYear() === date2.getFullYear() &&
+         date1.getMonth() === date2.getMonth() &&
+         date1.getDate() === date2.getDate();
+};
+
+const isDateDisabled = (date: Date): boolean => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const maxDate = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
+  maxDate.setHours(23, 59, 59, 999);
+  
+  return date < today || date > maxDate;
+};
+
+// Calendar helper functions and types
+interface CalendarDate {
+  date: Date;
+  isCurrentMonth: boolean;
+  hasSlots: boolean;
+  slotsCount: number;
+  isToday: boolean;
+  isSelected: boolean;
+  isDisabled: boolean;
+}
+
+const generateCalendarDates = (month: Date, selectedDate: string, dateSchedule: DateSchedule): CalendarDate[] => {
+  const dates: CalendarDate[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  // Get the first day of the month
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  // Get the last day of the month
+  const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  
+  // Get the first Sunday before or on the first day of the month
+  const startDate = new Date(firstDay);
+  startDate.setDate(firstDay.getDate() - firstDay.getDay());
+  
+  // Get the last Saturday after or on the last day of the month
+  const endDate = new Date(lastDay);
+  endDate.setDate(lastDay.getDate() + (6 - lastDay.getDay()));
+  
+  const currentDate = new Date(startDate);
+  
+  while (currentDate <= endDate) {
+    const dateString = getLocalISOString(currentDate);
+    const slots = dateSchedule[dateString] || [];
+    
+    dates.push({
+      date: new Date(currentDate),
+      isCurrentMonth: currentDate.getMonth() === month.getMonth(),
+      hasSlots: slots.length > 0,
+      slotsCount: slots.length,
+      isToday: isSameDay(currentDate, today),
+      isSelected: dateString === selectedDate,
+      isDisabled: isDateDisabled(currentDate)
+    });
+    
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  return dates;
+};
 
 const CreateActivity = () => {
   const router = useRouter();
@@ -95,19 +179,7 @@ const CreateActivity = () => {
   const [activityLanguages, setActivityLanguages] = useState<string>("");
   const [activityDuration, setActivityDuration] = useState<string>("");
   const [activityAgeLimit, setActivityAgeLimit] = useState<string>("");
-  const [pricePerSlot, setPricePerSlot] = useState<string>("");
   
-  // Weekly schedule - default to all days open with one time slot
-  const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>([
-    { day: 'Monday', isOpen: true, timeSlots: [{ startTime: '09:00', endTime: '10:00', capacity: 10 }] },
-    { day: 'Tuesday', isOpen: true, timeSlots: [{ startTime: '09:00', endTime: '10:00', capacity: 10 }] },
-    { day: 'Wednesday', isOpen: true, timeSlots: [{ startTime: '09:00', endTime: '10:00', capacity: 10 }] },
-    { day: 'Thursday', isOpen: true, timeSlots: [{ startTime: '09:00', endTime: '10:00', capacity: 10 }] },
-    { day: 'Friday', isOpen: true, timeSlots: [{ startTime: '09:00', endTime: '10:00', capacity: 10 }] },
-    { day: 'Saturday', isOpen: true, timeSlots: [{ startTime: '09:00', endTime: '10:00', capacity: 10 }] },
-    { day: 'Sunday', isOpen: false, timeSlots: [] }
-  ]);
-
   // Specific closed dates
   const [closedDates, setClosedDates] = useState<string[]>([]);
   const [newClosedDate, setNewClosedDate] = useState<string>("");
@@ -122,6 +194,26 @@ const CreateActivity = () => {
   // Activity guides
   const [guides, setGuides] = useState<{ [key: string]: string }>({});
   
+  // Add new states
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalISOString(today));
+  const [currentMonth, setCurrentMonth] = useState<Date>(today);
+  const [dateSchedule, setDateSchedule] = useState<DateSchedule>({});
+  const [validUntil, setValidUntil] = useState<string>(
+    new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  );
+  const [showSlotGenerator, setShowSlotGenerator] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [generatorConfig, setGeneratorConfig] = useState({
+    startTime: '09:00',
+    endTime: '17:00',
+    slotDuration: 60,
+    breakBetweenSlots: 0,
+    capacity: 10,
+    price: 0
+  });
+
   const auth = getAuth();
 
   // Google Maps script loading
@@ -356,36 +448,6 @@ const CreateActivity = () => {
     setGuides(prev => ({ ...prev, [id]: value }));
   };
 
-  // Day schedule management
-  const toggleDayOpen = (dayIndex: number) => {
-    const updatedSchedule = [...weeklySchedule];
-    updatedSchedule[dayIndex].isOpen = !updatedSchedule[dayIndex].isOpen;
-    if (!updatedSchedule[dayIndex].isOpen) {
-      updatedSchedule[dayIndex].timeSlots = [];
-    } else if (updatedSchedule[dayIndex].timeSlots.length === 0) {
-      updatedSchedule[dayIndex].timeSlots = [{ startTime: '09:00', endTime: '10:00', capacity: 10 }];
-    }
-    setWeeklySchedule(updatedSchedule);
-  };
-
-  const addTimeSlot = (dayIndex: number) => {
-    const updatedSchedule = [...weeklySchedule];
-    updatedSchedule[dayIndex].timeSlots.push({ startTime: '09:00', endTime: '10:00', capacity: 10 });
-    setWeeklySchedule(updatedSchedule);
-  };
-
-  const removeTimeSlot = (dayIndex: number, slotIndex: number) => {
-    const updatedSchedule = [...weeklySchedule];
-    updatedSchedule[dayIndex].timeSlots.splice(slotIndex, 1);
-    setWeeklySchedule(updatedSchedule);
-  };
-
-  const updateTimeSlot = (dayIndex: number, slotIndex: number, field: keyof TimeSlot, value: string | number) => {
-    const updatedSchedule = [...weeklySchedule];
-    (updatedSchedule[dayIndex].timeSlots[slotIndex] as any)[field] = value;
-    setWeeklySchedule(updatedSchedule);
-  };
-
   // Closed dates management
   const addClosedDate = () => {
     if (newClosedDate && !closedDates.includes(newClosedDate)) {
@@ -396,36 +458,6 @@ const CreateActivity = () => {
 
   const removeClosedDate = (date: string) => {
     setClosedDates(closedDates.filter(d => d !== date));
-  };
-
-  const validateSchedule = (): boolean => {
-    const openDays = weeklySchedule.filter(day => day.isOpen);
-    if (openDays.length === 0) {
-      setMessage("At least one day must be open");
-      return false;
-    }
-
-    for (const day of openDays) {
-      if (day.timeSlots.length === 0) {
-        setMessage(`${day.day} is marked as open but has no time slots`);
-        return false;
-      }
-      
-      for (const slot of day.timeSlots) {
-        if (!slot.startTime || !slot.endTime || slot.capacity <= 0) {
-          setMessage(`Invalid time slot on ${day.day}`);
-          return false;
-        }
-        
-        const startTime = new Date(`2000-01-01 ${slot.startTime}`);
-        const endTime = new Date(`2000-01-01 ${slot.endTime}`);
-        if (endTime <= startTime) {
-          setMessage(`End time must be after start time on ${day.day}`);
-          return false;
-        }
-      }
-    }
-    return true;
   };
 
   const uploadImage = async (file: File): Promise<string | null> => {
@@ -491,17 +523,14 @@ const CreateActivity = () => {
     e.preventDefault();
     console.log("Form submitted");
     
-    if (!activityName.trim() || !activityLocation.trim() || selectedCategories.length === 0 || !pricePerSlot.trim()) {
+    if (!activityName.trim() || !activityLocation.trim() || selectedCategories.length === 0) {
       setMessage("Please fill in all required fields and select at least one category");
       return;
     }
 
-    if (!validateSchedule()) {
-      return;
-    }
-
-    if (parseFloat(pricePerSlot) < 0) {
-      setMessage("Price must be non-negative");
+    // Validate that at least one date has slots
+    if (Object.keys(dateSchedule).length === 0) {
+      setMessage("Please create slots for at least one date");
       return;
     }
 
@@ -531,18 +560,17 @@ const CreateActivity = () => {
       const activityData = {
         name: activityName.trim(),
         activity_type: "activity",
-        weekly_schedule: weeklySchedule.map(day => ({
-          day: day.day,
-          is_open: day.isOpen,
-          time_slots: day.timeSlots.map(slot => ({
+        schedule: Object.entries(dateSchedule).map(([date, slots]) => ({
+          date,
+          slots: slots.map((slot: TimeSlot) => ({
             start_time: slot.startTime,
             end_time: slot.endTime,
             capacity: slot.capacity,
-            available_capacity: slot.capacity
+            available_capacity: slot.capacity,
+            price: slot.price
           }))
         })),
-        closed_dates: closedDates,
-        price_per_slot: parseFloat(pricePerSlot),
+        valid_until: validUntil,
         location: activityLocation.trim(),
         city: selectedCity,
         about_activity: aboutActivity.trim(),
@@ -555,9 +583,8 @@ const CreateActivity = () => {
         activity_duration: activityDuration.trim(),
         activity_age_limit: activityAgeLimit.trim(),
         activity_guides: guides,
-        // Creator information
         creator: creatorInfo ? {
-          type: creatorInfo.type, // 'artist', 'organisation', or 'venue'
+          type: creatorInfo.type,
           pageId: creatorInfo.pageId,
           name: creatorInfo.name,
           username: creatorInfo.username,
@@ -596,6 +623,85 @@ const CreateActivity = () => {
       setMessage(`Failed to create activity: ${error.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Helper functions for slot management
+  const generateTimeSlots = (config: typeof generatorConfig): TimeSlot[] => {
+    const slots: TimeSlot[] = [];
+    const startMinutes = parseInt(config.startTime.split(':')[0]) * 60 + parseInt(config.startTime.split(':')[1]);
+    const endMinutes = parseInt(config.endTime.split(':')[0]) * 60 + parseInt(config.endTime.split(':')[1]);
+    
+    let currentMinute = startMinutes;
+    while (currentMinute + config.slotDuration <= endMinutes) {
+      const startTime = `${Math.floor(currentMinute / 60).toString().padStart(2, '0')}:${(currentMinute % 60).toString().padStart(2, '0')}`;
+      const endTime = `${Math.floor((currentMinute + config.slotDuration) / 60).toString().padStart(2, '0')}:${((currentMinute + config.slotDuration) % 60).toString().padStart(2, '0')}`;
+      
+      slots.push({
+        startTime,
+        endTime,
+        capacity: config.capacity,
+        price: config.price
+      });
+      
+      currentMinute += config.slotDuration + config.breakBetweenSlots;
+    }
+    
+    return slots;
+  };
+
+  const copySlots = (fromDate: string, toDate: string) => {
+    if (dateSchedule[fromDate]) {
+      setDateSchedule(prev => ({
+        ...prev,
+        [toDate]: [...prev[fromDate]]
+      }));
+    }
+  };
+
+  // Calendar navigation with animation handling
+  const handleMonthChange = (direction: 'prev' | 'next') => {
+    if (isTransitioning) return;
+    
+    setIsTransitioning(true);
+    const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + (direction === 'next' ? 1 : -1));
+    
+    if (direction === 'prev' && newMonth < today) {
+      setIsTransitioning(false);
+      return;
+    }
+    
+    const maxDate = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000);
+    if (direction === 'next' && newMonth > maxDate) {
+      setIsTransitioning(false);
+      return;
+    }
+    
+    setCurrentMonth(newMonth);
+    
+    // Update selected date if it's not in the visible month
+    const selectedDateObj = new Date(selectedDate);
+    if (selectedDateObj.getMonth() !== newMonth.getMonth() || 
+        selectedDateObj.getFullYear() !== newMonth.getFullYear()) {
+      const newDate = new Date(newMonth.getFullYear(), newMonth.getMonth(), 1);
+      setSelectedDate(getLocalISOString(newDate));
+    }
+    
+    // Reset transition state after animation
+    setTimeout(() => setIsTransitioning(false), 300);
+  };
+
+  // Date selection handler
+  const handleDateSelect = (date: Date) => {
+    if (isDateDisabled(date) || isTransitioning) return;
+    
+    const dateString = getLocalISOString(date);
+    setSelectedDate(dateString);
+    
+    // If date is in a different month, update the current month
+    if (date.getMonth() !== currentMonth.getMonth() || 
+        date.getFullYear() !== currentMonth.getFullYear()) {
+      setCurrentMonth(date);
     }
   };
 
@@ -704,19 +810,6 @@ const CreateActivity = () => {
               {selectedCategories.length === 0 && (
                 <p className={styles.errorText}>Please select at least one category</p>
               )}
-            </div>
-
-            <div className={styles.formGroup}>
-              <label>Price per Slot (₹)</label>
-              <input
-                type="number"
-                value={pricePerSlot}
-                onChange={(e) => setPricePerSlot(e.target.value)}
-                placeholder="Price per slot"
-                min="0"
-                step="0.01"
-                required
-              />
             </div>
           </div>
 
@@ -870,123 +963,300 @@ const CreateActivity = () => {
             </div>
           </div>
 
-          {/* Weekly Schedule Section */}
+          {/* Schedule Configuration Section */}
           <div className={styles.formSection}>
-            <h2>Weekly Schedule</h2>
-            <p className={styles.sectionDescription}>Set your weekly availability and time slots</p>
-            {weeklySchedule.map((daySchedule, dayIndex) => (
-              <div key={daySchedule.day} className={styles.daySchedule}>
-                <div className={styles.dayHeader}>
-                  <h3>{daySchedule.day}</h3>
-                  <label className={styles.toggleSwitch}>
-                    <input
-                      type="checkbox"
-                      checked={daySchedule.isOpen}
-                      onChange={() => toggleDayOpen(dayIndex)}
-                    />
-                    <span className={styles.slider}></span>
-                    <span className={styles.toggleLabel}>
-                      {daySchedule.isOpen ? 'Open' : 'Closed'}
-                    </span>
-                  </label>
+            <h2>Schedule Configuration</h2>
+            
+            <div className={styles.scheduleSection}>
+              {/* Calendar Side */}
+              <div className={styles.calendarSide}>
+                <div className={styles.calendarHeader}>
+                  <button
+                    type="button"
+                    className={styles.calendarNavButton}
+                    onClick={() => handleMonthChange('prev')}
+                    disabled={isTransitioning || currentMonth <= today}
+                  >
+                    ←
+                  </button>
+                  <h3>
+                    {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                  </h3>
+                  <button
+                    type="button"
+                    className={styles.calendarNavButton}
+                    onClick={() => handleMonthChange('next')}
+                    disabled={isTransitioning || currentMonth >= new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)}
+                  >
+                    →
+                  </button>
                 </div>
-                
-                {daySchedule.isOpen && (
-                  <div className={styles.timeSlotsContainer}>
-                    {daySchedule.timeSlots.map((slot, slotIndex) => (
-                      <div key={slotIndex} className={styles.timeSlot}>
-                        <div className={styles.formRow}>
-                          <div className={styles.formGroup}>
-                            <label>Start Time</label>
-                            <input
-                              type="time"
-                              value={slot.startTime}
-                              onChange={(e) => updateTimeSlot(dayIndex, slotIndex, 'startTime', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className={styles.formGroup}>
-                            <label>End Time</label>
-                            <input
-                              type="time"
-                              value={slot.endTime}
-                              onChange={(e) => updateTimeSlot(dayIndex, slotIndex, 'endTime', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className={styles.formGroup}>
-                            <label>Capacity</label>
-                            <input
-                              type="number"
-                              value={slot.capacity}
-                              onChange={(e) => updateTimeSlot(dayIndex, slotIndex, 'capacity', parseInt(e.target.value))}
-                              min="1"
-                              required
-                            />
-                          </div>
-                          {daySchedule.timeSlots.length > 1 && (
-                            <button
-                              type="button"
-                              className={styles.removeSlotButton}
-                              onClick={() => removeTimeSlot(dayIndex, slotIndex)}
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
+
+                <div className={`${styles.calendar} ${isTransitioning ? styles.transitioning : ''}`}>
+                  <div className={styles.calendarDays}>
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                      <div key={day} className={styles.calendarDay}>
+                        {day}
+                      </div>
+                    ))}
+                  </div>
+                  <div className={styles.calendarGrid}>
+                    {generateCalendarDates(currentMonth, selectedDate, dateSchedule).map((dateObj, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        className={`${styles.calendarDate} 
+                          ${!dateObj.isCurrentMonth ? styles.otherMonth : ''} 
+                          ${dateObj.isSelected ? styles.selectedDate : ''} 
+                          ${dateObj.hasSlots ? styles.hasSlots : ''} 
+                          ${dateObj.isDisabled ? styles.disabledDate : ''} 
+                          ${dateObj.isToday ? styles.today : ''}`}
+                        onClick={() => handleDateSelect(dateObj.date)}
+                        disabled={dateObj.isDisabled || isTransitioning}
+                      >
+                        <span className={styles.dateNumber}>
+                          {dateObj.date.getDate()}
+                        </span>
+                        {dateObj.hasSlots && (
+                          <span className={styles.slotsIndicator}>
+                            {dateObj.slotsCount}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Slots Management Side */}
+              <div className={styles.slotsSide}>
+                <div className={styles.selectedDateHeader}>
+                  <h3>Slots for {formatDateForDisplay(selectedDate)}</h3>
+                </div>
+
+                {/* Copy From Previous Date */}
+                {Object.keys(dateSchedule).length > 0 && (
+                  <div className={styles.copyFromSection}>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          copySlots(e.target.value, selectedDate);
+                          e.target.value = ''; // Reset select after copying
+                        }
+                      }}
+                      value=""
+                    >
+                      <option value="">Copy slots from date...</option>
+                      {Object.keys(dateSchedule)
+                        .filter(date => date !== selectedDate)
+                        .sort()
+                        .map(date => (
+                          <option key={date} value={date}>
+                            {new Date(date).toLocaleDateString()} ({dateSchedule[date].length} slots)
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Quick Generator */}
+                <div className={styles.quickGenerator}>
+                  <h4>Quick Slot Generator</h4>
+                  <div className={styles.generatorGrid}>
+                    <div className={styles.formGroup}>
+                      <label>Start Time</label>
+                      <input
+                        type="time"
+                        value={generatorConfig.startTime}
+                        onChange={(e) => setGeneratorConfig(prev => ({
+                          ...prev,
+                          startTime: e.target.value
+                        }))}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>End Time</label>
+                      <input
+                        type="time"
+                        value={generatorConfig.endTime}
+                        onChange={(e) => setGeneratorConfig(prev => ({
+                          ...prev,
+                          endTime: e.target.value
+                        }))}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Duration</label>
+                      <select
+                        value={generatorConfig.slotDuration}
+                        onChange={(e) => setGeneratorConfig(prev => ({
+                          ...prev,
+                          slotDuration: parseInt(e.target.value)
+                        }))}
+                      >
+                        <option value={30}>30 minutes</option>
+                        <option value={45}>45 minutes</option>
+                        <option value={60}>1 hour</option>
+                        <option value={90}>1.5 hours</option>
+                        <option value={120}>2 hours</option>
+                      </select>
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Break</label>
+                      <select
+                        value={generatorConfig.breakBetweenSlots}
+                        onChange={(e) => setGeneratorConfig(prev => ({
+                          ...prev,
+                          breakBetweenSlots: parseInt(e.target.value)
+                        }))}
+                      >
+                        <option value={0}>No break</option>
+                        <option value={5}>5 minutes</option>
+                        <option value={10}>10 minutes</option>
+                        <option value={15}>15 minutes</option>
+                        <option value={30}>30 minutes</option>
+                      </select>
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Capacity</label>
+                      <input
+                        type="number"
+                        value={generatorConfig.capacity}
+                        onChange={(e) => setGeneratorConfig(prev => ({
+                          ...prev,
+                          capacity: parseInt(e.target.value)
+                        }))}
+                        min={1}
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label>Price (₹)</label>
+                      <input
+                        type="number"
+                        value={generatorConfig.price}
+                        onChange={(e) => setGeneratorConfig(prev => ({
+                          ...prev,
+                          price: parseFloat(e.target.value)
+                        }))}
+                        min={0}
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.generateButton}
+                    onClick={() => {
+                      const slots = generateTimeSlots(generatorConfig);
+                      setDateSchedule(prev => ({
+                        ...prev,
+                        [selectedDate]: slots
+                      }));
+                    }}
+                  >
+                    Generate Slots
+                  </button>
+                </div>
+
+                {/* Slots List */}
+                {dateSchedule[selectedDate]?.length > 0 ? (
+                  <div className={styles.slotsList}>
+                    {dateSchedule[selectedDate].map((slot, index) => (
+                      <div key={index} className={styles.slotItem}>
+                        <input
+                          type="time"
+                          value={slot.startTime}
+                          onChange={(e) => {
+                            const newSlots = [...dateSchedule[selectedDate]];
+                            newSlots[index] = { ...slot, startTime: e.target.value };
+                            setDateSchedule(prev => ({
+                              ...prev,
+                              [selectedDate]: newSlots
+                            }));
+                          }}
+                        />
+                        <input
+                          type="time"
+                          value={slot.endTime}
+                          onChange={(e) => {
+                            const newSlots = [...dateSchedule[selectedDate]];
+                            newSlots[index] = { ...slot, endTime: e.target.value };
+                            setDateSchedule(prev => ({
+                              ...prev,
+                              [selectedDate]: newSlots
+                            }));
+                          }}
+                        />
+                        <input
+                          type="number"
+                          value={slot.capacity}
+                          onChange={(e) => {
+                            const newSlots = [...dateSchedule[selectedDate]];
+                            newSlots[index] = { ...slot, capacity: parseInt(e.target.value) };
+                            setDateSchedule(prev => ({
+                              ...prev,
+                              [selectedDate]: newSlots
+                            }));
+                          }}
+                          min={1}
+                          placeholder="Capacity"
+                        />
+                        <input
+                          type="number"
+                          value={slot.price}
+                          onChange={(e) => {
+                            const newSlots = [...dateSchedule[selectedDate]];
+                            newSlots[index] = { ...slot, price: parseFloat(e.target.value) };
+                            setDateSchedule(prev => ({
+                              ...prev,
+                              [selectedDate]: newSlots
+                            }));
+                          }}
+                          min={0}
+                          step="0.01"
+                          placeholder="Price (₹)"
+                        />
+                        <button
+                          type="button"
+                          className={styles.removeButton}
+                          onClick={() => {
+                            const newSlots = dateSchedule[selectedDate].filter((_, i) => i !== index);
+                            setDateSchedule(prev => ({
+                              ...prev,
+                              [selectedDate]: newSlots
+                            }));
+                          }}
+                        >
+                          ✕
+                        </button>
                       </div>
                     ))}
                     <button
                       type="button"
                       className={styles.addSlotButton}
-                      onClick={() => addTimeSlot(dayIndex)}
+                      onClick={() => {
+                        const newSlot = {
+                          startTime: '09:00',
+                          endTime: '10:00',
+                          capacity: 10,
+                          price: 0
+                        };
+                        setDateSchedule(prev => ({
+                          ...prev,
+                          [selectedDate]: [...(prev[selectedDate] || []), newSlot]
+                        }));
+                      }}
                     >
-                      Add Time Slot
+                      + Add Slot
                     </button>
+                  </div>
+                ) : (
+                  <div className={styles.noSlots}>
+                    No slots created for this date. Use the quick generator above or add slots manually.
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-
-          {/* Closed Dates Section */}
-          <div className={styles.formSection}>
-            <h2>Specific Closed Dates (Optional)</h2>
-            <p className={styles.sectionDescription}>Add specific dates when your activity will be closed (holidays, maintenance, etc.)</p>
-            <div className={styles.formRow}>
-              <div className={styles.formGroup}>
-                <label>Add Closed Date</label>
-                <input
-                  type="date"
-                  value={newClosedDate}
-                  onChange={(e) => setNewClosedDate(e.target.value)}
-                />
-              </div>
-              <button
-                type="button"
-                className={styles.addDateButton}
-                onClick={addClosedDate}
-                disabled={!newClosedDate}
-              >
-                Add Date
-              </button>
             </div>
-            {closedDates.length > 0 && (
-              <div className={styles.closedDatesList}>
-                {closedDates.map((date, index) => (
-                  <div key={index} className={styles.closedDateItem}>
-                    <span>{date}</span>
-                    <button
-                      type="button"
-                      className={styles.removeDateButton}
-                      onClick={() => removeClosedDate(date)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* About Activity */}

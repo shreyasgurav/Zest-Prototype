@@ -14,11 +14,13 @@ import {
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth, db } from '@/infrastructure/firebase';
 import { toast } from "react-toastify";
-import { FaCamera, FaTimes, FaPlus, FaMusic } from 'react-icons/fa';
+import { FaCamera, FaTimes, FaPlus, FaMusic, FaShare } from 'react-icons/fa';
 import VenueProfileSkeleton from "./VenueProfileSkeleton";
 import DashboardSection from '@/shared/components/dashboard/Dashboard/DashboardSection/DashboardSection';
 import PhotoUpload from '@/components/forms/PhotoUpload/PhotoUpload';
+import ContentSharingManager from '@/components/feedback/ContentSharingManager/ContentSharingManager';
 import { getUserOwnedPages } from '@/domains/authentication/services/auth.service';
+import { ContentSharingSecurity } from '@/shared/utils/security/contentSharingSecurity';
 import { useRouter } from 'next/navigation';
 import styles from "./VenueProfile.module.css";
 
@@ -62,6 +64,11 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState<boolean>(false);
+  const [userPermissions, setUserPermissions] = useState<{
+    canEdit: boolean;
+    canManage: boolean;
+    role: string;
+  }>({ canEdit: false, canManage: false, role: 'viewer' });
   
   const [name, setName] = useState<string>("");
   const [newName, setNewName] = useState<string>("");
@@ -88,6 +95,9 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
   const [showPhotoModal, setShowPhotoModal] = useState<boolean>(false);
   const [showPhotoUpload, setShowPhotoUpload] = useState<boolean>(false);
   const [currentPhotoType, setCurrentPhotoType] = useState<'profile' | 'banner'>('profile');
+
+  // Content sharing state
+  const [showSharingModal, setShowSharingModal] = useState<boolean>(false);
 
   const fetchVenueData = async (pageId: string) => {
     console.log("Fetching venue data for page:", pageId);
@@ -219,40 +229,82 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
       
       if (user && isSubscribed) {
         try {
-          // Load owned venue pages
-          const ownedPages = await getUserOwnedPages(user.uid);
-          setOwnedVenuePages(ownedPages.venues);
+          // Check if there's a specific venue page to load
+          const sessionSelectedPageId = typeof window !== 'undefined' ? 
+            sessionStorage.getItem('selectedVenuePageId') : null;
           
-          if (ownedPages.venues.length > 0) {
-            // Check if there's a specific venue page to load
-            const sessionSelectedPageId = typeof window !== 'undefined' ? 
-              sessionStorage.getItem('selectedVenuePageId') : null;
+          // Priority: prop selectedPageId > session storage
+          const pageIdToUse = selectedPageId || sessionSelectedPageId;
+          
+          if (pageIdToUse) {
+            // Specific page requested - check access and load directly
+            console.log(`🏟️ Loading specific venue page: ${pageIdToUse}`);
             
-            let pageToLoad = ownedPages.venues[0]; // Default to first page
+            // Verify access to this specific page
+            const permissions = await ContentSharingSecurity.verifyContentAccess('venue', pageIdToUse, user.uid);
             
-            // Priority: prop selectedPageId > session storage > first page
-            const pageIdToUse = selectedPageId || sessionSelectedPageId;
-            
-            if (pageIdToUse) {
-              const selectedPage = ownedPages.venues.find(page => page.uid === pageIdToUse);
-              if (selectedPage) {
-                pageToLoad = selectedPage;
-              }
-              // Clear the session selection after using it
+            if (permissions.canView && permissions.role !== 'unauthorized') {
+              console.log(`🔓 Access granted to venue page: ${pageIdToUse} with role: ${permissions.role}`);
+              
+              // Set user permissions for this page
+              setUserPermissions({
+                canEdit: permissions.canEdit,
+                canManage: permissions.canManage,
+                role: permissions.role
+              });
+              
+              setCurrentVenuePageId(pageIdToUse);
+              await fetchVenueData(pageIdToUse);
+              
+              // Clear session selection after using it
               if (sessionSelectedPageId) {
                 sessionStorage.removeItem('selectedVenuePageId');
               }
+            } else {
+              console.log(`🚫 Access denied to venue page: ${pageIdToUse}`);
+              setError("You don't have permission to access this venue page.");
+              setLoading(false);
             }
-            
-            setCurrentVenuePageId(pageToLoad.uid);
-            await fetchVenueData(pageToLoad.uid);
           } else {
-            // No venue pages found
-            setError("No venue pages found. Please create a venue page first.");
-            setLoading(false);
+            // No specific page requested - load owned pages
+            console.log("🏟️ Loading owned venue pages");
+            const ownedPages = await getUserOwnedPages(user.uid);
+            setOwnedVenuePages(ownedPages.venues);
+            
+            if (ownedPages.venues.length > 0) {
+              const pageToLoad = ownedPages.venues[0]; // Default to first page
+              
+              // Set owner permissions
+              setUserPermissions({
+                canEdit: true,
+                canManage: true,
+                role: 'owner'
+              });
+              
+              setCurrentVenuePageId(pageToLoad.uid);
+              await fetchVenueData(pageToLoad.uid);
+            } else {
+              // No owned venue pages - check if user has shared access to any venue pages
+              const sharedContent = await ContentSharingSecurity.getUserSharedContent(user.uid);
+              
+              if (sharedContent.venues.length > 0) {
+                // User has shared access to venue pages, but no specific page selected
+                setError("Please select a venue page from your dropdown menu.");
+                setLoading(false);
+              } else {
+                // No venue pages found at all
+                setError("No venue pages found. Please create a venue page first.");
+                setLoading(false);
+              }
+            }
           }
+          
+          // Always load owned pages for page switching functionality
+          const ownedPages = await getUserOwnedPages(user.uid);
+          setOwnedVenuePages(ownedPages.venues);
+          
         } catch (err) {
-          console.error("Error loading owned pages:", err);
+          console.error("Error loading venue pages:", err);
           setError("Failed to load venue pages");
           setLoading(false);
         }
@@ -351,11 +403,13 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
 
   // Photo editing handlers
   const handleProfilePhotoClick = () => {
+    if (!userPermissions.canEdit) return;
     setCurrentPhotoType('profile');
     setShowPhotoModal(true);
   };
 
   const handleBannerClick = () => {
+    if (!userPermissions.canEdit) return;
     setCurrentPhotoType('banner');
     setShowPhotoModal(true);
   };
@@ -429,7 +483,11 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
       {/* Display Venue Details */}
       <div className={styles.venueProfileContainer}>
         <div className={styles.venueBannerSection}>
-          <div className={styles.venueBanner} onClick={handleBannerClick}>
+          <div 
+            className={styles.venueBanner} 
+            onClick={userPermissions.canEdit ? handleBannerClick : undefined}
+            style={{ cursor: userPermissions.canEdit ? 'pointer' : 'default' }}
+          >
             {bannerImage ? (
               <img
                 src={bannerImage}
@@ -439,12 +497,18 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
             ) : (
               <div className={styles.defaultBanner} />
             )}
-            <div className={styles.bannerOverlay}>
-              <FaCamera className={styles.cameraIcon} />
-              <span>Edit Banner</span>
-            </div>
+            {userPermissions.canEdit && (
+              <div className={styles.bannerOverlay}>
+                <FaCamera className={styles.cameraIcon} />
+                <span>Edit Banner</span>
+              </div>
+            )}
           </div>
-          <div className={styles.venueProfileImageContainer} onClick={handleProfilePhotoClick}>
+          <div 
+            className={styles.venueProfileImageContainer} 
+            onClick={userPermissions.canEdit ? handleProfilePhotoClick : undefined}
+            style={{ cursor: userPermissions.canEdit ? 'pointer' : 'default' }}
+          >
             {photoURL ? (
               <img 
                 src={photoURL} 
@@ -456,10 +520,12 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
                 {name ? name.charAt(0).toUpperCase() : 'V'}
               </div>
             )}
-            <div className={styles.profileOverlay}>
-              <FaCamera className={styles.cameraIcon} />
-              <span>Edit Photo</span>
-            </div>
+            {userPermissions.canEdit && (
+              <div className={styles.profileOverlay}>
+                <FaCamera className={styles.cameraIcon} />
+                <span>Edit Photo</span>
+              </div>
+            )}
           </div>
         </div>
         
@@ -482,12 +548,14 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
             {/* Profile Action Buttons */}
             {!editMode && (
               <div className={styles.profileButtonsContainer}>
-                <button 
-                  onClick={() => setEditMode(true)}
-                  className={styles.editProfileButton}
-                >
-                  Edit Profile
-                </button>
+                {userPermissions.canEdit && (
+                  <button 
+                    onClick={() => setEditMode(true)}
+                    className={styles.editProfileButton}
+                  >
+                    Edit Profile
+                  </button>
+                )}
                 {username && (
                   <button 
                     onClick={() => window.open(`/venue/${username}`, '_blank')}
@@ -496,18 +564,34 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
                     View Public Page
                   </button>
                 )}
-                <button 
-                  onClick={() => {
-                    if (currentVenuePageId) {
-                      router.push(`/create?from=venue&pageId=${currentVenuePageId}&name=${encodeURIComponent(name || '')}&username=${encodeURIComponent(username || '')}`);
-                    } else {
-                      router.push('/create');
-                    }
-                  }}
-                  className={styles.createButton}
-                >
-                  Create
-                </button>
+                {userPermissions.canManage && (
+                  <button 
+                    onClick={() => setShowSharingModal(true)}
+                    className={styles.shareButton}
+                  >
+                    <FaShare className={styles.shareIcon} />
+                    Share Access
+                  </button>
+                )}
+                {userPermissions.canEdit && (
+                  <button 
+                    onClick={() => {
+                      if (currentVenuePageId) {
+                        router.push(`/create?from=venue&pageId=${currentVenuePageId}&name=${encodeURIComponent(name || '')}&username=${encodeURIComponent(username || '')}`);
+                      } else {
+                        router.push('/create');
+                      }
+                    }}
+                    className={styles.createButton}
+                  >
+                    Create
+                  </button>
+                )}
+                {!userPermissions.canEdit && (
+                  <div className={styles.viewerBadge}>
+                    <span>👁️ Viewing as {userPermissions.role}</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -653,6 +737,16 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Content Sharing Modal */}
+      {showSharingModal && currentVenuePageId && (
+        <ContentSharingManager
+          contentType="venue"
+          contentId={currentVenuePageId}
+          contentName={name || 'Venue Page'}
+          onClose={() => setShowSharingModal(false)}
+        />
       )}
     </div>
   );

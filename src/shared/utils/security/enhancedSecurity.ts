@@ -6,10 +6,41 @@
 import { NextRequest } from 'next/server';
 import { adminDb } from '@/infrastructure/firebase/firebase-admin';
 import { logSecurityEvent } from './securityMonitoring';
+import { db } from '@/infrastructure/firebase';
+import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import * as crypto from 'crypto';
 
 // Rate limiting storage (in production, use Redis)
 const rateLimitStore = new Map<string, { count: number; resetTime: number; blockedUntil?: number }>();
 const suspiciousIPs = new Set<string>();
+
+// Enhanced Security Constants
+const SECURITY_CONFIG = {
+  encryption: {
+    algorithm: 'aes-256-cbc',
+    keyLength: 32,
+    ivLength: 16,
+    saltLength: 64,
+    iterations: 100000,
+    digest: 'sha512'
+  },
+  rateLimit: {
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    maxRequests: 100
+  },
+  ipBlocking: {
+    maxFailedAttempts: 5,
+    blockDuration: 30 * 60 * 1000 // 30 minutes
+  },
+  audit: {
+    retentionDays: 90,
+    alertThreshold: 10
+  }
+};
+
+// IP blocking store (should be replaced with Redis in production)
+const ipBlockList = new Map<string, { count: number; blockedUntil: number }>();
 
 export interface SecurityConfig {
   maxRequestsPerMinute: number;
@@ -422,4 +453,244 @@ export function securityMiddleware(request: NextRequest): SecurityCheckResult {
   }
   
   return { allowed: true };
+}
+
+export class EnhancedSecurity {
+  /**
+   * Encrypt sensitive data
+   */
+  static async encryptData(data: string, userId: string): Promise<{ encrypted: string; iv: string }> {
+    try {
+      // Generate a unique salt for this encryption
+      const salt = crypto.randomBytes(SECURITY_CONFIG.encryption.saltLength);
+      
+      // Derive encryption key from userId and salt
+      const key = crypto.pbkdf2Sync(
+        userId,
+        salt,
+        SECURITY_CONFIG.encryption.iterations,
+        SECURITY_CONFIG.encryption.keyLength,
+        SECURITY_CONFIG.encryption.digest
+      );
+      
+      // Generate initialization vector
+      const iv = crypto.randomBytes(SECURITY_CONFIG.encryption.ivLength);
+      
+      // Create cipher
+      const cipher = crypto.createCipheriv(
+        SECURITY_CONFIG.encryption.algorithm,
+        key,
+        iv
+      );
+      
+      // Encrypt data
+      let encrypted = cipher.update(data, 'utf8', 'hex');
+      encrypted += cipher.final('hex');
+      
+      // Store salt in database for future decryption
+      await addDoc(collection(db(), 'encryptionKeys'), {
+        userId,
+        salt: salt.toString('hex'),
+        createdAt: serverTimestamp()
+      });
+      
+      return {
+        encrypted,
+        iv: iv.toString('hex')
+      };
+    } catch (error) {
+      console.error('Encryption error:', error);
+      throw new Error('Failed to encrypt data');
+    }
+  }
+
+  /**
+   * Decrypt sensitive data
+   */
+  static async decryptData(
+    encrypted: string,
+    iv: string,
+    userId: string
+  ): Promise<string> {
+    try {
+      // Get salt from database
+      const keysQuery = query(
+        collection(db(), 'encryptionKeys'),
+        where('userId', '==', userId)
+      );
+      
+      const snapshot = await getDocs(keysQuery);
+      if (snapshot.empty) {
+        throw new Error('Encryption key not found');
+      }
+      
+      const keyData = snapshot.docs[0].data();
+      const salt = Buffer.from(keyData.salt, 'hex');
+      
+      // Derive key
+      const key = crypto.pbkdf2Sync(
+        userId,
+        salt,
+        SECURITY_CONFIG.encryption.iterations,
+        SECURITY_CONFIG.encryption.keyLength,
+        SECURITY_CONFIG.encryption.digest
+      );
+      
+      // Create decipher
+      const decipher = crypto.createDecipheriv(
+        SECURITY_CONFIG.encryption.algorithm,
+        key,
+        Buffer.from(iv, 'hex')
+      );
+      
+      // Decrypt
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+      decrypted += decipher.final('utf8');
+      
+      return decrypted;
+    } catch (error) {
+      console.error('Decryption error:', error);
+      throw new Error('Failed to decrypt data');
+    }
+  }
+
+  /**
+   * Enhanced rate limiting with IP tracking
+   */
+  static async checkRateLimit(userId: string, ip: string): Promise<boolean> {
+    try {
+      // Check IP block list
+      const now = Date.now();
+      const ipBlock = ipBlockList.get(ip);
+      
+      if (ipBlock && ipBlock.blockedUntil > now) {
+        await this.logSecurityEvent({
+          type: 'ip_blocked',
+          userId,
+          ip,
+          details: { blockedUntil: new Date(ipBlock.blockedUntil).toISOString() }
+        });
+        return false;
+      }
+      
+      // Check request rate
+      const windowStart = new Date(now - SECURITY_CONFIG.rateLimit.windowMs);
+      
+      const requestsQuery = query(
+        collection(db(), 'securityEvents'),
+        where('userId', '==', userId),
+        where('ip', '==', ip),
+        where('timestamp', '>=', windowStart)
+      );
+      
+      const snapshot = await getDocs(requestsQuery);
+      
+      if (snapshot.size >= SECURITY_CONFIG.rateLimit.maxRequests) {
+        // Block IP
+        ipBlockList.set(ip, {
+          count: 0,
+          blockedUntil: now + SECURITY_CONFIG.ipBlocking.blockDuration
+        });
+        
+        await this.logSecurityEvent({
+          type: 'rate_limit_exceeded',
+          userId,
+          ip,
+          details: { requestCount: snapshot.size }
+        });
+        
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Rate limit check error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Security event monitoring with alerts
+   */
+  static async monitorSecurityEvents(userId: string): Promise<void> {
+    try {
+      const windowStart = new Date(Date.now() - 3600000); // Last hour
+      
+      const eventsQuery = query(
+        collection(db(), 'securityEvents'),
+        where('userId', '==', userId),
+        where('timestamp', '>=', windowStart),
+        where('type', 'in', ['access_denied', 'suspicious_activity', 'rate_limit_exceeded'])
+      );
+      
+      const snapshot = await getDocs(eventsQuery);
+      
+      if (snapshot.size >= SECURITY_CONFIG.audit.alertThreshold) {
+        // Send alert (implement your alert mechanism here)
+        await this.sendSecurityAlert({
+          userId,
+          eventCount: snapshot.size,
+          timeWindow: '1 hour',
+          events: snapshot.docs.map(doc => doc.data())
+        });
+      }
+    } catch (error) {
+      console.error('Security monitoring error:', error);
+    }
+  }
+
+  /**
+   * Clean up old security events
+   */
+  static async cleanupOldEvents(): Promise<void> {
+    try {
+      const retentionDate = new Date(Date.now() - (SECURITY_CONFIG.audit.retentionDays * 24 * 60 * 60 * 1000));
+      
+      const oldEventsQuery = query(
+        collection(db(), 'securityEvents'),
+        where('timestamp', '<=', retentionDate)
+      );
+      
+      const snapshot = await getDocs(oldEventsQuery);
+      
+      // Delete old events in batches
+      const batch = snapshot.docs.map(doc => doc.ref);
+      
+      for (let i = 0; i < batch.length; i += 500) {
+        const chunk = batch.slice(i, i + 500);
+        await Promise.all(chunk.map(ref => updateDoc(ref, { archived: true })));
+      }
+    } catch (error) {
+      console.error('Event cleanup error:', error);
+    }
+  }
+
+  /**
+   * Send security alert
+   */
+  private static async sendSecurityAlert(alert: any): Promise<void> {
+    try {
+      await addDoc(collection(db(), 'securityAlerts'), {
+        ...alert,
+        timestamp: serverTimestamp(),
+        status: 'pending'
+      });
+    } catch (error) {
+      console.error('Error sending security alert:', error);
+    }
+  }
+
+  /**
+   * Log security event
+   */
+  private static async logSecurityEvent(event: any): Promise<void> {
+    try {
+      await addDoc(collection(db(), 'securityEvents'), {
+        ...event,
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Error logging security event:', error);
+    }
+  }
 } 
