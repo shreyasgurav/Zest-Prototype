@@ -9,6 +9,7 @@ import { checkPageOwnership } from '@/domains/authentication/services/auth.servi
 import { EventContentCollaborationService } from '@/domains/events/services/content-collaboration.service';
 import { EventCleanupService } from '@/domains/events/services/event-cleanup.service';
 import { EventProfileCard } from '@/components/ui/EventCard';
+import PublicVenueProfileSkeleton from './PublicVenueProfileSkeleton';
 import styles from './PublicVenueProfile.module.css';
 
 interface VenueData {
@@ -23,6 +24,15 @@ interface VenueData {
   city?: string;
   capacity?: number;
   ownerId?: string;
+  gallery?: string[];
+}
+
+interface EventData {
+  id: string;
+  startDate: string;
+  endDate: string;
+  title: string;
+  // ... add other event fields as needed
 }
 
 const PublicVenueProfile = () => {
@@ -35,6 +45,8 @@ const PublicVenueProfile = () => {
   const [error, setError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'gallery' | 'past'>('upcoming');
+  const [events, setEvents] = useState<EventData[]>([]);
 
   useEffect(() => {
     // Check if current user can manage this page
@@ -119,23 +131,118 @@ const PublicVenueProfile = () => {
     fetchVenueData();
   }, [username, currentUser]);
 
+  useEffect(() => {
+    const fetchEvents = async () => {
+      if (!eventIds.length) return;
+
+      try {
+        const db = getFirestore();
+        const eventDocs = await Promise.all(
+          eventIds.map(id => getDoc(doc(db, 'events', id)))
+        );
+
+        const eventsData = eventDocs
+          .filter(doc => doc.exists())
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as EventData[];
+
+        setEvents(eventsData);
+      } catch (error) {
+        console.error('Error fetching events:', error);
+      }
+    };
+
+    fetchEvents();
+  }, [eventIds]);
+
   const handleManage = () => {
     // Redirect to management interface
     window.location.href = `/venue?page=${venueDetails?.uid}`;
   };
 
+  const renderContent = () => {
+    if (!venueDetails) return null;
+
+    switch (activeTab) {
+      case 'upcoming':
+        // Filter for upcoming events (events with future dates)
+        const upcomingEvents = eventIds.filter(eventId => {
+          const event = events.find(e => e.id === eventId);
+          return event && new Date(event.startDate) >= new Date();
+        });
+
+        return upcomingEvents.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {upcomingEvents.map((eventId) => (
+              <EventProfileCard 
+                key={eventId} 
+                eventId={eventId}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: venueDetails.name }
+                }] : []}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.emptyMessage}>
+            No upcoming events at the moment.
+          </div>
+        );
+
+      case 'gallery':
+        return venueDetails.gallery && venueDetails.gallery.length > 0 ? (
+          <div className={styles.galleryGrid}>
+            {venueDetails.gallery.map((imageUrl, index) => (
+              <div key={index} className={styles.galleryItem}>
+                <img 
+                  src={imageUrl} 
+                  alt={`${venueDetails.name} - Gallery Image ${index + 1}`}
+                  className={styles.galleryImage}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={styles.emptyMessage}>
+            No gallery images available.
+          </div>
+        );
+
+      case 'past':
+        // Filter for past events (events with past dates)
+        const pastEvents = eventIds.filter(eventId => {
+          const event = events.find(e => e.id === eventId);
+          return event && new Date(event.startDate) < new Date();
+        });
+
+        return pastEvents.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {pastEvents.map((eventId) => (
+              <EventProfileCard 
+                key={eventId} 
+                eventId={eventId}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: venueDetails.name }
+                }] : []}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.emptyMessage}>
+            No past events to show.
+          </div>
+        );
+    }
+  };
+
   if (loading) {
-    return (
-      <div className={styles.loadingContainer}>
-        <div className={styles.skeletonBanner}></div>
-        <div className={styles.skeletonProfileImage}></div>
-        <div className={styles.skeletonContent}>
-          <div className={styles.skeletonName}></div>
-          <div className={styles.skeletonUsername}></div>
-          <div className={styles.skeletonBio}></div>
-        </div>
-      </div>
-    );
+    return <PublicVenueProfileSkeleton />;
   }
 
   if (error) {
@@ -158,7 +265,7 @@ const PublicVenueProfile = () => {
 
   return (
     <div className={styles.venueProfileContainer}>
-      {/* Banner and Profile Image Section */}
+      {/* Banner Section */}
       <div className={styles.venueBannerSection}>
         <div className={styles.venueBanner}>
           {venueDetails.bannerImage ? (
@@ -170,6 +277,7 @@ const PublicVenueProfile = () => {
           ) : (
             <div className={styles.defaultBanner} />
           )}
+          <div className={styles.bannerOverlay} />
         </div>
         <div className={styles.venueProfileImageContainer}>
           {venueDetails.photoURL ? (
@@ -179,7 +287,9 @@ const PublicVenueProfile = () => {
               className={styles.venueProfileImage}
             />
           ) : (
-            <div className={styles.noPhoto}>No profile photo</div>
+            <div className={styles.noPhoto}>
+              {venueDetails.name ? venueDetails.name.charAt(0).toUpperCase() : 'V'}
+            </div>
           )}
         </div>
       </div>
@@ -187,71 +297,54 @@ const PublicVenueProfile = () => {
       {/* Venue Details Section */}
       <div className={styles.venueDetailsSection}>
         <div className={styles.venueHeader}>
-          <div className={styles.venueInfo}>
-            <div className={styles.venueName}>
-              <h1>{venueDetails.name || "Venue Name"}</h1>
-            </div>
+          <div className={styles.venueName}>
+            <h1>{venueDetails.name || "Venue Name"}</h1>
+          </div>
+          <div className={styles.metaRow}>
             <div className={styles.venueUsername}>
-              <span>@{venueDetails.username || "username"}</span>
+              @{venueDetails.username || "username"}
             </div>
-            
-            <div className={styles.venueMetadata}>
-              {venueDetails.venueType && (
-                <div className={styles.venueType}>
-                  <span>{venueDetails.venueType}</span>
-                </div>
-              )}
-              {venueDetails.capacity && (
-                <div className={styles.venueCapacity}>
-                  <span>👥 Capacity: {venueDetails.capacity}</span>
-                </div>
-              )}
-              {(venueDetails.address || venueDetails.city) && (
-                <div className={styles.venueLocation}>
-                  <span>📍 {[venueDetails.address, venueDetails.city].filter(Boolean).join(', ')}</span>
-                </div>
-              )}
-            </div>
+            {venueDetails.venueType && (
+              <div className={styles.venueType}>
+                {venueDetails.venueType}
+              </div>
+            )}
           </div>
           
-          {canManage && (
-            <div className={styles.managementActions}>
-              <button onClick={handleManage} className={styles.manageButton}>
-                Manage Page
-              </button>
+          {venueDetails.bio && (
+            <div className={styles.venueBio}>
+              <p>{venueDetails.bio}</p>
             </div>
           )}
         </div>
-        
-        <div className={styles.venueBio}>
-          <p>{venueDetails.bio || "No description available"}</p>
-        </div>
       </div>
 
-      {/* Events Section */}
-      <div className={styles.eventsSection}>
-        <h2 className={styles.eventsHeading}>Events</h2>
-        
-        {/* All Events (Owned + Collaborated) */}
-        {eventIds.length > 0 ? (
-          <div className={styles.eventsGrid}>
-            {eventIds.map((eventId) => (
-              <EventProfileCard 
-                key={eventId} 
-                eventId={eventId}
-                tags={collaboratedEventIds.includes(eventId) ? [{ 
-                  type: 'collaboration', 
-                  label: 'COLLAB',
-                  metadata: { collaboratorName: venueDetails?.name }
-                }] : []}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className={styles.noEventsMessage}>
-            No upcoming events at the moment.
-          </div>
-        )}
+      {/* Content Tabs */}
+      <div className={styles.contentContainer}>
+        <div className={styles.tabsContainer}>
+          <button 
+            className={`${styles.tabButton} ${activeTab === 'upcoming' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('upcoming')}
+          >
+            Upcoming
+          </button>
+          <button 
+            className={`${styles.tabButton} ${activeTab === 'gallery' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('gallery')}
+          >
+            Gallery
+          </button>
+          <button 
+            className={`${styles.tabButton} ${activeTab === 'past' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('past')}
+          >
+            Past
+          </button>
+        </div>
+
+        <div className={styles.contentSection}>
+          {renderContent()}
+        </div>
       </div>
     </div>
   );

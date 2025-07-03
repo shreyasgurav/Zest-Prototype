@@ -854,8 +854,8 @@ function EventProfile() {
                       }
                     </div>
                   </div>
-                </div>
-
+            </div>
+            
                 {/* Date and Time Info */}
                 <div className={styles.dateTimeInfo}>
                   <div className={styles.dayText}>
@@ -875,16 +875,16 @@ function EventProfile() {
               {/* Location Info */}
               <div 
                 className={styles.locationSection}
-                onClick={handleLocationClick}
-                style={{ cursor: 'pointer' }}
-              >
+              onClick={handleLocationClick}
+              style={{ cursor: 'pointer' }}
+            >
                 <div className={styles.locationIconBox}>
                   <MapPin className={styles.locationIcon} />
-                </div>
+            </div>
                 <div className={styles.locationInfo}>
                   <div className={styles.venueText}>
                     {displayData?.venue || 'Venue TBD'}
-                  </div>
+              </div>
                   <div className={styles.locationText}>
                     {event.architecture === 'session-centric' && event.venue_type === 'per_session' 
                       ? 'Multiple Venues' 

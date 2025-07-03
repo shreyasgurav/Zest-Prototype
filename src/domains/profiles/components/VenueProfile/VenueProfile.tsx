@@ -429,7 +429,7 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
       {/* Display Venue Details */}
       <div className={styles.venueProfileContainer}>
         <div className={styles.venueBannerSection}>
-          <div className={styles.venueBanner} onClick={handleBannerClick} style={{ cursor: 'pointer' }}>
+          <div className={styles.venueBanner} onClick={handleBannerClick}>
             {bannerImage ? (
               <img
                 src={bannerImage}
@@ -444,7 +444,7 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
               <span>Edit Banner</span>
             </div>
           </div>
-          <div className={styles.venueProfileImageContainer} onClick={handleProfilePhotoClick} style={{ cursor: 'pointer' }}>
+          <div className={styles.venueProfileImageContainer} onClick={handleProfilePhotoClick}>
             {photoURL ? (
               <img 
                 src={photoURL} 
@@ -453,7 +453,7 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
               />
             ) : (
               <div className={styles.noPhoto}>
-                {name ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'VEN'}
+                {name ? name.charAt(0).toUpperCase() : 'V'}
               </div>
             )}
             <div className={styles.profileOverlay}>
@@ -464,156 +464,115 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
         </div>
         
         <div className={styles.venueDetailsSection}>
-          <div className={styles.venueName}>
-            <h3>{name || "Venue Name"}</h3>
-          </div>
-          <div className={styles.venueUsername}>
-            <span>@{username || "username"}</span>
-          </div>
-          {venueType && (
-            <div className={styles.venueType}>
-              <span className={styles.typeTag}>{venueType}</span>
+          <div className={styles.venueHeader}>
+            <div className={styles.venueName}>
+              <h1>{name || "Venue Name"}</h1>
             </div>
-          )}
-          {location && (
-            <div className={styles.venueLocation}>
-              <span>📍 {location}</span>
-            </div>
-          )}
-          {capacity > 0 && (
-            <div className={styles.venueCapacity}>
-              <span>👥 Capacity: {capacity}</span>
-            </div>
-          )}
-          <div className={styles.venueBio}>
-            <p>{bio || "No description available"}</p>
-          </div>
-
-          {/* Profile Action Buttons */}
-          {!editMode && (
-            <div className={styles.profileButtonsContainer}>
-              <button 
-                onClick={() => setEditMode(true)}
-                className={styles.editProfileButton}
-              >
-                Edit Profile
-              </button>
-              {username && (
-                <button 
-                  onClick={() => window.open(`/venue/${username}`, '_blank')}
-                  className={styles.viewPublicButton}
-                >
-                  View Public Page
-                </button>
+            <div className={styles.metaRow}>
+              <div className={styles.venueUsername}>
+                @{username || "username"}
+              </div>
+              {venueType && (
+                <div className={styles.venueType}>
+                  {venueType}
+                </div>
               )}
-              <button 
-                onClick={() => {
-                  // Navigate to create page with venue context
-                  if (currentVenuePageId) {
-                    router.push(`/create?from=venue&pageId=${currentVenuePageId}&name=${encodeURIComponent(name || '')}&username=${encodeURIComponent(username || '')}`);
-                  } else {
-                    router.push('/create');
-                  }
-                }}
-                className={styles.createButton}
-              >
-                Create
-              </button>
             </div>
-          )}
+
+            {/* Profile Action Buttons */}
+            {!editMode && (
+              <div className={styles.profileButtonsContainer}>
+                <button 
+                  onClick={() => setEditMode(true)}
+                  className={styles.editProfileButton}
+                >
+                  Edit Profile
+                </button>
+                {username && (
+                  <button 
+                    onClick={() => window.open(`/venue/${username}`, '_blank')}
+                    className={styles.viewPublicButton}
+                  >
+                    View Public Page
+                  </button>
+                )}
+                <button 
+                  onClick={() => {
+                    if (currentVenuePageId) {
+                      router.push(`/create?from=venue&pageId=${currentVenuePageId}&name=${encodeURIComponent(name || '')}&username=${encodeURIComponent(username || '')}`);
+                    } else {
+                      router.push('/create');
+                    }
+                  }}
+                  className={styles.createButton}
+                >
+                  Create
+                </button>
+              </div>
+            )}
+
+            {bio && (
+              <div className={styles.venueBio}>
+                <p>{bio}</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Edit Form */}
-      {editMode && (
-        <div className={styles.editProfileContainer}>
-          <div className={styles.inputGroup}>
-            <label htmlFor="name">Venue Name:</label>
-            <input
-              id="name"
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Enter venue name"
-              className={styles.profileInput}
-            />
-          </div>
+        {/* Edit Form */}
+        {editMode && (
+          <div className={styles.editProfileContainer}>
+            <div className={styles.inputGroup}>
+              <label htmlFor="name">Venue Name:</label>
+              <input
+                id="name"
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Enter venue name"
+                className={styles.profileInput}
+              />
+            </div>
 
-          <div className={styles.inputGroup}>
-            <label htmlFor="username">Username:</label>
-            <input
-              id="username"
-              type="text"
-              value={newUsername}
-              onChange={handleUsernameChange}
-              placeholder="Enter username"
-              className={styles.profileInput}
-            />
-            {isCheckingUsername && <span className={styles.checking}>Checking username...</span>}
-            {usernameError && <span className={styles.error}>{usernameError}</span>}
-          </div>
+            <div className={styles.inputGroup}>
+              <label htmlFor="username">Username:</label>
+              <input
+                id="username"
+                type="text"
+                value={newUsername}
+                onChange={handleUsernameChange}
+                placeholder="Enter username"
+                className={styles.profileInput}
+              />
+              {isCheckingUsername && <span className={styles.checking}>Checking username...</span>}
+              {usernameError && <span className={styles.error}>{usernameError}</span>}
+            </div>
 
-          <div className={styles.inputGroup}>
-            <label htmlFor="venueType">Venue Type:</label>
-            <input
-              id="venueType"
-              type="text"
-              value={newVenueType}
-              onChange={(e) => setNewVenueType(e.target.value)}
-              placeholder="e.g., Concert Hall, Club, Restaurant"
-              className={styles.profileInput}
-            />
-          </div>
+            <div className={styles.inputGroup}>
+              <label htmlFor="venueType">Venue Type:</label>
+              <input
+                id="venueType"
+                type="text"
+                value={newVenueType}
+                onChange={(e) => setNewVenueType(e.target.value)}
+                placeholder="e.g., Concert Hall, Club, Restaurant"
+                className={styles.profileInput}
+              />
+            </div>
 
-          <div className={styles.inputGroup}>
-            <label htmlFor="location">Location:</label>
-            <input
-              id="location"
-              type="text"
-              value={newLocation}
-              onChange={(e) => setNewLocation(e.target.value)}
-              placeholder="e.g., Mumbai, India"
-              className={styles.profileInput}
-            />
-          </div>
+            <div className={styles.inputGroup}>
+              <label htmlFor="bio">Description:</label>
+              <textarea
+                id="bio"
+                value={newBio}
+                onChange={(e) => setNewBio(e.target.value)}
+                placeholder="Describe your venue and services"
+                className={styles.profileInput}
+                rows={4}
+              />
+            </div>
 
-          <div className={styles.inputGroup}>
-            <label htmlFor="capacity">Capacity:</label>
-            <input
-              id="capacity"
-              type="number"
-              value={newCapacity}
-              onChange={(e) => setNewCapacity(parseInt(e.target.value) || 0)}
-              placeholder="e.g., 500"
-              className={styles.profileInput}
-            />
-          </div>
-
-          <div className={styles.inputGroup}>
-            <label htmlFor="address">Address:</label>
-            <textarea
-              id="address"
-              value={newAddress}
-              onChange={(e) => setNewAddress(e.target.value)}
-              placeholder="Enter full address"
-              className={styles.profileInput}
-              rows={3}
-            />
-          </div>
-
-          <div className={styles.inputGroup}>
-            <label htmlFor="bio">Description:</label>
-            <textarea
-              id="bio"
-              value={newBio}
-              onChange={(e) => setNewBio(e.target.value)}
-              placeholder="Describe your venue and services"
-              className={styles.profileInput}
-              rows={4}
-            />
-          </div>
-
-          <div className={styles.inputGroup}>
+            <div className={styles.inputGroup}>
               <label>Phone Number:</label>
               <input
                 type="tel"
@@ -625,23 +584,35 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
               <span className={styles.helperText}>Phone number cannot be changed</span>
             </div>
 
-          <div className={styles.buttonGroup}>
-            <button 
-              onClick={handleSaveProfile}
-              disabled={isCheckingUsername || !!usernameError}
-              className={styles.saveCancleButton}
-            >
-              Save
-            </button>
-            <button 
-              onClick={() => setEditMode(false)}
-              className={styles.saveCancleButton}
-            >
-              Cancel
-            </button>
+            <div className={styles.buttonGroup}>
+              <button 
+                onClick={handleSaveProfile}
+                disabled={isCheckingUsername || !!usernameError}
+                className={styles.saveCancleButton}
+              >
+                Save
+              </button>
+              <button 
+                onClick={() => setEditMode(false)}
+                className={styles.saveCancleButton}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Events & Activities Dashboard Section */}
+        <div className={styles.ownedEventsSection}>
+          <div className={styles.sectionHeader}>
+            <h3>🏟️ Events & Activities</h3>
+            <p>Manage your created events and collaborated events</p>
+          </div>
+          <div className={styles.venueDashboardSection}>
+            <DashboardSection pageId={currentVenuePageId || undefined} pageType="venue" />
           </div>
         </div>
-      )}
+      </div>
 
       {/* Photo Options Modal */}
       {showPhotoModal && (
@@ -683,17 +654,6 @@ const VenueProfile: React.FC<VenueProfileProps> = ({ selectedPageId }) => {
           </div>
         </div>
       )}
-
-      {/* Events & Activities Dashboard Section */}
-      <div className={styles.ownedEventsSection}>
-        <div className={styles.sectionHeader}>
-          <h3>🏟️ Events & Activities</h3>
-          <p>Manage your created events and collaborated events</p>
-        </div>
-        <div className={styles.venueDashboardSection}>
-          <DashboardSection pageId={currentVenuePageId || undefined} pageType="venue" />
-        </div>
-      </div>
     </div>
   );
 };

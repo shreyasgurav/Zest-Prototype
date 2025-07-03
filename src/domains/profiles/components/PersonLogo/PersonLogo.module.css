@@ -709,21 +709,21 @@
   .navigationGrid {
     padding: 8px;
     margin: 4px 6px;
-  }
+}
 
   .navItem {
     padding: 8px 4px;
     min-height: 40px;
     gap: 4px;
-  }
+}
 
   .navIcon {
     width: 14px;
     height: 14px;
-  }
+}
 
   .navLabel {
-    font-size: 10px;
+  font-size: 10px;
   }
 
   .userInfo {

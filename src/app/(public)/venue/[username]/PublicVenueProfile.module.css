@@ -1,73 +1,75 @@
 /* Loading States */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
 .loadingContainer {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
+  min-height: 100vh;
+  background: linear-gradient(to bottom, #1e293b, #000000);
+  color: white;
+  overflow-x: hidden;
 }
 
 .skeletonBanner {
+  position: relative;
+  height: 320px;
   width: 100%;
-  height: 200px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
-  border-radius: 12px;
-  margin-bottom: 20px;
+  background: linear-gradient(90deg, #374151 0%, #4b5563 50%, #374151 100%);
+  animation: shimmer 2s infinite linear;
+  background-size: 1000px 100%;
 }
 
 .skeletonProfileImage {
-  width: 120px;
-  height: 120px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
+  width: 128px;
+  height: 128px;
   border-radius: 50%;
-  margin: -60px auto 20px;
-  border: 4px solid white;
+  background: linear-gradient(90deg, #374151 0%, #4b5563 50%, #374151 100%);
+  animation: shimmer 2s infinite linear;
+  background-size: 1000px 100%;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+  margin: -64px auto 24px;
 }
 
 .skeletonContent {
-  text-align: center;
-  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 32px;
 }
 
 .skeletonName {
-  width: 200px;
-  height: 32px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
-  margin: 0 auto 10px;
+  height: 36px;
+  width: 250px;
+  background: linear-gradient(90deg, #374151 0%, #4b5563 50%, #374151 100%);
+  animation: shimmer 2s infinite linear;
+  background-size: 1000px 100%;
   border-radius: 6px;
+  margin: 0 auto 12px;
 }
 
 .skeletonUsername {
-  width: 120px;
   height: 20px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
-  margin: 0 auto 15px;
-  border-radius: 6px;
+  width: 150px;
+  background: linear-gradient(90deg, #374151 0%, #4b5563 50%, #374151 100%);
+  animation: shimmer 2s infinite linear;
+  background-size: 1000px 100%;
+  border-radius: 4px;
+  margin: 0 auto 20px;
 }
 
 .skeletonBio {
-  width: 80%;
   height: 60px;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
-  margin: 0 auto;
+  width: 80%;
+  background: linear-gradient(90deg, #374151 0%, #4b5563 50%, #374151 100%);
+  animation: shimmer 2s infinite linear;
+  background-size: 1000px 100%;
   border-radius: 6px;
-}
-
-@keyframes loading {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
+  margin: 0 auto;
 }
 
 /* Error States */
@@ -76,40 +78,42 @@
   padding: 60px 20px;
   max-width: 600px;
   margin: 0 auto;
+  color: white;
 }
 
 .errorContainer h2 {
-  color: #333;
   margin-bottom: 15px;
   font-size: 28px;
+  color: white;
 }
 
 .errorContainer p {
-  color: #666;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 16px;
   line-height: 1.5;
 }
 
 /* Main Container */
 .venueProfileContainer {
-  max-width: 1200px;
-  margin: 0 auto;
-  background: white;
   min-height: 100vh;
+  background: linear-gradient(to bottom, #1e293b, #000000);
+  color: white;
+  overflow-x: hidden;
 }
 
 /* Banner Section */
 .venueBannerSection {
   position: relative;
-  margin-bottom: 60px;
+  height: 240px;
+  overflow: visible;
 }
 
 .venueBanner {
-  width: 100%;
-  height: 240px;
   position: relative;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  border-radius: 0 0 16px 16px;
+  z-index: 1;
 }
 
 .bannerImage {
@@ -122,33 +126,47 @@
   width: 100%;
   height: 100%;
   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 18px;
-  font-weight: 500;
+}
+
+.bannerOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, 
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.2) 50%,
+    rgba(0, 0, 0, 0.8) 100%
+  );
+  z-index: 2;
 }
 
 .venueProfileImageContainer {
   position: absolute;
-  bottom: -60px;
+  bottom: -50px;
   left: 50%;
   transform: translateX(-50%);
-  width: 120px;
-  height: 120px;
+  width: 128px;
+  height: 128px;
   border-radius: 50%;
-  border: 4px solid white;
   overflow: hidden;
-  background: white;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  background: #1e293b;
+}
+
+.venueProfileImageContainer:hover {
+  transform: translateX(-50%) scale(1.05);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
 }
 
 .venueProfileImage {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 50%;
 }
 
 .noPhoto {
@@ -159,208 +177,306 @@
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 12px;
-  text-align: center;
-  border-radius: 50%;
+  font-size: 32px;
+  font-weight: 700;
 }
 
 /* Venue Details */
 .venueDetailsSection {
-  padding: 20px;
+  padding: 70px 32px 40px;
   text-align: center;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .venueHeader {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 30px;
-}
-
-.venueInfo {
-  flex: 1;
+  margin-bottom: 32px;
 }
 
 .venueName h1 {
-  font-size: 32px;
-  font-weight: 700;
-  color: #1a1a1a;
-  margin: 0 0 8px 0;
-  line-height: 1.2;
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin: 0 0 16px 0;
+  background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
 }
 
 .venueUsername {
   font-size: 18px;
-  color: #666;
-  margin-bottom: 16px;
+  color: rgba(255, 255, 255, 0.7);
   font-weight: 500;
+}
+
+.venueType {
+  background: rgba(240, 147, 251, 0.2);
+  border: 1px solid rgba(240, 147, 251, 0.3);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #f093fb;
+  display: inline-block;
 }
 
 .venueMetadata {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  align-items: center;
-}
-
-.venueType {
-  display: inline-block;
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.venueCapacity {
-  color: #666;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.venueLocation {
-  color: #666;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.managementActions {
-  display: flex;
   gap: 12px;
+  align-items: center;
+  margin-bottom: 32px;
 }
 
-.manageButton {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 8px rgba(240, 147, 251, 0.3);
-}
-
-.manageButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(240, 147, 251, 0.4);
+.venueCapacity,
+.venueLocation {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .venueBio {
   max-width: 600px;
   margin: 0 auto;
-  color: #444;
+  color: rgba(255, 255, 255, 0.9);
   font-size: 16px;
   line-height: 1.6;
 }
 
-.venueBio p {
-  margin: 0;
+/* Content Container */
+.contentContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 32px;
 }
 
-/* Content Sections */
-.contentSections {
-  padding: 40px 20px;
-  background: #f8f9fa;
-  border-top: 1px solid #e9ecef;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 20px;
+/* Tabs */
+.tabsContainer {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 32px;
 }
 
-.placeholderSection {
-  background: white;
-  padding: 40px;
-  border-radius: 12px;
-  text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.placeholderSection h3 {
-  color: #333;
-  margin-bottom: 16px;
-  font-size: 24px;
+.tabButton {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
   font-weight: 600;
+  padding: 16px 0;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: relative;
+  transition: color 0.3s ease;
 }
 
-.placeholderSection p {
-  color: #666;
-  font-size: 16px;
-  margin: 0;
+.tabButton:hover {
+  color: rgba(255, 255, 255, 0.9);
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .venueBanner {
-    height: 180px;
-  }
-  
-  .venueProfileImageContainer {
-    width: 100px;
-    height: 100px;
-    bottom: -50px;
-  }
-  
-  .venueDetailsSection {
-    padding: 20px 16px;
+.activeTab {
+  color: white;
+}
+
+.activeTab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: white;
+}
+
+/* Content Section */
+.contentSection {
+  min-height: 400px;
+}
+
+/* Events Grid */
+.eventsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+}
+
+/* Gallery Grid */
+.galleryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 24px;
+}
+
+.galleryItem {
+  position: relative;
+  padding-top: 100%; /* Square aspect ratio */
+  overflow: hidden;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  transition: transform 0.3s ease;
+}
+
+.galleryItem:hover {
+  transform: translateY(-4px);
+}
+
+.galleryImage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.galleryItem:hover .galleryImage {
+  transform: scale(1.05);
+}
+
+.emptyMessage {
+  text-align: center;
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 60px 20px;
+}
+
+/* Responsive Styles */
+@media (max-width: 1440px) {
+  .venueBannerSection {
+    height: 220px;
   }
   
   .venueName h1 {
-    font-size: 24px;
+    font-size: 42px;
   }
   
-  .venueHeader {
-    flex-direction: column;
+  .venueProfileImageContainer {
+    width: 120px;
+    height: 120px;
+    bottom: -60px;
   }
-  
-  .managementActions {
-    width: 100%;
-    justify-content: center;
+
+  .contentContainer {
+    padding: 0 24px;
   }
-  
-  .manageButton {
-    flex: 1;
-    max-width: 200px;
-  }
-  
+}
+
+@media (max-width: 1024px) {
   .contentSections {
-    padding: 20px 16px;
     grid-template-columns: 1fr;
+    gap: 40px;
+  }
+}
+
+@media (max-width: 768px) {
+  .venueBannerSection {
+    height: 200px;
   }
   
-  .placeholderSection {
-    padding: 30px 20px;
+  .venueDetailsSection {
+    padding: 60px 24px 30px;
   }
   
-  .venueMetadata {
-    gap: 12px;
+  .venueProfileImageContainer {
+    width: 96px;
+    height: 96px;
+    bottom: -40px;
+  }
+  
+  .venueName h1 {
+    font-size: 36px;
+  }
+  
+  .venueUsername {
+    font-size: 16px;
+  }
+  
+  .venueType {
+    font-size: 13px;
+    padding: 5px 14px;
+  }
+  
+  .venueCapacity,
+  .venueLocation {
+    font-size: 14px;
+  }
+  
+  .sectionHeading {
+    font-size: 24px;
+    margin-bottom: 24px;
+  }
+  
+  .contentContainer {
+    padding: 0 16px;
+  }
+
+  .tabsContainer {
+    gap: 24px;
+  }
+
+  .tabButton {
+    font-size: 13px;
+  }
+
+  .eventsGrid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+  }
+
+  .galleryGrid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+  }
+
+  .emptyMessage {
+    font-size: 16px;
+    padding: 40px 16px;
   }
 }
 
 @media (max-width: 480px) {
-  .venueBanner {
-    height: 150px;
+  .venueBannerSection {
+    height: 180px;
+  }
+  
+  .venueDetailsSection {
+    padding: 50px 16px 24px;
   }
   
   .venueProfileImageContainer {
     width: 80px;
     height: 80px;
-    bottom: -40px;
+    bottom: -35px;
   }
   
   .venueName h1 {
-    font-size: 20px;
+    font-size: 28px;
+  }
+  
+  .metaRow {
+    gap: 12px;
+    margin-bottom: 20px;
   }
   
   .venueUsername {
-    font-size: 16px;
+    font-size: 15px;
   }
   
   .venueType {
@@ -370,43 +486,90 @@
   
   .venueCapacity,
   .venueLocation {
+    font-size: 13px;
+  }
+  
+  .venueBio {
     font-size: 14px;
   }
   
-  .manageButton {
-    padding: 10px 20px;
-    font-size: 13px;
+  .sectionHeading {
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+  
+  .contentContainer {
+    padding: 0 12px;
+  }
+
+  .tabsContainer {
+    gap: 16px;
+  }
+
+  .tabButton {
+    font-size: 12px;
+  }
+
+  .eventsGrid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+
+  .galleryGrid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+  }
+
+  .emptyMessage {
+    font-size: 15px;
+    padding: 32px 12px;
   }
 }
 
-/* Events Section */
-.eventsSection {
-  margin-top: 40px;
-  padding: 0 24px;
-}
+@media (max-width: 360px) {
+  .venueBannerSection {
+    height: 160px;
+  }
+  
+  .venueProfileImageContainer {
+    width: 70px;
+    height: 70px;
+    bottom: -30px;
+  }
+  
+  .venueName h1 {
+    font-size: 24px;
+  }
+  
+  .metaRow {
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  
+  .venueUsername {
+    font-size: 14px;
+  }
+  
+  .venueType {
+    font-size: 11px;
+    padding: 3px 10px;
+  }
+  
+  .sectionHeading {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+  
+  .contentContainer {
+    padding: 0 8px;
+  }
 
-.eventsHeading {
-  font-size: 24px;
-  color: #333;
-  margin-bottom: 30px;
-  font-family: "Schoolbell", cursive;
-  font-weight: 400;
-  font-style: normal;
-}
+  .tabsContainer {
+    gap: 12px;
+  }
 
-.eventsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, 280px);
-  gap: 24px;
-  margin-top: 20px;
-  justify-content: center;
-}
-
-.noEventsMessage {
-  text-align: center;
-  font-size: 18px;
-  color: rgba(102, 102, 102, 0.8);
-  margin-top: 50px;
-  padding: 100px 20px;
-  font-family: 'Arial', sans-serif;
+  .tabButton {
+    font-size: 11px;
+    padding: 12px 0;
+  }
 } 

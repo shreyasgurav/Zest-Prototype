@@ -308,17 +308,19 @@
 }
 
 .availableSlots {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-start;
+  align-items: center;
 }
 
 .slotOption {
   background: rgba(255, 255, 255, 0.03);
   color: rgba(255, 255, 255, 0.8);
-  padding: 18px 20px;
+  padding: 12px 20px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+  border-radius: 50px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   text-align: center;
@@ -327,6 +329,8 @@
   backdrop-filter: blur(15px);
   position: relative;
   overflow: hidden;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .slotOption::before {
@@ -346,7 +350,7 @@
 
 .slotOption:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(139, 92, 246, 0.3);
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
   color: rgba(255, 255, 255, 0.9);
@@ -359,6 +363,7 @@
   box-shadow: 
     0 8px 25px rgba(139, 92, 246, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
 }
 
 .slotOption:disabled {
@@ -849,6 +854,7 @@
   letter-spacing: 0.8px;
   position: relative;
   overflow: hidden;
+  margin-top: 32px;
 }
 
 .nextButton::before,
@@ -889,6 +895,75 @@
 
 .nextButton:active,
 .backButton:active {
+  transform: translateY(0);
+}
+
+/* Book/Pay Button */
+.bookButton {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  border: none;
+  border-radius: 16px;
+  padding: 18px 36px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 200px;
+  box-shadow: 
+    0 8px 25px rgba(16, 185, 129, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  position: relative;
+  overflow: hidden;
+  margin-top: 32px;
+  width: 100%;
+}
+
+.bookButton::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transition: left 0.5s ease;
+}
+
+.bookButton:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+.bookButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 12px 35px rgba(16, 185, 129, 0.35),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.bookButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  background: rgba(107, 114, 128, 0.8);
+  color: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+}
+
+.bookButton:disabled:hover {
+  background: rgba(107, 114, 128, 0.8);
+  transform: none;
+  box-shadow: none;
+}
+
+.bookButton:active:not(:disabled) {
   transform: translateY(0);
 }
 
@@ -981,14 +1056,18 @@
   }
 
   .availableSlots {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
+    gap: 10px;
+    justify-content: center;
   }
 
-  .dateOption,
-  .slotOption {
+  .dateOption {
     padding: 16px;
     font-size: 14px;
+  }
+
+  .slotOption {
+    padding: 8px 14px;
+    font-size: 12px;
   }
 
   .ticketType {
@@ -1041,7 +1120,8 @@
   }
 
   .nextButton,
-  .backButton {
+  .backButton,
+  .bookButton {
     width: 100%;
     padding: 14px 24px;
     font-size: 14px;
@@ -1076,7 +1156,8 @@
   }
 
   .availableSlots {
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 8px;
+    justify-content: center;
   }
 
   .ticketType {
@@ -1114,25 +1195,35 @@
 /* Session-centric styles */
 .sessionSelector {
   margin-top: 20px;
+  margin-bottom: 32px;
+}
+
+.timeSelector {
+  margin-bottom: 32px;
 }
 
 .availableSessions {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 16px;
+  justify-content: flex-start;
+  align-items: center;
 }
 
 .sessionOption {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 50px;
+  padding: 12px 20px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  text-align: left;
+  text-align: center;
   backdrop-filter: blur(15px);
   position: relative;
   overflow: hidden;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .sessionOption::before {
@@ -1158,11 +1249,13 @@
 }
 
 .sessionOption.selected {
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(5, 150, 105, 0.08));
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.15));
   border-color: rgba(16, 185, 129, 0.4);
+  color: #10b981;
   box-shadow: 
-    0 8px 25px rgba(16, 185, 129, 0.15),
+    0 8px 25px rgba(16, 185, 129, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
 }
 
 .sessionHeader {
@@ -1331,98 +1424,31 @@
 
 /* Mobile responsive for sessions */
 @media (max-width: 768px) {
+  .availableSessions {
+    gap: 10px;
+    justify-content: center;
+  }
+  
   .sessionOption {
-    padding: 16px;
-  }
-  
-  .sessionHeader {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
-  .sessionHeader h4 {
-    font-size: 1.1em;
-    gap: 6px;
-  }
-  
-  .sessionHeader h4 svg {
-    width: 14px;
-    height: 14px;
-  }
-  
-  .sessionDate {
-    font-size: 0.8em;
-    padding: 3px 10px;
-  }
-  
-  .sessionHeader .sessionTime {
-    font-size: 0.8em;
-    padding: 3px 10px;
-  }
-  
-  .sessionCapacity {
-    text-align: left;
-    margin-top: 12px;
+    padding: 10px 16px;
+    font-size: 13px;
   }
   
   .selectedSessionInfo {
     padding: 10px 12px;
     font-size: 0.85em;
   }
-  
-  .multiDayBadge {
-    font-size: 10px;
-    padding: 3px 8px;
-    margin-left: 8px;
-    display: block;
-    margin-top: 4px;
-    width: fit-content;
-  }
-  
-  .dateRange {
-    font-size: 13px;
-    margin-bottom: 6px;
-  }
-  
-  .multiDayDuration {
-    font-size: 0.8em;
-    margin-left: 4px;
-    padding: 1px 6px;
-    display: block;
-    margin-top: 4px;
-    width: fit-content;
-  }
 }
 
 @media (max-width: 480px) {
+  .availableSessions {
+    gap: 8px;
+    justify-content: center;
+  }
+  
   .sessionOption {
-    padding: 12px;
-  }
-  
-  .sessionTime,
-  .sessionVenue {
-    font-size: 0.8em;
-  }
-  
-  .sessionDescription {
-    font-size: 0.8em;
-  }
-  
-  .multiDayBadge {
-    font-size: 9px;
-    padding: 2px 6px;
-    margin-top: 2px;
-  }
-  
-  .dateRange {
+    padding: 8px 14px;
     font-size: 12px;
-  }
-  
-  .multiDayDuration {
-    font-size: 0.75em;
-    padding: 1px 4px;
-    margin-top: 2px;
   }
 }
 

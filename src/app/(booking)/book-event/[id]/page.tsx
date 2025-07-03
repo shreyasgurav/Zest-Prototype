@@ -15,6 +15,7 @@ import { getAuth } from 'firebase/auth';
 import { FaCalendarAlt, FaClock, FaMapMarkerAlt, FaTicketAlt, FaUser, FaChevronRight, FaCreditCard, FaExclamationTriangle, FaSync } from 'react-icons/fa';
 import styles from './BookingFlow.module.css';
 import { initiateRazorpayPayment, BookingData } from '@/domains/payments/services/razorpay';
+import { DateSelector } from '@/components/ui';
 
 interface TimeSlot {
   date: string;
@@ -667,38 +668,19 @@ function BookingFlow() {
             {/* Session-Centric Event: Date and Session Selection */}
             {event.architecture === 'session-centric' ? (
               <>
-                <h2>Select Date & Session</h2>
-                
                 {/* Step 1a: Date Selection */}
-                <div className={styles.dateSelector}>
-                  <h4><FaCalendarAlt /> Select Date</h4>
-                  <div className={styles.availableDates}>
-                    {availableSessionDates.map((date) => (
-                      <button
-                        key={date}
-                        className={`${styles.dateOption} ${selectedSessionDate === date ? styles.selected : ''}`}
-                        onClick={() => handleSessionDateSelect(date)}
-                      >
-                        {formatDate(date)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <DateSelector
+                  availableDates={availableSessionDates.map(date => new Date(date))}
+                  selectedDate={selectedSessionDate ? new Date(selectedSessionDate) : null}
+                  onDateSelect={(date) => handleSessionDateSelect(date.toISOString().split('T')[0])}
+                />
 
                 {/* Step 1b: Session Selection for Selected Date */}
                 {selectedSessionDate && (
                   <div className={styles.sessionSelector}>
-                    <h4><FaClock /> Select Session for {formatDate(selectedSessionDate)}</h4>
                     <div className={styles.availableSessions}>
                       {sessionsForSelectedDate.map((session, index) => {
                         const isMultiDay = session.end_date && session.end_date !== session.date;
-                        const startDateTime = new Date(`${session.date} ${session.start_time}`);
-                        const endDateTime = new Date(`${session.end_date || session.date} ${session.end_time}`);
-                        
-                        // Calculate duration for display
-                        const diffMs = endDateTime.getTime() - startDateTime.getTime();
-                        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                        const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                         
                         return (
                           <button
@@ -706,36 +688,12 @@ function BookingFlow() {
                             className={`${styles.sessionOption} ${selectedSession?.id === session.id ? styles.selected : ''}`}
                             onClick={() => handleSessionSelect(session)}
                           >
-                            <div className={styles.sessionHeader}>
-                              <h4>
-                                <FaClock /> {formatTime(session.start_time)} - {formatTime(session.end_time)}
-                                {isMultiDay && (
-                                  <span className={styles.multiDayBadge}>
-                                    {diffDays} day{diffDays > 1 ? 's' : ''}{diffHours > 0 ? `, ${diffHours}h` : ''}
-                                  </span>
-                                )}
-                              </h4>
-                            </div>
-                            <div className={styles.sessionDetails}>
-                              {isMultiDay && (
-                                <div className={styles.dateRange}>
-                                  <FaCalendarAlt /> {formatDate(session.date)} - {formatDate(session.end_date!)}
-                                </div>
-                              )}
-                              {session.venue && session.venue !== event.event_venue && (
-                                <div className={styles.sessionVenue}>
-                                  <FaMapMarkerAlt /> {session.venue}
-                                </div>
-                              )}
-                              {session.description && (
-                                <div className={styles.sessionDescription}>
-                                  {session.description}
-                                </div>
-                              )}
-                            </div>
-                            <div className={styles.sessionCapacity}>
-                              {session.tickets.reduce((sum, ticket) => sum + ticket.available_capacity, 0)} / {session.maxCapacity || session.tickets.reduce((sum, ticket) => sum + ticket.capacity, 0)} available
-                            </div>
+                            {formatTime(session.start_time)} - {formatTime(session.end_time)}
+                            {isMultiDay && (
+                              <span style={{ marginLeft: '8px', fontSize: '12px', opacity: 0.8 }}>
+                                (Multi-day)
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -755,28 +713,14 @@ function BookingFlow() {
             ) : (
               /* Legacy Event: Date & Time Selection */
               <>
-                <h2>Select Date & Time</h2>
-                
-                {availableDates.length > 1 && (
-                  <div className={styles.dateSelector}>
-                    <h4><FaCalendarAlt /> Select Date</h4>
-                    <div className={styles.availableDates}>
-                      {availableDates.map((date) => (
-                        <button
-                          key={date}
-                          className={`${styles.dateOption} ${selectedDate === date ? styles.selected : ''}`}
-                          onClick={() => handleDateSelect(date)}
-                        >
-                          {formatDate(date)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <DateSelector
+                  availableDates={availableDates.map(date => new Date(date))}
+                  selectedDate={selectedDate ? new Date(selectedDate) : null}
+                  onDateSelect={(date) => handleDateSelect(date.toISOString().split('T')[0])}
+                />
 
                 {selectedDate && (
                   <div className={styles.timeSelector}>
-                    <h4><FaClock /> Select Time</h4>
                     <div className={styles.availableSlots}>
                       {timeSlots.map((slot, index) => (
                         <button
