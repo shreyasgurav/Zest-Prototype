@@ -18,6 +18,14 @@ interface OrganisationData {
   bannerImage?: string;
 }
 
+interface EventData {
+  id: string;
+  startDate: string;
+  endDate: string;
+  title: string;
+  // ... add other event fields as needed
+}
+
 const PublicOrganisationProfile = () => {
   const params = useParams();
   const username = params?.username as string | undefined;
@@ -27,6 +35,8 @@ const PublicOrganisationProfile = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [events, setEvents] = useState<EventData[]>([]);
 
   // Function to fetch organization data
   const fetchOrgData = async (isManualRefresh = false) => {
@@ -144,6 +154,83 @@ const PublicOrganisationProfile = () => {
     };
   }, [username]);
 
+  useEffect(() => {
+    const fetchEvents = async () => {
+      // Combine all event IDs first
+      const allEventIds = Array.from(new Set([...eventIds, ...collaboratedEventIds]));
+      
+      if (!allEventIds.length) return;
+
+      try {
+        const db = getFirestore();
+        const eventDocs = await Promise.all(
+          allEventIds.map(id => getDoc(doc(db, 'events', id)))
+        );
+
+        const eventsData = eventDocs
+          .filter(doc => doc.exists())
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as EventData[];
+
+        setEvents(eventsData);
+      } catch (error) {
+        console.error('Error fetching events:', error);
+      }
+    };
+
+    fetchEvents();
+  }, [eventIds, collaboratedEventIds]);
+
+  const renderContent = () => {
+    if (!orgDetails) return null;
+
+    switch (activeTab) {
+      case 'upcoming':
+        return eventIds.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {eventIds.map((eventId) => (
+              <EventProfileCard 
+                key={eventId} 
+                eventId={eventId}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: orgDetails.name }
+                }] : []}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.emptyMessage}>
+            No upcoming events at the moment.
+          </div>
+        );
+
+      case 'past':
+        return eventIds.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {eventIds.map((eventId) => (
+              <EventProfileCard 
+                key={eventId} 
+                eventId={eventId}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: orgDetails.name }
+                }] : []}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.emptyMessage}>
+            No past events to show.
+          </div>
+        );
+    }
+  };
+
   if (loading) {
     return (
       <div className={styles.loadingContainer}>
@@ -219,30 +306,26 @@ const PublicOrganisationProfile = () => {
         )}
       </div>
 
-      {/* Events Section */}
-      <div className={styles.eventsSection}>
-        <h2 className={styles.eventsHeading}>Events</h2>
-        
-        {/* All Events (Owned + Collaborated) */}
-        {eventIds.length > 0 ? (
-          <div className={styles.eventsGrid}>
-            {eventIds.map((eventId) => (
-              <EventProfileCard 
-                key={eventId} 
-                eventId={eventId} 
-                tags={collaboratedEventIds.includes(eventId) ? [{ 
-                  type: 'collaboration', 
-                  label: 'COLLAB',
-                  metadata: { collaboratorName: orgDetails?.name }
-                }] : []}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className={styles.noEventsMessage}>
-            No upcoming events at the moment.
-          </div>
-        )}
+      {/* Content Section */}
+      <div className={styles.contentSection}>
+        {/* Tabs */}
+        <div className={styles.tabsContainer}>
+          <button 
+            className={`${styles.tabButton} ${activeTab === 'upcoming' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('upcoming')}
+          >
+            Upcoming
+          </button>
+          <button 
+            className={`${styles.tabButton} ${activeTab === 'past' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('past')}
+          >
+            Past
+          </button>
+        </div>
+
+        {/* Events Grid */}
+        {renderContent()}
       </div>
     </div>
   );

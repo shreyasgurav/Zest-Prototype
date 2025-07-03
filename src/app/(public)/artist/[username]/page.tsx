@@ -23,6 +23,14 @@ interface ArtistData {
   ownerId?: string;
 }
 
+interface EventData {
+  id: string;
+  startDate: string;
+  endDate: string;
+  title: string;
+  // ... add other event fields as needed
+}
+
 const PublicArtistProfile = () => {
   const params = useParams();
   const username = params?.username as string | undefined;
@@ -33,6 +41,8 @@ const PublicArtistProfile = () => {
   const [error, setError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+  const [events, setEvents] = useState<EventData[]>([]);
 
   useEffect(() => {
     // Check if current user can manage this page
@@ -140,9 +150,86 @@ const PublicArtistProfile = () => {
     fetchArtistData();
   }, [username, currentUser]);
 
+  useEffect(() => {
+    const fetchEvents = async () => {
+      // Combine all event IDs first
+      const allEventIds = Array.from(new Set([...ownedEventIds, ...collaboratedEventIds]));
+      
+      if (!allEventIds.length) return;
+
+      try {
+        const db = getFirestore();
+        const eventDocs = await Promise.all(
+          allEventIds.map(id => getDoc(doc(db, 'events', id)))
+        );
+
+        const eventsData = eventDocs
+          .filter(doc => doc.exists())
+          .map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as EventData[];
+
+        setEvents(eventsData);
+      } catch (error) {
+        console.error('Error fetching events:', error);
+      }
+    };
+
+    fetchEvents();
+  }, [ownedEventIds, collaboratedEventIds]);
+
   const handleManage = () => {
     // Redirect to management interface
     window.location.href = `/artist?page=${artistDetails?.uid}`;
+  };
+
+  const renderContent = () => {
+    if (!artistDetails) return null;
+
+    switch (activeTab) {
+      case 'upcoming':
+        return ownedEventIds.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {ownedEventIds.map((eventId) => (
+              <EventProfileCard 
+                key={eventId} 
+                eventId={eventId}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: artistDetails.name }
+                }] : []}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.emptyMessage}>
+            No upcoming events at the moment.
+          </div>
+        );
+
+      case 'past':
+        return ownedEventIds.length > 0 ? (
+          <div className={styles.eventsGrid}>
+            {ownedEventIds.map((eventId) => (
+              <EventProfileCard 
+                key={eventId} 
+                eventId={eventId}
+                tags={collaboratedEventIds.includes(eventId) ? [{ 
+                  type: 'collaboration', 
+                  label: 'COLLAB',
+                  metadata: { collaboratorName: artistDetails.name }
+                }] : []}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={styles.emptyMessage}>
+            No past events to show.
+          </div>
+        );
+    }
   };
 
   if (loading) {
@@ -265,49 +352,24 @@ const PublicArtistProfile = () => {
 
       {/* Content Section */}
       <div className={styles.contentSection}>
-        {/* Artist Meta Information */}
-        <div className={styles.artistMetaSection}>
-          <div className={styles.artistUsername}>
-            @{artistDetails.username || "username"}
-          </div>
-          {artistDetails.genre && (
-            <div className={styles.artistGenre}>
-              {artistDetails.genre}
-            </div>
-          )}
+        {/* Tabs */}
+        <div className={styles.tabsContainer}>
+          <button 
+            className={`${styles.tabButton} ${activeTab === 'upcoming' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('upcoming')}
+          >
+            Upcoming
+          </button>
+          <button 
+            className={`${styles.tabButton} ${activeTab === 'past' ? styles.activeTab : ''}`}
+            onClick={() => setActiveTab('past')}
+          >
+            Past
+          </button>
         </div>
 
-        {artistDetails.bio && (
-          <div className={styles.bioSection}>
-            <p>{artistDetails.bio}</p>
-          </div>
-        )}
-      </div>
-
-      {/* Events Section */}
-      <div className={styles.eventsSection}>
-        <h2 className={styles.eventsHeading}>Events</h2>
-        
-        {/* All Events (Owned + Collaborated) */}
-        {ownedEventIds.length > 0 ? (
-          <div className={styles.eventsGrid}>
-            {ownedEventIds.map((eventId) => (
-              <EventProfileCard 
-                key={eventId} 
-                eventId={eventId} 
-                tags={collaboratedEventIds.includes(eventId) ? [{ 
-                  type: 'collaboration', 
-                  label: 'COLLAB',
-                  metadata: { collaboratorName: artistDetails?.name }
-                }] : []}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className={styles.noEventsMessage}>
-            No upcoming events at the moment.
-          </div>
-        )}
+        {/* Events Grid */}
+        {renderContent()}
       </div>
     </div>
   );

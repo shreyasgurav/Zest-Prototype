@@ -27,14 +27,6 @@ interface VenueData {
   gallery?: string[];
 }
 
-interface EventData {
-  id: string;
-  startDate: string;
-  endDate: string;
-  title: string;
-  // ... add other event fields as needed
-}
-
 const PublicVenueProfile = () => {
   const params = useParams();
   const username = params?.username as string | undefined;
@@ -46,7 +38,6 @@ const PublicVenueProfile = () => {
   const [canManage, setCanManage] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'gallery' | 'past'>('upcoming');
-  const [events, setEvents] = useState<EventData[]>([]);
 
   useEffect(() => {
     // Check if current user can manage this page
@@ -131,32 +122,6 @@ const PublicVenueProfile = () => {
     fetchVenueData();
   }, [username, currentUser]);
 
-  useEffect(() => {
-    const fetchEvents = async () => {
-      if (!eventIds.length) return;
-
-      try {
-        const db = getFirestore();
-        const eventDocs = await Promise.all(
-          eventIds.map(id => getDoc(doc(db, 'events', id)))
-        );
-
-        const eventsData = eventDocs
-          .filter(doc => doc.exists())
-          .map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          })) as EventData[];
-
-        setEvents(eventsData);
-      } catch (error) {
-        console.error('Error fetching events:', error);
-      }
-    };
-
-    fetchEvents();
-  }, [eventIds]);
-
   const handleManage = () => {
     // Redirect to management interface
     window.location.href = `/venue?page=${venueDetails?.uid}`;
@@ -167,15 +132,9 @@ const PublicVenueProfile = () => {
 
     switch (activeTab) {
       case 'upcoming':
-        // Filter for upcoming events (events with future dates)
-        const upcomingEvents = eventIds.filter(eventId => {
-          const event = events.find(e => e.id === eventId);
-          return event && new Date(event.startDate) >= new Date();
-        });
-
-        return upcomingEvents.length > 0 ? (
+        return eventIds.length > 0 ? (
           <div className={styles.eventsGrid}>
-            {upcomingEvents.map((eventId) => (
+            {eventIds.map((eventId) => (
               <EventProfileCard 
                 key={eventId} 
                 eventId={eventId}
@@ -213,15 +172,9 @@ const PublicVenueProfile = () => {
         );
 
       case 'past':
-        // Filter for past events (events with past dates)
-        const pastEvents = eventIds.filter(eventId => {
-          const event = events.find(e => e.id === eventId);
-          return event && new Date(event.startDate) < new Date();
-        });
-
-        return pastEvents.length > 0 ? (
+        return eventIds.length > 0 ? (
           <div className={styles.eventsGrid}>
-            {pastEvents.map((eventId) => (
+            {eventIds.map((eventId) => (
               <EventProfileCard 
                 key={eventId} 
                 eventId={eventId}

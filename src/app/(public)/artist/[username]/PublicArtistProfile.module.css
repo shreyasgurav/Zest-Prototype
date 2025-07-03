@@ -405,282 +405,132 @@
   padding: 40px 32px;
 }
 
-.artistMetaSection {
+/* Tabs */
+.tabsContainer {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
-
-.artistUsername {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.artistGenre {
-  background: rgba(139, 92, 246, 0.2);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 16px;
-  padding: 6px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #a78bfa;
-}
-
-.bioSection {
+  justify-content: center;
+  gap: 40px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin-bottom: 32px;
 }
 
-.bioSection p {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 16px;
-  line-height: 1.6;
-  margin: 0;
-}
-
-/* Events Section */
-.eventsSection {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 40px 32px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.eventsHeading {
-  font-size: 28px;
-  color: white;
-  margin-bottom: 30px;
-  text-align: left;
-  font-weight: 700;
-}
-
-.eventCategory {
-  margin-bottom: 40px;
-}
-
-.categoryHeading {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
-  font-size: 22px;
+.tabButton {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
   font-weight: 600;
-  color: white;
-}
-
-.collaborationBadge {
-  background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 4px 8px;
-  border-radius: 12px;
+  padding: 16px 0;
+  cursor: pointer;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
-  animation: pulse 2s infinite;
+  position: relative;
+  transition: color 0.3s ease;
 }
 
-@keyframes pulse {
-  0% {
-    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
-  }
-  50% {
-    box-shadow: 0 4px 16px rgba(255, 107, 107, 0.5);
-  }
-  100% {
-    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
-  }
+.tabButton:hover {
+  color: rgba(255, 255, 255, 0.9);
 }
 
+.activeTab {
+  color: white;
+}
+
+.activeTab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: white;
+}
+
+/* Events Grid */
 .eventsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, 280px);
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 24px;
-  margin-top: 20px;
-  justify-content: center;
 }
 
-.noEventsMessage {
+.emptyMessage {
   text-align: center;
   font-size: 18px;
   color: rgba(255, 255, 255, 0.6);
-  margin-top: 50px;
   padding: 60px 20px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .artistBannerSection {
-    height: 280px;
+/* Responsive Styles */
+@media (max-width: 1440px) {
+  .contentSection {
+    padding: 32px 24px;
   }
-  
-  .artistDetailsSection {
+
+  .tabsContainer {
+    gap: 32px;
+  }
+}
+
+@media (max-width: 768px) {
+  .contentSection {
     padding: 24px 16px;
   }
-  
-  .artistHeader {
-    flex-direction: row;
-    align-items: flex-end;
-    gap: 16px;
-  }
-  
-  .artistProfileImageContainer {
-    width: 96px;
-    height: 96px;
-  }
-  
-  .artistName h1 {
-    font-size: 48px;
-  }
-  
-  .contentSection {
-    padding: 30px 16px;
+
+  .tabsContainer {
+    gap: 24px;
   }
 
-  .artistMetaSection {
-    gap: 12px;
-    margin-bottom: 20px;
-  }
-
-  .artistUsername {
-    font-size: 16px;
-  }
-
-  .artistGenre {
+  .tabButton {
     font-size: 13px;
-    padding: 5px 14px;
   }
-  
-  .eventsSection {
-    padding: 30px 16px;
-  }
-  
-  .eventsHeading {
-    font-size: 24px;
-    margin-bottom: 24px;
-  }
-  
+
   .eventsGrid {
-    grid-template-columns: repeat(auto-fit, 240px);
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 20px;
   }
-  
-  .noEventsMessage {
-    margin-top: 30px;
-    padding: 40px 20px;
+
+  .emptyMessage {
     font-size: 16px;
+    padding: 40px 16px;
   }
 }
 
 @media (max-width: 480px) {
-  .artistBannerSection {
-    height: 240px;
-  }
-  
-  .artistDetailsSection {
-    padding: 20px 12px;
-  }
-  
-  .artistProfileImageContainer {
-    width: 80px;
-    height: 80px;
-  }
-  
-  .artistName h1 {
-    font-size: 36px;
-    line-height: 1.0;
-  }
-  
-  .artistUsername {
-    font-size: 14px;
-  }
-  
-  .artistGenre {
-    font-size: 12px;
-    padding: 4px 10px;
-  }
-  
   .contentSection {
     padding: 20px 12px;
   }
 
-  .artistMetaSection {
-    gap: 10px;
-    margin-bottom: 16px;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .artistUsername {
-    font-size: 15px;
-  }
-
-  .artistGenre {
-    font-size: 12px;
-    padding: 4px 12px;
-  }
-  
-  .eventsSection {
-    padding: 20px 12px;
-  }
-  
-  .eventsHeading {
-    font-size: 22px;
-    margin-bottom: 20px;
-  }
-  
-  .eventsGrid {
-    grid-template-columns: repeat(auto-fit, 200px);
+  .tabsContainer {
     gap: 16px;
   }
-  
-  .noEventsMessage {
-    margin-top: 20px;
-    padding: 30px 16px;
-    font-size: 16px;
+
+  .tabButton {
+    font-size: 12px;
+  }
+
+  .eventsGrid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+  }
+
+  .emptyMessage {
+    font-size: 15px;
+    padding: 32px 12px;
   }
 }
 
-/* Extra Small Screens */
 @media (max-width: 360px) {
-  .artistBannerSection {
-    height: 220px;
-  }
-  
-  .artistProfileImageContainer {
-    width: 70px;
-    height: 70px;
-  }
-  
-  .artistName h1 {
-    font-size: 28px;
-  }
-  
-  .artistUsername {
-    font-size: 13px;
-  }
-  
-  .artistGenre {
-    font-size: 11px;
-    padding: 3px 8px;
-  }
-  
   .contentSection {
     padding: 16px 8px;
   }
-  
-  .eventsSection {
-    padding: 16px 8px;
+
+  .tabsContainer {
+    gap: 12px;
   }
-  
-  .eventsHeading {
-    font-size: 20px;
+
+  .tabButton {
+    font-size: 11px;
+    padding: 12px 0;
   }
 }
 
