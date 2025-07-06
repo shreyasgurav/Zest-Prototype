@@ -1,9 +1,9 @@
 .ticketCard {
   background: #1a1a1a;
-  border-radius: 24px;
-  padding: 32px;
-  max-width: 600px;
+  border-radius: 16px;
+  padding: 16px;
   width: 100%;
+  max-width: 600px;
   color: white;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   cursor: pointer;
@@ -11,65 +11,73 @@
   position: relative;
   overflow: hidden;
   margin: 0 auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .ticketCard:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
 }
-
 
 .ticketContent {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 24px;
+  gap: 20px;
 }
 
 .ticketInfo {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  height: 100%;
-  min-height: 200px;
+  gap: 16px;
+  min-width: 0; /* Allows text truncation to work */
 }
 
 .eventDetails {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 40px;
+  padding-right: 16px;
 }
 
 .eventName {
-  font-size: 32px;
-  font-weight: 400;
-  line-height: 1.2;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
   margin: 0;
   color: white;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  padding-right: 8px;
 }
 
 .dateTime {
-  font-size: 20px;
+  font-size: 14px;
   color: #888;
-  font-weight: 400;
+  font-weight: 500;
+  padding-right: 8px;
 }
 
 .ticketCount {
-  font-size: 20px;
+  font-size: 14px;
   color: #888;
-  font-weight: 400;
+  font-weight: 500;
+  padding-right: 8px;
 }
 
 .locationSection {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding-right: 8px;
 }
 
 .locationLabel {
-  font-size: 16px;
+  font-size: 14px;
   color: #888;
   font-weight: 400;
 }
@@ -86,23 +94,24 @@
 }
 
 .locationName {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 500;
   color: white;
-  max-width: 200px;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+  position: relative;
   display: inline-block;
-  vertical-align: bottom;
-  -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
-  mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 80%, transparent 98%);
+  mask-image: linear-gradient(to right, black 80%, transparent 98%);
 }
 
 .bottomSection {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  margin-top: auto;
 }
 
 .statusBadge {
@@ -110,9 +119,9 @@
   align-items: center;
   gap: 6px;
   color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 600;
   width: fit-content;
   text-transform: uppercase;
@@ -125,28 +134,23 @@
   font-size: 12px;
 }
 
-
-
-
-
 .eventImageContainer {
   flex-shrink: 0;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
+  width: 120px;
+  height: 160px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .eventImage {
-  border-radius: 16px;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
 .placeholderImage {
-  width: 150px;
-  height: 200px;
-  border-radius: 16px;
+  width: 100%;
+  height: 100%;
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(236, 72, 153, 0.25));
   display: flex;
   flex-direction: column;
@@ -165,15 +169,13 @@
 }
 
 .loadingSpinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top: 3px solid rgba(255, 255, 255, 0.8);
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid rgba(255, 255, 255, 0.8);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
-
-
 
 @keyframes spin {
   0% { transform: rotate(0deg); }
@@ -195,7 +197,7 @@
 
 /* QR Code Overlay */
 .qrOverlay {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -204,19 +206,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 24px;
-  z-index: 10;
+  z-index: 1000;
+  padding: 20px;
 }
 
 .qrContainer {
   background: white;
-  padding: 24px;
-  border-radius: 16px;
+  padding: 32px;
+  border-radius: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   color: black;
+  max-width: 90%;
+  width: 320px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
 }
 
 .qrText {
@@ -259,21 +264,18 @@
   right: 16px;
   display: flex;
   gap: 8px;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.ticketCard:hover .quickActions {
   opacity: 1;
+  transition: opacity 0.3s ease;
+  z-index: 2;
 }
 
 .quickAction {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border: none;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -284,8 +286,9 @@
 }
 
 .quickAction:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
   color: white;
+  transform: translateY(-2px);
 }
 
 .copiedText {
@@ -303,116 +306,100 @@
   animation: fadeInOut 2s ease;
 }
 
-/* Responsive design */
-@media (max-width: 768px) {
+/* Responsive Styles */
+@media (max-width: 640px) {
   .ticketCard {
-    padding: 24px;
+    padding: 16px;
     max-width: 500px;
   }
 
-  .eventName {
-    font-size: 28px;
-  }
-
-  .dateTime,
-  .ticketCount {
-    font-size: 18px;
-  }
-
-  .locationName {
-    font-size: 16px;
-    max-width: 180px;
-  }
-
-  .eventImage,
-  .placeholderImage {
-    width: 130px;
-    height: 170px;
-  }
-
-  .eventImageContainer {
-    min-height: 170px;
-  }
-}
-
-@media (max-width: 640px) {
-  .ticketCard {
-    padding: 20px;
-    max-width: 400px;
-    border-radius: 20px;
-  }
-
   .ticketContent {
-    flex-direction: column;
     gap: 16px;
   }
 
   .eventName {
-    font-size: 24px;
+    font-size: 18px;
   }
 
   .dateTime,
-  .ticketCount {
-    font-size: 16px;
+  .ticketCount,
+  .locationLabel {
+    font-size: 13px;
   }
 
   .locationName {
     font-size: 14px;
-    max-width: 150px;
-  }
-
-  .locationLabel {
-    font-size: 14px;
-  }
-
-  .statusBadge {
-    font-size: 14px;
-    padding: 6px 16px;
-  }
-
-  .eventImage,
-  .placeholderImage {
-    width: 120px;
-    height: 160px;
   }
 
   .eventImageContainer {
-    align-self: center;
-    min-height: 160px;
-  }
-
-  .bottomSection {
-    flex-direction: column;
-    gap: 12px;
-    align-items: flex-start;
-  }
-
-  .rightBottom {
-    align-items: flex-start;
-    flex-direction: row;
-    justify-content: space-between;
-    width: 100%;
-  }
-
-  .placeholderText {
-    font-size: 10px;
+    width: 100px;
+    height: 140px;
   }
 }
 
 @media (max-width: 480px) {
   .ticketCard {
-    padding: 16px;
-    max-width: 320px;
-    border-radius: 16px;
+    padding: 14px;
+    max-width: 400px;
+  }
+
+  .ticketContent {
+    gap: 12px;
   }
 
   .eventName {
-    font-size: 20px;
+    font-size: 16px;
+    padding-right: 4px;
   }
 
   .dateTime,
-  .ticketCount {
-    font-size: 14px;
+  .ticketCount,
+  .locationLabel {
+    font-size: 12px;
+    padding-right: 4px;
+  }
+
+  .locationName {
+    font-size: 13px;
+    max-width: 150px;
+  }
+
+  .eventImageContainer {
+    width: 90px;
+    height: 120px;
+  }
+
+  .statusBadge {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+
+  .eventDetails {
+    padding-right: 8px;
+  }
+}
+
+@media (max-width: 400px) {
+  .ticketCard {
+    padding: 12px;
+    max-width: 340px;
+  }
+
+  .ticketContent {
+    gap: 10px;
+  }
+
+  .eventName {
+    font-size: 15px;
+    padding-right: 4px;
+    -webkit-line-clamp: 2;
+  }
+
+  .dateTime,
+  .ticketCount,
+  .locationLabel {
+    font-size: 11px;
+    padding-right: 4px;
   }
 
   .locationName {
@@ -420,59 +407,54 @@
     max-width: 120px;
   }
 
-  .locationLabel {
-    font-size: 12px;
-  }
-
-  .statusBadge {
-    font-size: 12px;
-    padding: 4px 12px;
-  }
-
-  .eventImage,
-  .placeholderImage {
-    width: 100px;
-    height: 130px;
-  }
-
   .eventImageContainer {
-    min-height: 130px;
+    width: 80px;
+    height: 110px;
   }
 
-  .placeholderText {
-    font-size: 9px;
-  }
-
-  .locationIcon {
-    width: 12px;
-    height: 12px;
-  }
-
-  .quickActions {
-    top: 12px;
-    right: 12px;
+  .eventDetails {
+    padding-right: 6px;
     gap: 6px;
   }
 
-  .quickAction {
-    width: 28px;
-    height: 28px;
+  .locationSection {
+    padding-right: 4px;
+    gap: 2px;
+  }
+
+  .bottomSection {
+    gap: 12px;
+  }
+
+  .leftBottom {
+    gap: 12px;
+  }
+
+  .statusBadge {
+    padding: 3px 8px;
+    font-size: 10px;
   }
 }
 
-@media (max-width: 320px) {
+@media (max-width: 360px) {
   .ticketCard {
-    padding: 12px;
-    max-width: 280px;
+    padding: 10px;
+    max-width: 300px;
+  }
+
+  .ticketContent {
+    gap: 8px;
   }
 
   .eventName {
-    font-size: 18px;
+    font-size: 14px;
+    -webkit-line-clamp: 2;
   }
 
   .dateTime,
-  .ticketCount {
-    font-size: 12px;
+  .ticketCount,
+  .locationLabel {
+    font-size: 10px;
   }
 
   .locationName {
@@ -480,25 +462,23 @@
     max-width: 100px;
   }
 
-  .eventImage,
-  .placeholderImage {
-    width: 90px;
-    height: 120px;
-  }
-
   .eventImageContainer {
-    min-height: 120px;
+    width: 70px;
+    height: 100px;
   }
 
-  .quickActions {
-    top: 8px;
-    right: 8px;
+  .eventDetails {
+    padding-right: 4px;
     gap: 4px;
   }
 
-  .quickAction {
-    width: 24px;
-    height: 24px;
+  .locationSection {
+    padding-right: 2px;
+  }
+
+  .statusBadge {
+    padding: 2px 6px;
+    font-size: 9px;
   }
 }
 
@@ -522,8 +502,8 @@
 
 .ticketNumber {
   font-size: 14px;
-  font-weight: 600;
-  color: #1f2937;
+  color: #888;
+  font-weight: 500;
 }
 
 .groupBookingBadge {

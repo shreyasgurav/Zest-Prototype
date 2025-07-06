@@ -8,14 +8,14 @@ import { collection, query, where, getDocs, limit, doc, getDoc } from 'firebase/
 import PersonLogo from "@/domains/profiles/components/PersonLogo/PersonLogo";
 import styles from "./header.module.css";
 import Link from 'next/link';
-import { Calendar, PartyPopper, Search, X, Building2, MapPin, Clock, ArrowRight, Ticket, Sparkles } from 'lucide-react';
+import { Calendar, PartyPopper, Search, X, Building2, MapPin, Clock, ArrowRight, Ticket, Sparkles, Home } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import LocationSelector from '@/components/forms/LocationSelector/LocationSelector';
 // import { getPopularCities, searchCities, type CityData } from '@/infrastructure/maps/location';
 
 interface SearchResult {
     id: string;
-    type: 'event' | 'activity' | 'organization';
+    type: 'event' | 'organization';
     title: string;
     description?: string;
     image?: string;
@@ -40,8 +40,6 @@ const Header = () => {
     const [isSearchVisible, setSearchVisible] = useState(false);
     const [isLocationVisible, setLocationVisible] = useState(false);
     const [isNavActive, setNavActive] = useState(false);
-    const [hideSecondaryNav, setHideSecondaryNav] = useState(false);
-    const [lastScrollY, setLastScrollY] = useState(0);
     const [user, setUser] = useState<User | null>(null);
     const [isOrganization, setIsOrganization] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -158,48 +156,6 @@ const Header = () => {
         };
     }, [searchQuery]);
 
-    // Mobile scroll-based hide/show effect for secondary navigation (Nav 2)
-    useEffect(() => {
-        let ticking = false;
-        
-        const handleScroll = () => {
-            if (!ticking) {
-                requestAnimationFrame(() => {
-                    const currentScrollY = window.scrollY;
-                    const scrollDifference = Math.abs(currentScrollY - lastScrollY);
-                    
-                    // Only react to meaningful scroll movements (at least 2px)
-                    if (scrollDifference < 2) {
-                        ticking = false;
-                        return;
-                    }
-                    
-                    // Mobile-optimized: Hide Nav 2 when scrolling DOWN, show when scrolling UP
-                    if (currentScrollY > lastScrollY && currentScrollY > 50) {
-                        // Scrolling down - smoothly hide secondary nav
-                        setHideSecondaryNav(true);
-                    } else if (currentScrollY < lastScrollY || currentScrollY <= 50) {
-                        // Scrolling up or near top - smoothly show secondary nav  
-                        setHideSecondaryNav(false);
-                    }
-                    
-                    setLastScrollY(currentScrollY);
-                    ticking = false;
-                });
-                ticking = true;
-            }
-        };
-
-        // Only add scroll listener on pages that should show secondary nav
-        if (shouldShowSecondaryNav()) {
-            window.addEventListener('scroll', handleScroll, { passive: true });
-        }
-        
-        return () => {
-            window.removeEventListener('scroll', handleScroll);
-        };
-    }, [lastScrollY, pathname]);
-
     // Optimized search function with correct field names
     const performSearch = async () => {
         try {
@@ -227,7 +183,6 @@ const Header = () => {
                     const hostingClub = (data.hosting_club || data.hostingClub || '').toLowerCase();
                     const aboutEvent = (data.about_event || data.aboutEvent || '').toLowerCase();
                     
-                    // More targeted search matching
                     if (eventTitle.includes(searchLower) ||
                         eventVenue.includes(searchLower) ||
                         hostingClub.includes(searchLower) ||
@@ -248,39 +203,6 @@ const Header = () => {
                 console.log('Found', results.filter(r => r.type === 'event').length, 'events');
             } catch (error) {
                 console.error('Error searching events:', error);
-            }
-
-            // Search Activities with correct field names
-            try {
-                const activitiesQuery = query(collection(db(), "activities"), limit(15));
-                const activitiesSnapshot = await getDocs(activitiesQuery);
-                
-                activitiesSnapshot.forEach(doc => {
-                    const data = doc.data();
-                    const activityName = (data.name || data.activityName || '').toLowerCase();
-                    const activityLocation = (data.location || data.activityLocation || data.activity_venue || '').toLowerCase();
-                    const hostingOrg = (data.hosting_organization || data.hostingClub || data.hosting_club || '').toLowerCase();
-                    const aboutActivity = (data.about_activity || data.aboutActivity || '').toLowerCase();
-                    
-                    if (activityName.includes(searchLower) ||
-                        activityLocation.includes(searchLower) ||
-                        hostingOrg.includes(searchLower) ||
-                        aboutActivity.includes(searchLower)) {
-                        
-                        results.push({ 
-                            id: doc.id, 
-                            type: 'activity', 
-                            title: data.name || data.activityName || 'Untitled Activity',
-                            description: data.about_activity || data.aboutActivity || '',
-                            location: data.location || data.activityLocation || data.activity_venue || '',
-                            organizationName: data.hosting_organization || data.hostingClub || data.hosting_club || '',
-                            image: data.activity_image || ''
-                        });
-                    }
-                });
-                console.log('Found', results.filter(r => r.type === 'activity').length, 'activities');
-            } catch (error) {
-                console.error('Error searching activities:', error);
             }
 
             // Search Organizations in both collections with correct field names
@@ -412,9 +334,6 @@ const Header = () => {
             case 'event': 
                 router.push(`/event-profile/${result.id}`); 
                 break;
-            case 'activity': 
-                router.push(`/activity-profile/${result.id}`); 
-                break;
             case 'organization': 
                 // Route to organization profile using username if available, otherwise use ID
                 if (result.username) {
@@ -432,7 +351,6 @@ const Header = () => {
     const getResultIcon = (type: SearchResult['type']) => {
         switch (type) {
             case 'event': return <Calendar className={styles.resultIcon} />;
-            case 'activity': return <PartyPopper className={styles.resultIcon} />;
             case 'organization': return <Building2 className={styles.resultIcon} />;
         }
     };
@@ -498,7 +416,6 @@ const Header = () => {
 
     const handleNavItemClick = () => setNavActive(false);
     const handleSearchSubmit = (e: React.FormEvent) => { e.preventDefault(); if (searchQuery.trim()) performSearch(); };
-    const shouldShowSecondaryNav = () => ['/', '/events', '/activities'].includes(pathname || '');
 
     return (
         <LocationContext.Provider value={{ selectedCity, setSelectedCity: handleCitySelect }}>
@@ -522,32 +439,11 @@ const Header = () => {
                         </li>
                     </ul>
 
-                    {shouldShowSecondaryNav() && (
-                        <ul className={`${styles['mobile-nav-secondary']} 
-                            transform transition-all duration-300 ease-in-out
-                            ${hideSecondaryNav 
-                                ? '-translate-y-full opacity-0 pointer-events-none' 
-                                : 'translate-y-0 opacity-100'
-                            }`}>
-                            <li className={styles.navItemWithIcon}>
-                                <Link href="/events" className={styles.navLinkWithIcon}>
-                                    <Ticket className={styles.navIcon} /><span>Events</span>
-                                </Link>
-                            </li>
-                            <li className={styles.navItemWithIcon}>
-                                <Link href="/activities" className={styles.navLinkWithIcon}>
-                                    <Sparkles className={styles.navIcon} /><span>Activities</span>
-                                </Link>
-                            </li>
-                        </ul>
-                    )}
-
                     {/* --- Desktop Nav --- */}
                     <ul className={`${styles['desktop-nav']} ${isNavActive ? styles.show : ''}`}>
                         <li><Link href="/" className={styles['link-logo']} onClick={handleNavItemClick}><img src={logo} alt="Zest Logo" /></Link></li>
                         <li><LocationSelector selectedCity={selectedCity} onLocationClick={toggleLocation} /></li>
                         <li className={styles.navItemWithIcon}><Link href="/events" onClick={handleNavItemClick} className={styles.navLinkWithIcon}><Ticket className={styles.navIcon} /><span>Events</span></Link></li>
-                        <li className={styles.navItemWithIcon}><Link href="/activities" onClick={handleNavItemClick} className={styles.navLinkWithIcon}><Sparkles className={styles.navIcon} /><span>Activities</span></Link></li>
                         {isOrganization && (<li><Link href="/create" onClick={handleNavItemClick}>Create</Link></li>)}
                         <li className={styles.desktopNavSpacer}></li>
                         <li><button className={styles.searchNavButton} onClick={toggleSearch} aria-label="Search"><Search className={styles.searchNavIcon} /></button></li>
@@ -593,8 +489,8 @@ const Header = () => {
                              <div className={styles.quickLinks}>
                                 <h2>Quick Links</h2>
                                 <div className={styles.quickLinksGrid}>
+                                    <Link href="/" className={styles.quickLink} onClick={() => setSearchVisible(false)}><Home className={styles.quickLinkIcon} /><span>Home</span></Link>
                                     <Link href="/events" className={styles.quickLink} onClick={() => setSearchVisible(false)}><Calendar className={styles.quickLinkIcon} /><span>Events</span></Link>
-                                    <Link href="/activities" className={styles.quickLink} onClick={() => setSearchVisible(false)}><PartyPopper className={styles.quickLinkIcon} /><span>Activities</span></Link>
                                 </div>
                             </div>
                         )}

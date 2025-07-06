@@ -168,14 +168,6 @@ export default function EventsPage() {
     return (
       <div className={styles.container}>
         <div className={styles.wrapper}>
-          {/* Header Section */}
-          <header className={styles.header}>
-            <h1 className={styles.title}>All Events</h1>
-            <p className={styles.subtitle}>
-              Discover and join exciting events happening around you
-            </p>
-          </header>
-
           {/* Filters Section - Skeleton */}
           <div className={styles.filters}>
             {Array.from({ length: 7 }).map((_, index) => (
@@ -204,17 +196,6 @@ export default function EventsPage() {
   return (
     <div className={styles.container}>
       <div className={styles.wrapper}>
-        {/* Header Section - Always visible */}
-        <header className={styles.header}>
-          <h1 className={styles.title}>All Events</h1>
-          <p className={styles.subtitle}>
-            {selectedCity !== 'All Cities' 
-              ? `Discover exciting events happening in ${selectedCity}`
-              : "Discover and join exciting events happening around you"
-            }
-          </p>
-        </header>
-
         {/* Filters Section - Always visible */}
         <div className={styles.filters}>
           {eventTypes.map((type) => (

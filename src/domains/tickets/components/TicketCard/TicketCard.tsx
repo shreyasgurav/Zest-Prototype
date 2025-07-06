@@ -1,16 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 import Image from 'next/image';
-import { ChevronRight, MapPin } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { 
-  FaShare,
-  FaDownload,
-  FaCopy,
-  FaQrcode,
   FaCheckCircle,
   FaTimesCircle,
   FaClock,
-  FaExclamationTriangle
+  FaExclamationTriangle,
+  FaQrcode
 } from 'react-icons/fa';
 import { db } from '@/infrastructure/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -52,8 +48,6 @@ interface TicketCardProps {
 }
 
 const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'grid' }) => {
-  const [showQR, setShowQR] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [eventImage, setEventImage] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(true);
 
@@ -90,39 +84,6 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
     }
   };
 
-  const handleShare = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `${ticket.title} - Ticket`,
-          text: `My ticket for ${ticket.title} on ${formatDate(ticket.selectedDate)}`,
-          url: window.location.href
-        });
-      } catch (err) {
-        console.log('Share cancelled');
-      }
-    } else {
-      const shareText = `${ticket.title}\n${formatDate(ticket.selectedDate)} at ${ticket.venue}\nTicket #${ticket.ticketNumber}`;
-      navigator.clipboard.writeText(shareText);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const handleDownload = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    console.log('Download ticket:', ticket.id);
-  };
-
-  const copyTicketNumber = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(ticket.ticketNumber);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const statusDisplay = getStatusDisplay();
 
   // Fetch event/activity image
@@ -132,14 +93,12 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
         setImageLoading(true);
         
         if (ticket.eventId) {
-          // Fetch from events collection
           const eventDoc = await getDoc(doc(db(), 'events', ticket.eventId));
           if (eventDoc.exists()) {
             const eventData = eventDoc.data();
             setEventImage(eventData.event_image || null);
           }
         } else if (ticket.activityId) {
-          // Fetch from activities collection
           const activityDoc = await getDoc(doc(db(), 'activities', ticket.activityId));
           if (activityDoc.exists()) {
             const activityData = activityDoc.data();
@@ -205,9 +164,6 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
                 <span>{statusDisplay.displayText}</span>
               </div>
             </div>
-
-            <div className={styles.rightBottom}>
-            </div>
           </div>
         </div>
 
@@ -238,71 +194,6 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, viewMode = 'gr
             </div>
           )}
         </div>
-      </div>
-
-      {/* QR Code Overlay */}
-      {showQR && statusDisplay.canUse && (
-        <div className={styles.qrOverlay}>
-          <div className={styles.qrContainer}>
-            <QRCodeSVG
-              value={ticket.qrCode}
-              size={200}
-              bgColor="#ffffff"
-              fgColor="#000000"
-              level="M"
-              includeMargin={true}
-            />
-            <p className={styles.qrText}>Scan at venue entrance</p>
-            <p className={styles.qrWarning}>Valid only once</p>
-            <button 
-              className={styles.closeQR}
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowQR(false);
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Quick Actions */}
-      <div className={styles.quickActions}>
-        {statusDisplay.canUse && (
-          <button 
-            className={styles.quickAction}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowQR(!showQR);
-            }}
-            title="Show QR Code"
-          >
-            <FaQrcode />
-          </button>
-        )}
-        <button 
-          className={styles.quickAction}
-          onClick={handleShare}
-          title="Share ticket"
-        >
-          <FaShare />
-        </button>
-        <button 
-          className={styles.quickAction}
-          onClick={handleDownload}
-          title="Download ticket"
-        >
-          <FaDownload />
-        </button>
-        <button 
-          className={styles.quickAction}
-          onClick={copyTicketNumber}
-          title="Copy ticket number"
-        >
-          <FaCopy />
-          {copied && <span className={styles.copiedText}>Copied!</span>}
-        </button>
       </div>
     </div>
   );

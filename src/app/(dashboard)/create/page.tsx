@@ -177,15 +177,6 @@ const CreateType = () => {
             <h2>Event</h2>
             <p>Create a one-time or recurring event</p>
           </div>
-
-          <div
-            className={styles["type-card"]}
-            onClick={() => handleTypeSelection("service")}
-          >
-            <div className={styles["type-icon"]}>🎮</div>
-            <h2>Activities</h2>
-            <p>Offer fun activities</p>
-          </div>
         </div>
       </div>
     </div>

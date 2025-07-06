@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/infrastructure/firebase';
 import { 
@@ -35,7 +36,8 @@ import {
   filterAttendees, 
   exportAttendeesToCSV, 
   validateCheckInEligibility, 
-  getEmptyStateMessage 
+  getEmptyStateMessage,
+  getContextEmptyState
 } from '@/shared/utils/helpers/dashboardHelpers';
 import { 
   FaEdit, 
@@ -197,7 +199,79 @@ interface EventData {
   event_age_limit: string;
 }
 
-const EventDashboard = () => {
+// Error Fallback Component
+const ErrorFallback: React.FC<FallbackProps> = ({ error, resetErrorBoundary }) => {
+  return (
+    <div className={styles.errorState}>
+      <FaExclamationTriangle />
+      <h2>Something went wrong</h2>
+      <p>{error.message}</p>
+      <div className={styles.errorActions}>
+        <button onClick={resetErrorBoundary} className={styles.primaryButton}>
+          Try again
+        </button>
+        <button onClick={() => window.location.reload()} className={styles.secondaryButton}>
+          Refresh page
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Utility functions
+const validateEventSession = (session: EventSession | null): boolean => {
+  if (!session) return false;
+  
+  const now = new Date();
+  const sessionDate = new Date(session.date);
+  const startTime = new Date(`${session.date} ${session.start_time}`);
+  const endTime = new Date(`${session.date} ${session.end_time}`);
+  
+  // Session date validation
+  if (sessionDate < new Date(now.setHours(0,0,0,0))) {
+    console.warn('Session date is in the past:', session.date);
+  }
+  
+  // Time validation
+  if (endTime < now) {
+    console.warn('Session has ended:', session.end_time);
+  }
+  
+  // Capacity validation
+  const totalCapacity = session.tickets.reduce((sum, t) => sum + t.capacity, 0);
+  if (totalCapacity !== session.maxCapacity) {
+    console.warn('Session capacity mismatch:', {
+      calculatedCapacity: totalCapacity,
+      maxCapacity: session.maxCapacity
+    });
+  }
+  
+  return true;
+};
+
+const handleRealtimeError = (
+  error: Error, 
+  context: string,
+  cleanup: () => void,
+  reconnect: () => void,
+  setError: (message: string) => void
+) => {
+  console.error(`Error in ${context}:`, error);
+  
+  // Show user-friendly error message
+  setError(`Failed to get real-time updates. ${error.message}`);
+  
+  // Clean up listeners on error
+  cleanup();
+  
+  // Attempt to reconnect after delay
+  setTimeout(() => {
+    console.log('🔄 Attempting to reconnect...');
+    reconnect();
+  }, 5000);
+};
+
+const EventDashboardContent = () => {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const auth = getAuth();
@@ -206,6 +280,9 @@ const EventDashboard = () => {
   // NEW: Session-centric states
   const [selectedSession, setSelectedSession] = useState<EventSession | null>(null);
   const [showSessionSelector, setShowSessionSelector] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
   
   // State management
   const [attendees, setAttendees] = useState<Attendee[]>([]);
@@ -229,7 +306,6 @@ const EventDashboard = () => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'confirmed' | 'pending' | 'checked-in' | 'not-checked-in'>('all');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [sessionTickets, setSessionTickets] = useState<Ticket[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Real-time data for selected session
   const [sessionStats, setSessionStats] = useState({
@@ -298,6 +374,12 @@ const EventDashboard = () => {
   const [totalAttendees, setTotalAttendees] = useState(0);
   const [loadingPage, setLoadingPage] = useState(false);
   const [showPagination, setShowPagination] = useState(false);
+
+  // New ticket category states
+  const [newTicketName, setNewTicketName] = useState('');
+  const [newTicketPrice, setNewTicketPrice] = useState('');
+  const [newTicketCapacity, setNewTicketCapacity] = useState('');
+  const [addingTicket, setAddingTicket] = useState(false);
 
   // Check QR scanner support without accessing camera
   useEffect(() => {
@@ -1672,13 +1754,130 @@ const EventDashboard = () => {
     }
   };
 
+  // Handle adding new ticket category
+  const handleAddNewTicketCategory = async () => {
+    if (!selectedSession || !eventId || !newTicketName || !newTicketPrice || !newTicketCapacity) {
+      setTicketUpdateResult({
+        type: 'error',
+        message: 'Please fill in all ticket details'
+      });
+      return;
+    }
 
-  // CRITICAL: Effect to setup real-time data with proper cleanup - NOW AFTER FUNCTION DECLARATIONS
+    setAddingTicket(true);
+    try {
+      const sessionRef = doc(db(), "events", eventId);
+      const eventDoc = await getDoc(sessionRef);
+      
+      if (!eventDoc.exists()) {
+        throw new Error('Event not found');
+      }
+
+      const eventData = eventDoc.data();
+      const sessions = eventData.sessions || [];
+      
+      // Find and update the specific session
+      const updatedSessions = sessions.map((session: EventSession) => {
+        if (session.id === selectedSession.id) {
+          return {
+            ...session,
+            tickets: [
+              ...session.tickets,
+              {
+                name: newTicketName,
+                price: parseInt(newTicketPrice),
+                capacity: parseInt(newTicketCapacity),
+                available_capacity: parseInt(newTicketCapacity)
+              }
+            ]
+          };
+        }
+        return session;
+      });
+
+      await updateDoc(sessionRef, {
+        sessions: updatedSessions,
+        updatedAt: serverTimestamp()
+      });
+
+      // Update local state
+      setSelectedSession(prev => prev ? {
+        ...prev,
+        tickets: [
+          ...prev.tickets,
+          {
+            name: newTicketName,
+            price: parseInt(newTicketPrice),
+            capacity: parseInt(newTicketCapacity),
+            available_capacity: parseInt(newTicketCapacity)
+          }
+        ]
+      } : null);
+
+      // Clear form
+      setNewTicketName('');
+      setNewTicketPrice('');
+      setNewTicketCapacity('');
+      
+      setTicketUpdateResult({
+        type: 'success',
+        message: `New ticket category "${newTicketName}" added successfully!`
+      });
+
+      // Clear message after 3 seconds
+      setTimeout(() => setTicketUpdateResult(null), 3000);
+
+    } catch (error) {
+      console.error('Error adding new ticket category:', error);
+      setTicketUpdateResult({
+        type: 'error',
+        message: 'Failed to add new ticket category. Please try again.'
+      });
+    } finally {
+      setAddingTicket(false);
+    }
+  };
+
+
+  // CRITICAL: Effect to setup real-time data with proper cleanup
   useEffect(() => {
     if (eventData && permissions.canView) {
       console.log('🚀 Setting up real-time listeners for:', { eventId, selectedSession: selectedSession?.id });
-      setupRealTimeAttendees();
-      setupRealTimeTickets();
+      
+      // Validate session if selected
+      if (selectedSession) {
+        const isValid = validateEventSession(selectedSession);
+        if (!isValid) {
+          console.warn('Selected session validation failed');
+          setError('Invalid session data. Please refresh the page.');
+          return;
+        }
+      }
+
+      try {
+        setupRealTimeAttendees();
+        setupRealTimeTickets();
+      } catch (error) {
+        handleRealtimeError(
+          error as Error,
+          'real-time setup',
+          () => {
+            if (unsubscribeAttendees.current) {
+              unsubscribeAttendees.current();
+              unsubscribeAttendees.current = null;
+            }
+            if (unsubscribeTickets.current) {
+              unsubscribeTickets.current();
+              unsubscribeTickets.current = null;
+            }
+          },
+          () => {
+            setupRealTimeAttendees();
+            setupRealTimeTickets();
+          },
+          setError
+        );
+      }
     }
 
     // CRITICAL: Cleanup listeners on unmount or dependency changes
@@ -1692,17 +1891,127 @@ const EventDashboard = () => {
         unsubscribeTickets.current();
         unsubscribeTickets.current = null;
       }
+      // Reset states on cleanup
+      setAttendees([]);
+      setSessionAttendees([]);
+      setTickets([]);
+      setSessionTickets([]);
+      setSessionStats({
+        totalRevenue: 0,
+        soldTickets: 0,
+        availableTickets: 0,
+        totalCapacity: 0,
+        checkedInCount: 0,
+        pendingCheckIn: 0,
+        lastUpdated: new Date()
+      });
     };
-  }, [setupRealTimeAttendees, setupRealTimeTickets, eventData, permissions.canView]);
+  }, [setupRealTimeAttendees, setupRealTimeTickets, eventData, permissions.canView, selectedSession]);
 
-  // Additional cleanup on session change to prevent stale listeners
+  // Handle mobile detection after mount
+  useLayoutEffect(() => {
+    setHasMounted(true);
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    // Initial check
+    checkMobile();
+    
+    // Add resize listener
+    window.addEventListener('resize', checkMobile);
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Add useMemo for filtered attendees
+  const filteredAttendees = useMemo(() => {
+    return sessionAttendees.filter(attendee => {
+      const matchesSearch = searchTerm.toLowerCase().trim() === '' || 
+        attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        attendee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        attendee.phone.includes(searchTerm);
+      
+      const matchesFilter = filterStatus === 'all' ||
+        (filterStatus === 'checked-in' && attendee.checkedIn) ||
+        (filterStatus === 'not-checked-in' && !attendee.checkedIn) ||
+        (filterStatus === 'confirmed' && attendee.status === 'confirmed');
+      
+      return matchesSearch && matchesFilter;
+    });
+  }, [sessionAttendees, searchTerm, filterStatus]);
+
+  // Add useMemo for session stats
+  const currentSessionStats = useMemo(() => {
+    if (!selectedSession) return null;
+
+    const checkedInCount = filteredAttendees.filter(a => a.checkedIn).length;
+    const pendingCount = filteredAttendees.length - checkedInCount;
+    const totalCapacity = selectedSession.tickets.reduce((sum, t) => sum + t.capacity, 0);
+    const revenue = calculateSessionRevenue(filteredAttendees, selectedSession);
+
+    return {
+      checkedIn: checkedInCount,
+      pending: pendingCount,
+      total: filteredAttendees.length,
+      capacity: totalCapacity,
+      revenue,
+      percentageCheckedIn: filteredAttendees.length > 0 
+        ? (checkedInCount / filteredAttendees.length) * 100 
+        : 0
+    };
+  }, [selectedSession, filteredAttendees, calculateSessionRevenue]);
+
+  // Add useMemo for ticket stats
+  const ticketStats = useMemo(() => {
+    if (!selectedSession) return [];
+
+    return selectedSession.tickets.map(ticket => {
+      const soldCount = sessionAttendees.filter(attendee => 
+        attendee.ticketType === ticket.name ||
+        (typeof attendee.tickets === 'object' && attendee.tickets && attendee.tickets[ticket.name] > 0)
+      ).length;
+
+      return {
+        ...ticket,
+        soldCount,
+        available: ticket.capacity - soldCount,
+        revenue: soldCount * ticket.price,
+        percentage: (soldCount / ticket.capacity) * 100
+      };
+    });
+  }, [selectedSession, sessionAttendees]);
+
+  // Add debounced search
   useEffect(() => {
-    if (selectedSession) {
-      console.log(`🔄 Session changed to: ${selectedSession.id}, refreshing listeners`);
-      setupRealTimeAttendees();
-      setupRealTimeTickets();
-    }
-  }, [selectedSession?.id, setupRealTimeAttendees, setupRealTimeTickets]);
+    const timer = setTimeout(() => {
+      // Update filtered results
+      const results = sessionAttendees.filter(attendee => {
+        const matchesSearch = searchTerm.toLowerCase().trim() === '' || 
+          attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          attendee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          attendee.phone.includes(searchTerm);
+        
+        const matchesFilter = filterStatus === 'all' ||
+          (filterStatus === 'checked-in' && attendee.checkedIn) ||
+          (filterStatus === 'not-checked-in' && !attendee.checkedIn) ||
+          (filterStatus === 'confirmed' && attendee.status === 'confirmed');
+        
+        return matchesSearch && matchesFilter;
+      });
+
+      // Update pagination if needed
+      if (results.length < pageSize) {
+        setShowPagination(false);
+      } else {
+        setShowPagination(true);
+        setTotalAttendees(results.length);
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, filterStatus, sessionAttendees, pageSize]);
 
   // Loading state
   if (loading) {
@@ -1829,61 +2138,45 @@ const EventDashboard = () => {
     );
   }
 
+  // Add this function to handle sidebar toggle
+  const toggleSidebar = () => {
+    setSidebarOpen(prev => !prev);
+  };
+
   // Main dashboard view (session-specific or legacy)
   return (
     <div className={styles.modernDashboard}>
+      {/* Mobile Menu Button - only show after mount */}
+      {hasMounted && isMobile && (
+        <button 
+          className={styles.mobileMenuButton}
+          onClick={() => setSidebarOpen(prev => !prev)}
+          aria-label="Toggle menu"
+        >
+          <FaBars />
+        </button>
+      )}
+
       {/* Instagram-Style Sidebar */}
       <DashboardSidebar
         activeTab={activeTab}
         setActiveTab={(tab: string) => setActiveTab(tab as any)}
         attendeesCount={selectedSession ? sessionAttendees.length : attendees.length}
-        selectedSession={selectedSession ? { id: selectedSession.id, name: selectedSession.name } : undefined}
+        selectedSession={selectedSession ? { 
+          id: selectedSession.id, 
+          name: selectedSession.name,
+          date: selectedSession.date,
+          start_time: selectedSession.start_time,
+          end_time: selectedSession.end_time
+        } : undefined}
         onBack={selectedSession ? () => setShowSessionSelector(true) : () => router.push('/events')}
         eventTitle={eventData?.title || 'Event Dashboard'}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Sidebar overlay for mobile */}
-      {sidebarOpen && <div className={styles.sidebarOverlay} onClick={() => setSidebarOpen(false)} />}
-
       {/* Main Content Area */}
       <div className={styles.mainContent}>
-        {/* Header with Refresh */}
-        <div className={styles.contentHeader}>
-          <div className={styles.headerLeft}>
-            <button className={`${styles.sidebarToggle} hidden`} onClick={() => setSidebarOpen(true)}>
-              <FaBars />
-            </button>
-            <div className={styles.headerInfo}>
-              <h1>{eventData?.title}</h1>
-              {selectedSession && (
-                <div className={styles.sessionInfo}>
-                  <FaLayerGroup />
-                  <span>{selectedSession.name}</span>
-                  <span className={styles.sessionMeta}>
-                    {formatDate(selectedSession.date)} • {formatTime(selectedSession.start_time)} - {formatTime(selectedSession.end_time)}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div className={styles.headerActions}>
-            <button 
-              onClick={handleRefresh}
-              className={`${styles.refreshButton} ${refreshing ? styles.refreshing : ''}`}
-              disabled={refreshing}
-            >
-              <FaSyncAlt />
-              <span className="hidden sm:inline">{refreshing ? 'Refreshing...' : 'Refresh'}</span>
-            </button>
-            <span className={`${styles.lastUpdated} hidden md:inline`}>
-              Last updated: {lastRefresh.toLocaleTimeString()}
-            </span>
-          </div>
-        </div>
-
         {/* Tab Content */}
         <div className={styles.tabContent}>
         {activeTab === 'overview' && selectedSession && (
@@ -1900,7 +2193,7 @@ const EventDashboard = () => {
         {activeTab === 'attendees' && (
           <div className={styles.attendeesTab}>
             <div className={styles.attendeesHeader}>
-              <h2>Attendees Data ({sessionAttendees.length})</h2>
+              <h2>Attendees Data ({filteredAttendees.length})</h2>
               <div className={styles.attendeesActions}>
                 <div className={styles.searchBox}>
                   <FaSearch />
@@ -1909,12 +2202,13 @@ const EventDashboard = () => {
                     placeholder="Search attendees..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
+                    className={styles.formInput}
                   />
                 </div>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value as any)}
-                  className={styles.filterSelect}
+                  className={styles.formInput}
                 >
                   <option value="all">All Attendees</option>
                   <option value="confirmed">Confirmed</option>
@@ -1922,7 +2216,7 @@ const EventDashboard = () => {
                   <option value="not-checked-in">Not Checked In</option>
                 </select>
                 <button 
-                  className={styles.exportButton}
+                  className={styles.primaryButton}
                   onClick={handleExportAttendees}
                 >
                   <FaDownload /> Export CSV
@@ -1933,164 +2227,129 @@ const EventDashboard = () => {
             {/* Attendee Statistics Summary */}
             <div className={styles.attendeesSummary}>
               <div className={styles.summaryCard}>
-                <span className={styles.summaryNumber}>{sessionAttendees.length}</span>
+                <span className={styles.summaryNumber}>{currentSessionStats?.total || 0}</span>
                 <span className={styles.summaryLabel}>Total Attendees</span>
               </div>
               <div className={styles.summaryCard}>
-                <span className={styles.summaryNumber}>
-                  {sessionAttendees.filter(a => a.checkedIn).length}
-                </span>
+                <span className={styles.summaryNumber}>{currentSessionStats?.checkedIn || 0}</span>
                 <span className={styles.summaryLabel}>Checked In</span>
               </div>
               <div className={styles.summaryCard}>
-                <span className={styles.summaryNumber}>
-                  {sessionAttendees.filter(a => !a.checkedIn).length}
-                </span>
+                <span className={styles.summaryNumber}>{currentSessionStats?.pending || 0}</span>
                 <span className={styles.summaryLabel}>Pending</span>
               </div>
             </div>
 
             {/* Attendees Data Table */}
             <div className={styles.attendeesDataTable}>
-              {sessionAttendees.length === 0 ? (
+              {filteredAttendees.length === 0 ? (
                 <div className={styles.emptyState}>
                   <div className={styles.emptyStateIcon}>
                     <FaUsers />
                   </div>
-                  <h3>No attendees yet</h3>
-                  <p>Attendees will appear here once they register for this session.</p>
-                  <div className={styles.emptyStateActions}>
+                  <h3>No attendees found</h3>
+                  <p className={styles.emptyStateMessage}>
+                    {getEmptyStateMessage(searchTerm, filterStatus)}
+                  </p>
+                  {searchTerm || filterStatus !== 'all' ? (
                     <button 
-                      className={styles.emptyStateButton}
+                      className={styles.primaryButton}
+                      onClick={() => {
+                        setSearchTerm('');
+                        setFilterStatus('all');
+                      }}
+                    >
+                      Clear Filters
+                    </button>
+                  ) : (
+                    <button 
+                      className={styles.primaryButton}
                       onClick={() => setActiveTab('overview')}
                     >
                       <FaChartBar /> View Overview
                     </button>
-                  </div>
+                  )}
                 </div>
               ) : (
-                sessionAttendees
-                  .filter(attendee => {
-                    const matchesSearch = attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        attendee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                        attendee.phone.includes(searchTerm);
-                    
-                    const matchesFilter = filterStatus === 'all' ||
-                                        (filterStatus === 'checked-in' && attendee.checkedIn) ||
-                                        (filterStatus === 'not-checked-in' && !attendee.checkedIn) ||
-                                        (filterStatus === 'confirmed' && attendee.status === 'confirmed');
-                    
-                    return matchesSearch && matchesFilter;
-                  })
-                  .length === 0 ? (
-                    <div className={styles.noResults}>
-                      <div className={styles.noResultsIcon}>
-                        <FaSearch />
-                      </div>
-                      <h3>No attendees match your search</h3>
-                      <p>Try adjusting your search terms or filter settings.</p>
-                      <button 
-                        className={styles.clearFiltersButton}
-                        onClick={() => {
-                          setSearchTerm('');
-                          setFilterStatus('all');
-                        }}
-                      >
-                        Clear Filters
-                      </button>
-                    </div>
-                  ) : (
-                    <div className={styles.dataTableContainer}>
-                      <table className={styles.attendeesTable}>
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Phone</th>
-                            <th>Ticket Type</th>
-                            <th>Amount</th>
-                            <th>Status</th>
-                            <th>Booking Date</th>
-                            <th>Check-in Time</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sessionAttendees
-                            .filter(attendee => {
-                              const matchesSearch = attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                                  attendee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                                  attendee.phone.includes(searchTerm);
-                              
-                              const matchesFilter = filterStatus === 'all' ||
-                                                  (filterStatus === 'checked-in' && attendee.checkedIn) ||
-                                                  (filterStatus === 'not-checked-in' && !attendee.checkedIn) ||
-                                                  (filterStatus === 'confirmed' && attendee.status === 'confirmed');
-                              
-                              return matchesSearch && matchesFilter;
-                            })
-                            .map(attendee => (
-                              <tr key={attendee.id} className={attendee.checkedIn ? styles.checkedInRow : styles.pendingRow}>
-                                <td>
-                                  <div className={styles.nameCell}>
-                                    <strong>{attendee.name}</strong>
-                                    {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
-                                      <span className={styles.groupIndicator}>
-                                        #{attendee.ticketIndex} of {attendee.totalTicketsInBooking}
-                                      </span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td>{attendee.email}</td>
-                                <td>{attendee.phone}</td>
-                                <td>
-                                  <span className={styles.ticketTypeTag}>
-                                    {attendee.ticketType || 'Standard'}
-                                  </span>
-                                </td>
-                                <td>
-                                  <span className={styles.amountCell}>
-                                    ₹{calculateAttendeeRevenue(attendee, selectedSession || undefined).toLocaleString()}
-                                  </span>
-                                </td>
-                                <td>
-                                  {attendee.checkedIn ? (
-                                    <span className={styles.statusCheckedIn}>
-                                      <FaCheckCircle /> Checked In
-                                    </span>
-                                  ) : (
-                                    <span className={styles.statusPending}>
-                                      <FaClock /> Pending
-                                    </span>
-                                  )}
-                                </td>
-                                <td>
-                                  {new Date(attendee.createdAt).toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    year: 'numeric'
-                                  })}
-                                </td>
-                                                                 <td>
-                                   {attendee.checkedIn && attendee.checkInTime ? (
-                                     <span className={styles.checkInTimeCell}>
-                                       {new Date(attendee.checkInTime).toLocaleString('en-US', {
-                                         month: 'short',
-                                         day: 'numeric',
-                                         hour: '2-digit',
-                                         minute: '2-digit'
-                                       })}
-                                     </span>
-                                   ) : (
-                                     <span className={styles.notCheckedIn}>-</span>
-                                   )}
-                                 </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )
-                )}
+                <table className={styles.attendeesTable}>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Phone</th>
+                      <th>Ticket Type</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                      <th>Booking Date</th>
+                      <th>Check-in Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredAttendees.map(attendee => (
+                      <tr key={attendee.id} className={attendee.checkedIn ? styles.checkedInRow : styles.pendingRow}>
+                        <td>
+                          <div className={styles.nameCell}>
+                            <strong>{attendee.name}</strong>
+                            {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
+                              <span className={styles.groupIndicator}>
+                                #{attendee.ticketIndex} of {attendee.totalTicketsInBooking}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td>{attendee.email}</td>
+                        <td>{attendee.phone}</td>
+                        <td>
+                          <span className={styles.ticketTypeTag}>
+                            {attendee.ticketType || 'Standard'}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={styles.amountCell}>
+                            ₹{calculateAttendeeRevenue(attendee, selectedSession || undefined).toLocaleString()}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={styles.statusCell}>
+                            {attendee.checkedIn ? (
+                              <span className={`${styles.statusBadge} ${styles.checkedIn}`}>
+                                <FaCheckCircle /> Checked In
+                              </span>
+                            ) : (
+                              <span className={`${styles.statusBadge} ${styles.pending}`}>
+                                <FaClock /> Pending
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={styles.dateCell}>
+                            {new Date(attendee.createdAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </span>
+                        </td>
+                        <td>
+                          {attendee.checkedIn && attendee.checkInTime ? (
+                            <span className={styles.timeCell}>
+                              {new Date(attendee.checkInTime).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          ) : (
+                            <span className={styles.dateCell}>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         )}
@@ -2100,7 +2359,7 @@ const EventDashboard = () => {
           <div className={styles.checkinTab}>
             <div className={styles.checkinHeader}>
               <h2>Check-in Management</h2>
-              <div className={styles.checkinActions}>
+              <div className={styles.checkinHeaderActions}>
                 <div className={styles.checkinStats}>
                   <span className={styles.checkinStat}>
                     <FaUsers /> {sessionAttendees.filter(a => a.checkedIn).length} / {sessionAttendees.length} checked in
@@ -2112,10 +2371,11 @@ const EventDashboard = () => {
                   </span>
                 </div>
                 <button 
-                  className={styles.exportButton}
-                  onClick={handleExportAttendees}
+                  onClick={() => setShowEventSharing(true)}
+                  className={styles.primaryButton}
+                  disabled={permissions.role === 'unauthorized' || !selectedSession}
                 >
-                  <FaDownload /> Export List
+                  <FaUserCheck /> Share Access
                 </button>
               </div>
             </div>
@@ -2158,252 +2418,142 @@ const EventDashboard = () => {
               </div>
             )}
 
-            {/* Check-in Options */}
-            <div className={styles.checkinMethods}>
-              <div className={styles.checkinMethodsHeader}>
-                <h3>Check-in Methods</h3>
-              </div>
-              <div className={styles.checkinOptions}>
+            {/* QR Camera Scanner Section */}
+            <div className={styles.qrScannerSection}>
+              <div className={styles.qrScannerHeader}>
+                <h3>QR Camera Scanner</h3>
                 <button 
-                  className={`${styles.scannerButton} ${scannerActive ? styles.active : ''}`}
+                  className={`${styles.scannerToggleButton} ${scannerActive ? styles.active : ''}`}
                   onClick={scannerActive ? stopQRScanner : startQRScanner}
                 >
                   <FaQrcode />
-                  {scannerActive ? 'Stop QR Scanner' : 'QR Camera Scanner'}
-                </button>
-                
-                <button 
-                  className={`${styles.manualButton} ${showManualCheckIn ? styles.active : ''}`}
-                  onClick={() => setShowManualCheckIn(!showManualCheckIn)}
-                >
-                  <FaSearch />
-                  Manual Search & Check-in
+                  {scannerActive ? 'Stop Scanner' : 'Start Camera Scanner'}
                 </button>
               </div>
-              
-              {/* Manual QR Input for Mac/Safari users */}
-              <div className={styles.manualQrSection}>
-                <h4>Manual QR Code Entry</h4>
-                <p>If camera scanning doesn't work on your device, manually enter or paste the QR code data:</p>
-                <div className={styles.qrInputContainer}>
-                  <input
-                    type="text"
-                    placeholder="Paste or type QR code data here..."
-                    value={manualQrInput}
-                    onChange={(e) => setManualQrInput(e.target.value)}
-                    className={styles.qrInput}
-                  />
-                  <button
-                    onClick={() => {
-                      if (manualQrInput.trim()) {
-                        processQRCode(manualQrInput.trim());
-                        setManualQrInput('');
-                      }
-                    }}
-                    disabled={!manualQrInput.trim()}
-                    className={styles.processQrButton}
-                  >
-                    <FaQrcode /> Process QR Code
-                  </button>
+
+              {/* QR Scanner Video */}
+              {scannerActive && (
+                <div className={styles.qrScannerContainer}>
+                  <div className={styles.scannerFrame}>
+                    <video
+                      ref={videoRef}
+                      className={styles.scannerVideo}
+                      autoPlay
+                      playsInline
+                      muted
+                    />
+                    <div className={styles.scannerOverlay}>
+                      <div className={styles.scannerTarget}></div>
+                      <p>Position QR code within the frame</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* QR Scanner Video */}
-            {scannerActive && (
-              <div className={styles.qrScannerContainer}>
-                <div className={styles.scannerFrame}>
-                  <video
-                    ref={videoRef}
-                    className={styles.scannerVideo}
-                    autoPlay
-                    playsInline
-                    muted
-                  />
-                  <div className={styles.scannerOverlay}>
-                    <div className={styles.scannerTarget}></div>
-                    <p>Position QR code within the frame</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Manual Search Check-in */}
-            {showManualCheckIn && (
-              <div className={styles.manualCheckInSection}>
-                <div className={styles.manualCheckInHeader}>
-                  <h3>Search & Check-in Attendees</h3>
-                  <div className={styles.searchBox}>
-                    <FaSearch />
-                    <input
-                      type="text"
-                      placeholder="Search by name, email, or phone..."
-                      value={manualCheckInSearch}
-                      onChange={(e) => setManualCheckInSearch(e.target.value)}
-                    />
-                  </div>
+            {/* Main Check-in Layout */}
+            <div className={styles.checkinMainLayout}>
+              {/* Manual Check-in Section */}
+              <div className={styles.manualCheckinSection}>
+                <div className={styles.manualCheckinHeader}>
+                  <h3>Manual Check-in</h3>
+                  <p>Search by name, email, phone, or QR code number</p>
                 </div>
                 
-                <div className={styles.searchResultsContainer}>
-                  {manualCheckInSearch ? (
-                    <div className={styles.searchResults}>
-                      {sessionAttendees
-                        .filter(attendee => 
-                          attendee.name.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
-                          attendee.email.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
-                          attendee.phone.includes(manualCheckInSearch)
-                        )
-                        .length === 0 ? (
-                          <div className={styles.noSearchResults}>
-                            <FaSearch />
-                            <p>No attendees found matching "{manualCheckInSearch}"</p>
-                          </div>
-                        ) : (
-                                                     sessionAttendees
-                             .filter(attendee => 
-                               attendee.name.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
-                               attendee.email.toLowerCase().includes(manualCheckInSearch.toLowerCase()) ||
-                               attendee.phone.includes(manualCheckInSearch)
-                             )
-                             .map(attendee => (
-                               <div key={attendee.id} className={`${styles.searchResultItem} ${attendee.checkedIn ? styles.alreadyCheckedIn : styles.availableForCheckIn}`}>
-                                 <div className={styles.attendeeInfoDetailed}>
-                                   <div className={styles.attendeeMainInfo}>
-                                     <h4>{attendee.name}</h4>
-                                     {attendee.checkedIn ? (
-                                       <span className={styles.checkedInBadge}>
-                                         <FaCheckCircle /> Already Checked In
-                                       </span>
-                                     ) : (
-                                       <span className={styles.pendingBadge}>
-                                         <FaClock /> Ready to Check In
-                                       </span>
-                                     )}
-                                   </div>
-                                   <div className={styles.attendeeDetailsGrid}>
-                                     <div className={styles.detailItem}>
-                                       <span className={styles.detailLabel}>Email:</span>
-                                       <span className={styles.detailValue}>{attendee.email}</span>
-                                     </div>
-                                     <div className={styles.detailItem}>
-                                       <span className={styles.detailLabel}>Phone:</span>
-                                       <span className={styles.detailValue}>{attendee.phone}</span>
-                                     </div>
-                                     <div className={styles.detailItem}>
-                                       <span className={styles.detailLabel}>Ticket:</span>
-                                       <span className={styles.detailValue}>{attendee.ticketType || 'Standard'}</span>
-                                     </div>
-                                     <div className={styles.detailItem}>
-                                       <span className={styles.detailLabel}>Amount:</span>
-                                       <span className={styles.detailValue}>₹{(attendee.individualAmount || 0).toLocaleString()}</span>
-                                     </div>
-                                     {attendee.checkedIn && attendee.checkInTime && (
-                                       <div className={styles.detailItem}>
-                                         <span className={styles.detailLabel}>Checked in:</span>
-                                         <span className={styles.detailValue}>
-                                           {new Date(attendee.checkInTime).toLocaleString('en-US', {
-                                             month: 'short',
-                                             day: 'numeric',
-                                             hour: '2-digit',
-                                             minute: '2-digit'
-                                           })}
-                                         </span>
-                                       </div>
-                                     )}
-                                   </div>
-                                   <div className={styles.attendeeCheckInActions}>
-                                     {!attendee.checkedIn ? (
-                                       <button
-                                         onClick={() => handleSessionCheckIn(attendee)}
-                                         disabled={checkInLoading === attendee.id}
-                                         className={`${styles.checkInButton} ${checkInLoading === attendee.id ? styles.loading : ''}`}
-                                       >
-                                         {checkInLoading === attendee.id ? (
-                                           <>
-                                             <FaSyncAlt className={styles.spinning} /> Checking In...
-                                           </>
-                                         ) : (
-                                           <>
-                                             <FaUserCheck /> Check In Now
-                                           </>
-                                         )}
-                                       </button>
-                                     ) : (
-                                       <span className={styles.alreadyCheckedInText}>
-                                         <FaCheckCircle /> Checked In
-                                       </span>
-                                     )}
-                                   </div>
-                                 </div>
-                               </div>
-                            ))
-                        )}
+                <div className={styles.searchBox}>
+                  <FaSearch />
+                  <input
+                    type="text"
+                    placeholder="Search name, email, phone, or QR code..."
+                    value={manualCheckInSearch}
+                    onChange={(e) => setManualCheckInSearch(e.target.value)}
+                    className={styles.formInput}
+                  />
+                </div>
+
+                {/* Pending Check-ins */}
+                <div className={styles.pendingCheckins}>
+                  <h4>Pending Check-ins ({sessionAttendees.filter(a => !a.checkedIn).length})</h4>
+                  
+                  {sessionAttendees.filter(a => !a.checkedIn).length === 0 ? (
+                    <div className={styles.allCheckedIn}>
+                      <FaCheckCircle />
+                      <p>All attendees have been checked in!</p>
                     </div>
                   ) : (
-                    <div className={styles.noSearchQuery}>
-                      <FaSearch />
-                      <p>Start typing to search for attendees to check in</p>
+                    <div className={styles.pendingList}>
+                      {sessionAttendees
+                        .filter(a => !a.checkedIn)
+                        .filter(attendee => {
+                          if (!manualCheckInSearch) return true;
+                          const searchLower = manualCheckInSearch.toLowerCase();
+                          return (
+                            attendee.name.toLowerCase().includes(searchLower) ||
+                            attendee.email.toLowerCase().includes(searchLower) ||
+                            attendee.phone.includes(manualCheckInSearch) ||
+                            (attendee.ticketIds && attendee.ticketIds.some(id => 
+                              id.toLowerCase().includes(searchLower)
+                            ))
+                          );
+                        })
+                        .map(attendee => (
+                          <div key={attendee.id} className={styles.pendingAttendeeItem}>
+                            <div className={styles.attendeeInfo}>
+                              <h5>{attendee.name}</h5>
+                              <div className={styles.attendeeDetails}>
+                                <span>{attendee.email}</span>
+                                <span>{attendee.phone}</span>
+                                <span>{attendee.ticketType || 'Standard'}</span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleSessionCheckIn(attendee)}
+                              disabled={checkInLoading === attendee.id}
+                              className={`${styles.quickCheckInButton} ${checkInLoading === attendee.id ? styles.loading : ''}`}
+                            >
+                              {checkInLoading === attendee.id ? (
+                                <>
+                                  <FaSyncAlt className={styles.spinning} /> Checking In...
+                                </>
+                              ) : (
+                                <>
+                                  <FaUserCheck /> Check In
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ))}
                     </div>
                   )}
                 </div>
               </div>
-            )}
 
-            {/* Quick Check-in List for Pending Attendees */}
-            {!showManualCheckIn && !scannerActive && (
-              <div className={styles.quickCheckinList}>
-                <h3>Pending Check-ins ({sessionAttendees.filter(a => !a.checkedIn).length})</h3>
+              {/* Checked-in People Sidebar */}
+              <div className={styles.checkedInSidebar}>
+                <h4>Checked In ({sessionAttendees.filter(a => a.checkedIn).length})</h4>
                 
-                {sessionAttendees.filter(a => !a.checkedIn).length === 0 ? (
-                  <div className={styles.allCheckedIn}>
-                    <FaCheckCircle />
-                    <h4>All attendees have been checked in!</h4>
-                    <p>Great job! Everyone is accounted for.</p>
-                  </div>
-                ) : (
-                  <div className={styles.pendingAttendeesList}>
-                    {sessionAttendees
-                      .filter(a => !a.checkedIn)
-                      .slice(0, 10) // Show first 10 pending
-                      .map(attendee => (
-                        <div key={attendee.id} className={styles.quickCheckInItem}>
-                          <div className={styles.attendeeQuickInfo}>
-                            <span className={styles.attendeeName}>{attendee.name}</span>
-                            <span className={styles.attendeeTicket}>{attendee.ticketType || 'Standard'}</span>
-                          </div>
-                          <button
-                            onClick={() => handleSessionCheckIn(attendee)}
-                            disabled={checkInLoading === attendee.id}
-                            className={`${styles.quickCheckInButton} ${checkInLoading === attendee.id ? styles.loading : ''}`}
-                          >
-                            {checkInLoading === attendee.id ? (
-                              <>
-                                <FaSyncAlt className={styles.spinning} /> Checking In...
-                              </>
-                            ) : (
-                              <>
-                                <FaUserCheck /> Check In
-                              </>
-                            )}
-                          </button>
+                <div className={styles.checkedInList}>
+                  {sessionAttendees
+                    .filter(a => a.checkedIn)
+                    .map(attendee => (
+                      <div key={attendee.id} className={styles.checkedInItem}>
+                        <div className={styles.checkedInInfo}>
+                          <span className={styles.checkedInName}>{attendee.name}</span>
+                          <span className={styles.checkedInTime}>
+                            {attendee.checkInTime && 
+                              new Date(attendee.checkInTime).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                            }
+                          </span>
                         </div>
-                      ))}
-                    
-                    {sessionAttendees.filter(a => !a.checkedIn).length > 10 && (
-                      <div className={styles.showMorePending}>
-                        <p>+{sessionAttendees.filter(a => !a.checkedIn).length - 10} more pending</p>
-                        <button 
-                          onClick={() => setShowManualCheckIn(true)}
-                          className={styles.showAllButton}
-                        >
-                          View All Pending
-                        </button>
+                        <FaCheckCircle className={styles.checkedInIcon} />
                       </div>
-                    )}
-                  </div>
-                )}
+                    ))}
+                </div>
               </div>
-            )}
+            </div>
           </div>
         )}
 
@@ -2411,7 +2561,7 @@ const EventDashboard = () => {
         {activeTab === 'manage-tickets' && selectedSession && (
           <div className={styles.manageTicketsTab}>
             <h2>Manage Session Tickets</h2>
-            <p className="text-gray-400 text-sm mb-6">Real-time ticket availability and sales data</p>
+            <p className={styles.subtitle}>Real-time ticket availability and sales data</p>
             
             {ticketUpdateResult && (
               <div className={`${styles.updateResult} ${styles[ticketUpdateResult.type]}`}>
@@ -2420,94 +2570,73 @@ const EventDashboard = () => {
             )}
             
             <div className={styles.ticketsGrid}>
-              {selectedSession.tickets.map((ticket, index) => {
-                const liveStats = calculateLiveTicketStats(ticket.name, ticket.capacity, ticket.price);
-                const isLowStock = liveStats.available <= 5 && liveStats.available > 0;
-                const isSoldOut = liveStats.available === 0;
+              {ticketStats.map((ticket, index) => {
+                const isLowStock = ticket.available <= 5 && ticket.available > 0;
+                const isSoldOut = ticket.available === 0;
                 
                 return (
-                <div key={index} className={styles.ticketManageCard}>
-                  <div className={styles.ticketManageHeader}>
+                  <div key={index} className={styles.ticketManageCard}>
+                    <div className={styles.ticketManageHeader}>
                       <div>
-                    <h3>{ticket.name}</h3>
+                        <h3>{ticket.name}</h3>
                         {isSoldOut && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-500/20 text-red-400 mt-1">
+                          <span className={styles.soldOutBadge}>
                             SOLD OUT
                           </span>
                         )}
-                        {isLowStock && !isSoldOut && (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400 mt-1">
+                        {isLowStock && (
+                          <span className={styles.lowStockBadge}>
                             LOW STOCK
                           </span>
                         )}
                       </div>
-                      <span className={styles.ticketPrice}>₹{ticket.price.toLocaleString()}</span>
-                  </div>
-                  
-                  <div className={styles.ticketManageStats}>
-                    <div className={styles.statRow}>
+                      <button 
+                        className={styles.secondaryButton}
+                        onClick={() => setEditingTicket({...ticket, index})}
+                      >
+                        <FaEdit /> Edit Ticket
+                      </button>
+                    </div>
+                    
+                    <div className={styles.ticketManageStats}>
+                      <div className={styles.statRow}>
                         <span>Total Capacity:</span>
-                        <span className="font-semibold">{liveStats.capacity}</span>
-                    </div>
-                    <div className={styles.statRow}>
+                        <span className={styles.statValue}>{ticket.capacity}</span>
+                      </div>
+                      <div className={styles.statRow}>
                         <span>Tickets Sold:</span>
-                        <span className="font-semibold text-blue-400">{liveStats.sold}</span>
-                    </div>
-                    <div className={styles.statRow}>
+                        <span className={styles.statValue}>{ticket.soldCount}</span>
+                      </div>
+                      <div className={styles.statRow}>
                         <span>Available Now:</span>
-                        <span className={`font-semibold ${
-                          isSoldOut ? 'text-red-400' : 
-                          isLowStock ? 'text-yellow-400' : 
-                          'text-green-400'
+                        <span className={`${styles.statValue} ${
+                          isSoldOut ? styles.soldOut : 
+                          isLowStock ? styles.lowStock : 
+                          styles.available
                         }`}>
-                          {liveStats.available}
+                          {ticket.available}
                         </span>
-                    </div>
-                    <div className={styles.statRow}>
-                        <span>Sold Percentage:</span>
-                        <span className="font-semibold">{liveStats.percentage.toFixed(1)}%</span>
                       </div>
                       <div className={styles.statRow}>
                         <span>Revenue Generated:</span>
-                        <span className="font-semibold text-green-400">₹{liveStats.revenue.toLocaleString()}</span>
+                        <span className={styles.statValue}>₹{ticket.revenue.toLocaleString()}</span>
                       </div>
                     </div>
-                    
-                    {/* Progress Bar */}
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm text-gray-400 mb-1">
-                        <span>Sales Progress</span>
-                        <span>{liveStats.percentage.toFixed(1)}%</span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
+
+                    <div className={styles.ticketProgress}>
+                      <div className={styles.progressBar}>
                         <div 
-                          className={`h-2 rounded-full transition-all duration-500 ${
-                            isSoldOut ? 'bg-red-500' :
-                            isLowStock ? 'bg-yellow-500' :
-                            'bg-blue-500'
-                          }`}
-                          style={{ width: `${Math.min(liveStats.percentage, 100)}%` }}
+                          className={styles.progressFill}
+                          style={{ width: `${Math.min(ticket.percentage, 100)}%` }}
                         ></div>
+                      </div>
+                      <span className={styles.progressLabel}>
+                        {ticket.percentage.toFixed(1)}% sold
+                      </span>
                     </div>
                   </div>
-                  
-                  <div className={styles.ticketManageActions}>
-                    <button 
-                      className={styles.editTicketButton}
-                      onClick={() => setEditingTicket({...ticket, index})}
-                    >
-                        <FaEdit /> Edit Ticket
-                    </button>
-                  </div>
-                </div>
                 );
               })}
-            </div>
-            
-            {/* Live Update Indicator */}
-            <div className="mt-6 flex items-center justify-center gap-2 text-sm text-gray-400">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>Live data • Last updated: {new Date().toLocaleTimeString()}</span>
             </div>
           </div>
         )}
@@ -2557,27 +2686,6 @@ const EventDashboard = () => {
                   disabled={!permissions.canDelete}
                 >
                   <FaTrash /> Delete Event
-                </button>
-              </div>
-            </div>
-
-            <div className={styles.settingsSection}>
-              <h3>Session Check-in Access</h3>
-              <p className={styles.settingsDescription}>
-                Grant check-in access to users via phone number
-              </p>
-              {!selectedSession && (
-                <p className={styles.settingsWarning}>
-                  <FaExclamationTriangle /> Please select a session first to manage check-in access
-                </p>
-              )}
-              <div className={styles.settingsActions}>
-                <button 
-                  onClick={() => setShowEventSharing(true)}
-                  className={styles.shareEventButton}
-                  disabled={permissions.role === 'unauthorized' || !selectedSession}
-                >
-                  <FaUserCheck /> Manage Check-in Access
                 </button>
               </div>
             </div>
@@ -2743,6 +2851,21 @@ const EventDashboard = () => {
       )}
       </div>
     </div>
+  );
+};
+
+// Main Component with Error Boundary
+const EventDashboard = () => {
+  return (
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onReset={() => {
+        // Reset the state here
+        window.location.href = '/events';
+      }}
+    >
+      <EventDashboardContent />
+    </ErrorBoundary>
   );
 };
 

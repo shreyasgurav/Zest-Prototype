@@ -294,9 +294,29 @@ export function validateCheckInEligibility(attendee: any): { canCheckIn: boolean
 }
 
 /**
- * Get empty state messages
+ * Get empty state messages for search and filter
  */
-export function getEmptyStateMessage(context: 'attendees' | 'tickets' | 'sessions'): {
+export function getEmptyStateMessage(searchTerm: string, filterStatus: string): string {
+  if (searchTerm) {
+    return 'No attendees match your search criteria. Try adjusting your search terms.';
+  }
+  
+  switch (filterStatus) {
+    case 'checked-in':
+      return 'No attendees have checked in yet.';
+    case 'not-checked-in':
+      return 'All attendees have been checked in!';
+    case 'confirmed':
+      return 'No confirmed attendees found.';
+    default:
+      return 'Attendees will appear here once they register for this session.';
+  }
+}
+
+/**
+ * Get empty state messages for context
+ */
+export function getContextEmptyState(context: 'attendees' | 'tickets' | 'sessions'): {
   title: string;
   description: string;
   action?: string;

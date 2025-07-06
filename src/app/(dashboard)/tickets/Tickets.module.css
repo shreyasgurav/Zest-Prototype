@@ -83,10 +83,12 @@
 }
 
 .ticketsList {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 24px;
   padding: 0;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 /* Enhanced Ticket Cards */
@@ -803,7 +805,6 @@
   }
 
   .ticketsList {
-    grid-template-columns: 1fr;
     gap: 20px;
   }
 
