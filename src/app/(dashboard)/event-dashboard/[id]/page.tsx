@@ -2193,34 +2193,35 @@ const EventDashboardContent = () => {
         {activeTab === 'attendees' && (
           <div className={styles.attendeesTab}>
             <div className={styles.attendeesHeader}>
-              <h2>Attendees Data ({filteredAttendees.length})</h2>
+              <div className={styles.attendeesHeaderTop}>
+                <h2>Attendees Data ({filteredAttendees.length})</h2>
+                <button 
+                  className={styles.exportButton}
+                  onClick={handleExportAttendees}
+                >
+                  <FaDownload /> Export CSV
+                </button>
+              </div>
               <div className={styles.attendeesActions}>
                 <div className={styles.searchBox}>
                   <FaSearch />
                   <input
                     type="text"
-                    placeholder="Search attendees..."
+                    placeholder="Search by name, email, or phone..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className={styles.formInput}
                   />
                 </div>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value as any)}
-                  className={styles.formInput}
+                  className={styles.filterSelect}
                 >
                   <option value="all">All Attendees</option>
                   <option value="confirmed">Confirmed</option>
                   <option value="checked-in">Checked In</option>
                   <option value="not-checked-in">Not Checked In</option>
                 </select>
-                <button 
-                  className={styles.primaryButton}
-                  onClick={handleExportAttendees}
-                >
-                  <FaDownload /> Export CSV
-                </button>
               </div>
             </div>
 
@@ -2240,7 +2241,7 @@ const EventDashboardContent = () => {
               </div>
             </div>
 
-            {/* Attendees Data Table */}
+            {/* Attendees Data Table/Cards */}
             <div className={styles.attendeesDataTable}>
               {filteredAttendees.length === 0 ? (
                 <div className={styles.emptyState}>
@@ -2271,84 +2272,164 @@ const EventDashboardContent = () => {
                   )}
                 </div>
               ) : (
-                <table className={styles.attendeesTable}>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Email</th>
-                      <th>Phone</th>
-                      <th>Ticket Type</th>
-                      <th>Amount</th>
-                      <th>Status</th>
-                      <th>Booking Date</th>
-                      <th>Check-in Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <>
+                  {/* Desktop Table */}
+                  <table className={styles.attendeesTable}>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Ticket Type</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th>Booking Date</th>
+                        <th>Check-in Time</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAttendees.map(attendee => (
+                        <tr key={attendee.id} className={attendee.checkedIn ? styles.checkedInRow : styles.pendingRow}>
+                          <td>
+                            <div className={styles.nameCell}>
+                              <strong>{attendee.name}</strong>
+                              {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
+                                <span className={styles.groupIndicator}>
+                                  #{attendee.ticketIndex} of {attendee.totalTicketsInBooking}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td>{attendee.email}</td>
+                          <td>{attendee.phone}</td>
+                          <td>
+                            <span className={styles.ticketTypeTag}>
+                              {attendee.ticketType || 'Standard'}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={styles.amountCell}>
+                              ₹{calculateAttendeeRevenue(attendee, selectedSession || undefined).toLocaleString()}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={styles.statusCell}>
+                              {attendee.checkedIn ? (
+                                <span className={`${styles.statusBadge} ${styles.checkedIn}`}>
+                                  <FaCheckCircle /> Checked In
+                                </span>
+                              ) : (
+                                <span className={`${styles.statusBadge} ${styles.pending}`}>
+                                  <FaClock /> Pending
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={styles.dateCell}>
+                              {new Date(attendee.createdAt).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </span>
+                          </td>
+                          <td>
+                            {attendee.checkedIn && attendee.checkInTime ? (
+                              <span className={styles.timeCell}>
+                                {new Date(attendee.checkInTime).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            ) : (
+                              <span className={styles.dateCell}>-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Mobile Cards */}
+                  <div className={styles.attendeesMobileList}>
                     {filteredAttendees.map(attendee => (
-                      <tr key={attendee.id} className={attendee.checkedIn ? styles.checkedInRow : styles.pendingRow}>
-                        <td>
-                          <div className={styles.nameCell}>
-                            <strong>{attendee.name}</strong>
-                            {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
+                      <div 
+                        key={attendee.id} 
+                        className={`${styles.attendeeMobileCard} ${attendee.checkedIn ? styles.checkedIn : ''}`}
+                      >
+                        <div className={styles.attendeeMobileCardHeader}>
+                          <h4>{attendee.name}</h4>
+                          {attendee.checkedIn ? (
+                            <span className={`${styles.statusBadge} ${styles.checkedIn}`}>
+                              <FaCheckCircle /> Checked In
+                            </span>
+                          ) : (
+                            <span className={`${styles.statusBadge} ${styles.pending}`}>
+                              <FaClock /> Pending
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className={styles.attendeeMobileCardDetails}>
+                          <div className={styles.attendeeMobileCardDetail}>
+                            <span>Email:</span>
+                            <span>{attendee.email}</span>
+                          </div>
+                          <div className={styles.attendeeMobileCardDetail}>
+                            <span>Phone:</span>
+                            <span>{attendee.phone}</span>
+                          </div>
+                          <div className={styles.attendeeMobileCardDetail}>
+                            <span>Ticket:</span>
+                            <span className={styles.ticketTypeTag}>
+                              {attendee.ticketType || 'Standard'}
+                            </span>
+                          </div>
+                          <div className={styles.attendeeMobileCardDetail}>
+                            <span>Amount:</span>
+                            <span className={styles.amountCell}>
+                              ₹{calculateAttendeeRevenue(attendee, selectedSession || undefined).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className={styles.attendeeMobileCardDetail}>
+                            <span>Booked:</span>
+                            <span className={styles.dateCell}>
+                              {new Date(attendee.createdAt).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </span>
+                          </div>
+                          {attendee.checkedIn && attendee.checkInTime && (
+                            <div className={styles.attendeeMobileCardDetail}>
+                              <span>Checked in:</span>
+                              <span className={styles.timeCell}>
+                                {new Date(attendee.checkInTime).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                          )}
+                          {attendee.ticketIndex && attendee.totalTicketsInBooking && attendee.totalTicketsInBooking > 1 && (
+                            <div className={styles.attendeeMobileCardDetail}>
+                              <span>Group booking:</span>
                               <span className={styles.groupIndicator}>
                                 #{attendee.ticketIndex} of {attendee.totalTicketsInBooking}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td>{attendee.email}</td>
-                        <td>{attendee.phone}</td>
-                        <td>
-                          <span className={styles.ticketTypeTag}>
-                            {attendee.ticketType || 'Standard'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={styles.amountCell}>
-                            ₹{calculateAttendeeRevenue(attendee, selectedSession || undefined).toLocaleString()}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={styles.statusCell}>
-                            {attendee.checkedIn ? (
-                              <span className={`${styles.statusBadge} ${styles.checkedIn}`}>
-                                <FaCheckCircle /> Checked In
-                              </span>
-                            ) : (
-                              <span className={`${styles.statusBadge} ${styles.pending}`}>
-                                <FaClock /> Pending
-                              </span>
-                            )}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={styles.dateCell}>
-                            {new Date(attendee.createdAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </span>
-                        </td>
-                        <td>
-                          {attendee.checkedIn && attendee.checkInTime ? (
-                            <span className={styles.timeCell}>
-                              {new Date(attendee.checkInTime).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          ) : (
-                            <span className={styles.dateCell}>-</span>
+                            </div>
                           )}
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -2568,6 +2649,59 @@ const EventDashboardContent = () => {
                 {ticketUpdateResult.message}
               </div>
             )}
+
+            {/* Add New Ticket Section */}
+            <div className={styles.addTicketSection}>
+              <div className={styles.addTicketHeader}>
+                <h3>Add New Ticket Type</h3>
+              </div>
+              <div className={styles.addTicketForm}>
+                <div className={styles.formGroup}>
+                  <label>Ticket Name</label>
+                  <input
+                    type="text"
+                    value={newTicketName}
+                    onChange={(e) => setNewTicketName(e.target.value)}
+                    placeholder="e.g., VIP Pass"
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Price (₹)</label>
+                  <input
+                    type="number"
+                    value={newTicketPrice}
+                    onChange={(e) => setNewTicketPrice(e.target.value)}
+                    placeholder="Enter price"
+                    min="0"
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Capacity</label>
+                  <input
+                    type="number"
+                    value={newTicketCapacity}
+                    onChange={(e) => setNewTicketCapacity(e.target.value)}
+                    placeholder="Enter capacity"
+                    min="1"
+                  />
+                </div>
+                <button
+                  className={styles.addTicketButton}
+                  onClick={handleAddNewTicketCategory}
+                  disabled={addingTicket || !newTicketName || !newTicketPrice || !newTicketCapacity}
+                >
+                  {addingTicket ? (
+                    <>
+                      <FaSyncAlt className={styles.spinningIcon} /> Adding...
+                    </>
+                  ) : (
+                    <>
+                      <FaTicketAlt /> Add Ticket
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
             
             <div className={styles.ticketsGrid}>
               {ticketStats.map((ticket, index) => {
@@ -2761,7 +2895,7 @@ const EventDashboardContent = () => {
                   }}
                   disabled={ticketUpdating === `capacity-${editingTicket.index}`}
                 />
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className={styles.helperText}>
                         Minimum: {soldTickets} (tickets already sold)
                       </p>
                 {ticketUpdating === `capacity-${editingTicket.index}` && (
